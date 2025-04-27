@@ -96,3 +96,12 @@ DB_HOST="localhost"
 # ls -lhtr $CONDA_PREFIX/pgsql_data/
 # cat $CONDA_PREFIX/pgsql_data/pg_hba.conf
 ```
+
+## Start the databse
+
+```shell
+conda activate GenomicBreeding
+# conda env export > GenomicBreeding_conda.yaml
+# pg_ctl stop
+pg_ctl -D $CONDA_PREFIX/pgsql_data -l $CONDA_PREFIX/pgsql_data/logfile.txt start
+```
