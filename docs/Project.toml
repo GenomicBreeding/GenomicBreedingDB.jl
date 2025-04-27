@@ -1,0 +1,3 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+GenomicBreedingDB = "dd1ffd05-44c9-4da0-a67e-cb767bb549d1"
