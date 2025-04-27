@@ -11,6 +11,9 @@ include("connection.jl")
 include("upload.jl")
 include("download.jl")
 
+export dbconnect, dbinit
+export uploadtrialsorphenomes
+export querytable, extractmainfieldstablesandcols, querytrialsandphenomes, queryanalyses
 
 
 end

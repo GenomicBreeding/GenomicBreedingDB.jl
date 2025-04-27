@@ -89,7 +89,7 @@ GRANT ALL PRIVILEGES ON DATABASE gbdb TO jeff;
 
 ```shell
 # Save as ~/.env
-DB_USER="jeff"
+DB_USER="himynamejeff"
 DB_PASSWORD="qwerty12345"
 DB_NAME="gbdb"
 DB_HOST="localhost"
