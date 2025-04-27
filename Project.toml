@@ -4,6 +4,7 @@ authors = ["jeffersonparil@gmail.com"]
 version = "1.0.0-DEV"
 
 [deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DotEnv = "4dc1fcf4-5e3b-5448-94ab-0c38ec0385c1"
 GenomicBreedingCore = "50d95318-1838-4cfa-a614-3543b4bb0509"
@@ -19,6 +20,7 @@ GenomicBreedingCore = {rev = "main", url = "https://github.com/GenomicBreeding/G
 GenomicBreedingIO = {rev = "main", url = "https://github.com/GenomicBreeding/GenomicBreedingIO.jl"}
 
 [compat]
+CSV = "0.10.15"
 DataFrames = "1.7.0"
 DotEnv = "1.0.0"
 GenomicBreedingCore = "0.1.0"
