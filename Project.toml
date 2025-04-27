@@ -13,8 +13,6 @@ ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-GenomicBreedingCore = "50d95318-1838-4cfa-a614-3543b4bb0509"
-GenomicBreedingIO = "f6f5bf5f-7369-4de1-9a2f-51e3ce5e0754"
 
 [sources]
 GenomicBreedingCore = {rev = "main", url = "https://github.com/GenomicBreeding/GenomicBreedingCore.jl"}
