@@ -105,3 +105,14 @@ conda activate GenomicBreeding
 # pg_ctl stop
 pg_ctl -D $CONDA_PREFIX/pgsql_data -l $CONDA_PREFIX/pgsql_data/logfile.txt start
 ```
+
+## Use in Julia
+
+``julia
+using GenomicBreedingDB
+using DotEnv
+DotEnv.load!(joinpath(homedir(), ".env"))
+conn = dbconnect()
+querytable("entries")
+close(conn)
+```
