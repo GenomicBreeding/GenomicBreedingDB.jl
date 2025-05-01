@@ -64,6 +64,7 @@ tebv = analyse(trials, "y ~ 1|entries")
 phenomes = merge(merge(tebv.phenomes[1], tebv.phenomes[2]), tebv.phenomes[3])
 fname_phenomes = writedelimited(phenomes)
 
+DotEnv.load!(joinpath(homedir(), ".env"))
 uploadtrialsorphenomes(fname=fname_trials, verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_1", verbose=true)
@@ -272,6 +273,115 @@ function uploadtrialsorphenomes(;
     #     execute(conn, "ROLLBACK;")
     # end
     close(conn)
+end
+
+
+"""
+    updatedescription(table::String;
+        identifiers::Dict{String, Union{String, Missing}},
+        description::String,
+    )::Nothing
+
+Update the description field in a specified table based on given identifiers.
+
+# Arguments
+- `table::String`: The name of the table to update.
+- `identifiers::Dict{String, Union{String, Missing}}`: A dictionary of column names and their corresponding values to identify the rows to update. Missing values are allowed.
+- `description::String`: The new description to set for the matching rows.
+
+# Throws
+- `ArgumentError`: If the table name or any identifier key/value contains a semicolon.
+- `ArgumentError`: If the specified table or any identifier column does not exist in the database.
+
+# Example
+```julia
+DotEnv.load!(joinpath(homedir(), ".env"))
+```
+"""
+function updatedescription(table::String;
+    identifiers::Dict{String, Union{String, Missing}},
+    description::String,
+)::Nothing
+    # table::String = "entries"
+    # identifiers::Dict{String, Union{String, Missing}} = Dict(
+    #     "name" => "entry_01",
+    #     "species" => "unspecified",
+    #     "population" => "pop_1",
+    #     "classification" => missing,
+    # )
+    # description::String = "Entry number 1 from population 1 with unspecified species and no additional classification details"
+    # Connect to the database
+    conn = dbconnect()
+    # Check arguments
+    if !isnothing(match(Regex(";"), table))
+        throw(ArgumentError("The table: '$table' cannot contain a semicolon."))
+    end
+    res = execute(
+        conn,
+        "SELECT table_name FROM information_schema.tables WHERE table_name = \$1",
+        [table],
+    )
+    if length(res) == 0
+        throw(ArgumentError("The table $table does not exist."))
+    end
+    # Check if the identifiers are valid - part 1 of 2
+    if table == "entries" 
+        if sort(string.(keys(identifiers))) != sort(["name", "species", "population", "classification"])
+            throw(ArgumentError("The identifiers for the table $table are not correct."))
+        end
+    elseif table == "traits" 
+        if sort(string.(keys(identifiers))) != sort(["name"])
+            throw(ArgumentError("The identifiers for the table $table are not correct."))
+        end
+    elseif table == "trials" 
+        if sort(string.(keys(identifiers))) != sort(["year", "season", "harvest", "site"])
+            throw(ArgumentError("The identifiers for the table $table are not correct."))
+        end
+    elseif table == "analyses" 
+        if sort(string.(keys(identifiers))) != sort(["name"])
+            throw(ArgumentError("The identifiers for the table $table are not correct."))
+        end
+    else
+        throw(ArgumentError("The table $table does not have a `description` field."))
+    end
+    # Check if the identifiers are valid - part 2 of 2
+    for (k, v) in identifiers
+        # k = string.(keys(identifiers))[1]; v = identifiers[k]
+        if ismissing(v)
+            continue
+        end
+        if !isnothing(match(Regex(";"), k) )
+            throw(ArgumentError("The identifier key: '$k' cannot contain a semicolon."))
+        end
+        if !isnothing(match(Regex(";"), v) )
+            throw(ArgumentError("The identifier value: '$v' cannot contain a semicolon."))
+        end
+        res = execute(
+            conn,
+            "SELECT $k FROM $table",
+        )
+        if length(res) == 0
+            throw(ArgumentError("The column $k does not exist in table $table."))
+        end
+    end
+    # Build the SQL query
+    expression::Vector{String} = ["UPDATE $table SET description = \$1 WHERE"]
+    parameters = [description]
+    counter = [2]
+    for (k, v) in identifiers
+        # k = string.(keys(identifiers))[1]; v = identifiers[k]
+        if ismissing(v)
+            push!(expression, "($table.$k IS NULL) AND")
+        else
+            push!(expression, "($table.$k = \$$(counter[1])) AND")
+            push!(parameters, v)
+            counter[1] += 1
+        end
+    end
+    # Remove the hanging 'AND'
+    expression[end] = replace(expression[end], Regex(" AND\$") => "")
+    # Update
+    execute(conn, join(expression, " "), parameters)
 end
 
 # TODO TODO TODO TODO TODO TODO TODO TODO TODO

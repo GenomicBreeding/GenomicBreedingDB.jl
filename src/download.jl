@@ -54,37 +54,46 @@ function querytable(
     # Connect to the database
     conn = dbconnect()
     # Check arguments
-    try
-        execute(
-            conn,
-            "SELECT table_name FROM information_schema.tables WHERE table_name = \$1",
-            [table],
-        )
-    catch
+    if !isnothing(match(Regex(";"), table))
+        throw(ArgumentError("The table: '$table' cannot contain a semicolon."))
+    end
+    res = execute(
+        conn,
+        "SELECT table_name FROM information_schema.tables WHERE table_name = \$1",
+        [table],
+    )
+    if length(res) == 0
         throw(ArgumentError("The table $table does not exist."))
     end
     if !ismissing(fields)
         for f in fields
-            try
-                execute(
-                    conn,
-                    "SELECT \$1 FROM information_schema.columns WHERE table_name = \$2",
-                    [f, table],
-                )
-            catch
+            if !isnothing(match(Regex(";"), f) )
+                throw(ArgumentError("The field: '$f' cannot contain a semicolon."))
+            end    
+            res = execute(
+                conn,
+                "SELECT \$1 FROM information_schema.columns WHERE table_name = \$2",
+                [f, table],
+            )
+            if length(res) == 0
                 throw(ArgumentError("The column $f does not exist in table $table."))
             end
         end
     end
     if !ismissing(filters)
-        for (k, _) in filters
-            try
-                execute(
-                    conn,
-                    "SELECT \$1 FROM information_schema.columns WHERE table_name = \$2",
-                    [string(k), table],
-                )
-            catch
+        for (k, v) in filters
+            if !isnothing(match(Regex(";"), k) )
+                throw(ArgumentError("The filter key: '$k' cannot contain a semicolon."))
+            end
+            if isa(v, String) && !isnothing(match(Regex(";"), v) )
+                throw(ArgumentError("The filter value: '$v' cannot contain a semicolon."))
+            end
+            res = execute(
+                conn,
+                "SELECT \$1 FROM information_schema.columns WHERE table_name = \$2",
+                [string(k), table],
+            )
+            if length(res) == 0
                 throw(
                     ArgumentError(
                         "The column $(string(k)) does not exist in table $table.",
@@ -245,14 +254,28 @@ function addfilters!(
         Vector{Union{String, Missing}},
         Vector{Union{Float64, Missing}},
         Vector{Union{Int64, Missing}},
+        Vector{String},
+        Vector{Float64},
+        Vector{Int64},
         Tuple{Float64,Float64},
         Tuple{Int64,Int64},
     },
 )::Nothing
+    # Check arguments
+    if !isnothing(match(Regex(";"), table))
+        throw(ArgumentError("The table: '$table' cannot contain a semicolon."))
+    end
+    if !isnothing(match(Regex(";"), column))
+        throw(ArgumentError("The column: '$column' cannot contain a semicolon."))
+    end
+    # Build the expression
     push!(expression, "(")
-    if isa(values, Vector{Union{String, Missing}})
+    if isa(values, Vector{Union{String, Missing}}) || isa(values, Vector{String})
         for i in eachindex(values)
             # i = 2
+            if !ismissing(values[i]) && !isnothing(match(Regex(";"), values[i]))
+                throw(ArgumentError("The values[$i]: '$(values[i])' cannot contain a semicolon."))
+            end
             if !ismissing(values[i])
                 counter[1] += 1
                 values[i] = replace(values[i], "*" => "%")
@@ -262,7 +285,7 @@ function addfilters!(
                 push!(expression, "($table.$column IS NULL) OR")
             end
         end
-    elseif isa(values, Vector{Union{Float64, Missing}}) || isa(values, Vector{Union{Int64, Missing}})
+    elseif isa(values, Vector{Union{Float64, Missing}}) || isa(values, Vector{Union{Int64, Missing}}) || isa(values, Vector{Float64}) || isa(values, Vector{Int64})
         for i in eachindex(values)
             # i = 2
             if !ismissing(values[i])
@@ -309,20 +332,20 @@ end
 """
     querytrialsandphenomes(;
         traits::Vector{String},
-        species::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        classifications::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        populations::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        entries::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}} = missing,
-        seasons::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        harvests::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        sites::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        blocks::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        rows::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        cols::Union{Missing,Vector{Union{String, Missing}}} = missing,
-        replications::Union{Missing,Vector{Union{String, Missing}}} = missing,
+        species::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}, Vector{Int64}} = missing,
+        seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        harvests::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        sites::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        blocks::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        rows::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        cols::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        replications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         sort_rows::Bool = true,
-        verbose::Bool = false
+        verbose::Bool = false,
     )::DataFrame
 
 Query trials and phenotype data from a database with various filtering options.
@@ -349,44 +372,28 @@ A DataFrame containing the queried trial and phenotype data with columns for all
 
 # Examples
 ```julia
-querytrialsandphenomes(
-    traits=traits,
-    species=species,
-    classifications=classifications,
-    populations=populations,
-    entries=entries,
-    years=years,
-    seasons=seasons,
-    harvests=harvests,
-    sites=sites,
-    blocks=blocks,
-    rows=rows,
-    cols=cols,
-    replications=replications,
-    verbose=true
-)
 querytrialsandphenomes(traits = ["trait_1"], verbose=true)
-querytrialsandphenomes(traits = ["trait_1"], species=["missing"], classifications=["missing"], entries=["entry_01","entry_09"], verbose=true)
+querytrialsandphenomes(traits = ["trait_1"], classifications=["", missing], entries=["entry_01","entry_09"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_1", "season_4"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_3"], years=(2000, 3000), verbose=true)
-querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_3"], years=(2030, 2020), sites=["site*3"], verbose=true)
+querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["*1*"], seasons=["*_1"], years=(2030, 2020), sites=["*_3"], verbose=true)
 ```
 """
 function querytrialsandphenomes(;
     traits::Vector{String},
-    species::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    classifications::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    populations::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    entries::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}} = missing,
-    seasons::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    harvests::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    sites::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    blocks::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    rows::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    cols::Union{Missing,Vector{Union{String, Missing}}} = missing,
-    replications::Union{Missing,Vector{Union{String, Missing}}} = missing,
+    species::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}, Vector{Int64}} = missing,
+    seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    harvests::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    sites::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    blocks::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    rows::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    cols::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    replications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     sort_rows::Bool = true,
     verbose::Bool = false,
 )::DataFrame
@@ -412,7 +419,7 @@ function querytrialsandphenomes(;
     # SELECT table_name,column_name FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog', 'information_schema');
     # Connect to the database
     if verbose
-        println("Connecting to the databse...")
+        println("Connecting to the database...")
     end
     conn = dbconnect()
     # Set output fields
@@ -434,6 +441,9 @@ function querytrialsandphenomes(;
         matches::Vector{String} = []
         for trait in replace.(traits, "*" => "%")
             # trait = replace.(traits, "*" => "%")[1]
+            if !isnothing(match(Regex(";"), trait) )
+                throw(ArgumentError("The trait: '$trait' cannot contain a semicolon."))
+            end
             # If there is no '%' in trait then 'LIKE' is equivalent to '='
             res = DataFrame(
                 execute(conn, "SELECT name FROM traits WHERE name = \$1", [trait]),
@@ -685,14 +695,20 @@ queryanalyses(analyses=["analysis_3", "analysis_4"], verbose=true)
 ```
 """
 function queryanalyses(;
-    analyses::Vector{Union{String, Missing}},
+    analyses::Union{Vector{Union{String, Missing}}, Vector{String}},
     sort_rows::Bool = true,
     verbose::Bool = false,
 )::DataFrame
     # analyses = ["analysis_1", "analysis_2"]
     # verbose = true
+    # Check arguments
+    for a in analyses
+        if !ismissing(a) && !isnothing(match(Regex(";"), a))
+            throw(ArgumentError("The analysis: '$a' cannot contain a semicolon."))
+        end
+    end
     if verbose
-        println("Connecting to the databse...")
+        println("Connecting to the database...")
     end
     conn = dbconnect()
     # Set output fields
