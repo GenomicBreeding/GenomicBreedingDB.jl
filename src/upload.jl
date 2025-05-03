@@ -16,7 +16,7 @@
         species_classification::Union{Missing, String}=missing,
         analysis::Union{Missing, String}=missing,
         analysis_description::Union{Missing, String}=missing,
-        year::Union{Missing, Int64}=missing,
+        year::Union{Missing, String}=missing,
         season::Union{Missing, String}=missing,
         harvest::Union{Missing, String}=missing,
         site::Union{Missing, String}=missing,
@@ -71,7 +71,6 @@ uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_1", verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_2", analysis_description="some description", verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_3", verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year="2030-2031", season="Winter", verbose=true)
-
 ```
 """
 function uploadtrialsorphenomes(;
@@ -204,7 +203,9 @@ function uploadtrialsorphenomes(;
     else
         names(df)[4:end]
     end
-    pb = ProgressMeter.Progress(length(traits) * nrow(df), desc = "Uploading data: ")
+    if verbose
+        pb = ProgressMeter.Progress(length(traits) * nrow(df), desc = "Uploading data: ")
+    end
     for trait in traits
         # trait = traits[1]
         for i = 1:nrow(df)
@@ -244,6 +245,10 @@ function uploadtrialsorphenomes(;
                     df[i, trait],
                 ]
             end
+            # println("EXPRESSION:")
+            # println(expression)
+            # println("VALUES:")
+            # println(values)
             execute(conn, expression, values)
             if !ismissing(analysis)
                 execute(
@@ -252,10 +257,14 @@ function uploadtrialsorphenomes(;
                     vcat(values[1:(end-1)], analysis, analysis_description),
                 )
             end
-            ProgressMeter.next!(pb)
+            if verbose
+                ProgressMeter.next!(pb)
+            end
         end
     end
-    ProgressMeter.finish!(pb)
+    if verbose
+        ProgressMeter.finish!(pb)
+    end
     # println("To commit please leave empty. To rollback enter any key:")
     # commit_else_rollback = readline()
     # if commit_else_rollback == ""

@@ -34,7 +34,7 @@ querytable("phenotype_data", fields=["id", "value"])
 querytable("analyses", fields=["name", "description"])
 querytable("trials", filters=Dict("year" => ["2021", "2030-2031"]))
 querytable("layouts", filters=Dict("replication" => ["replication_1"]))
-querytable("phenotype_data", fields=["id", "value"], filters=Dict("value" => (100.0, 200.0)))
+querytable("phenotype_data", fields=["id", "value"], filters=Dict("value" => (1.0, 10.0)))
 ```
 """
 function querytable(
@@ -699,7 +699,7 @@ function queryanalyses(;
     sort_rows::Bool = true,
     verbose::Bool = false,
 )::DataFrame
-    # analyses = ["analysis_1", "analysis_2"]
+    # analyses = ["analysis_3"]
     # verbose = true
     # Check arguments
     for a in analyses
@@ -805,7 +805,7 @@ function queryanalyses(;
     if verbose
         println("Executing the parameterised query...")
         println("=========================================")
-        println(expression)
+        println(join(expression, "\n"))
         println("=========================================")
     end
     res = execute(conn, join(expression, "\n"), analyses)
