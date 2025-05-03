@@ -32,7 +32,7 @@ querytable("analysis_tags")
 
 querytable("phenotype_data", fields=["id", "value"])
 querytable("analyses", fields=["name", "description"])
-querytable("trials", filters=Dict("year" => (2000, 2025)))
+querytable("trials", filters=Dict("year" => ["2021", "2030-2031"]))
 querytable("layouts", filters=Dict("replication" => ["replication_1"]))
 querytable("phenotype_data", fields=["id", "value"], filters=Dict("value" => (100.0, 200.0)))
 ```
@@ -336,7 +336,7 @@ end
         classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-        years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}, Vector{Int64}} = missing,
+        years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         harvests::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         sites::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
@@ -376,8 +376,8 @@ querytrialsandphenomes(traits = ["trait_1"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1"], classifications=["", missing], entries=["entry_01","entry_09"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_1", "season_4"], verbose=true)
-querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_3"], years=(2000, 3000), verbose=true)
-querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["*1*"], seasons=["*_1"], years=(2030, 2020), sites=["*_3"], verbose=true)
+querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_3"], years=["2021"], verbose=true)
+querytrialsandphenomes(traits = ["trait_*"], entries=["*1*"], seasons=["Winter"], years=["2030-2031"], verbose=true)
 ```
 """
 function querytrialsandphenomes(;
@@ -386,7 +386,7 @@ function querytrialsandphenomes(;
     classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-    years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}, Vector{Int64}} = missing,
+    years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     harvests::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     sites::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
@@ -402,7 +402,7 @@ function querytrialsandphenomes(;
     # classifications::Union{Missing, Vector{String}} = missing;
     # populations::Union{Missing, Vector{String}} = missing;
     # entries::Union{Missing, Vector{String}} = missing;
-    # years::Union{Missing, Tuple{Int64, Int64}, Vector{Int64}} = missing;
+    # years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing;
     # seasons::Union{Missing, Vector{String}} = missing;
     # harvests::Union{Missing, Vector{String}} = missing;
     # sites::Union{Missing, Vector{String}} = missing;

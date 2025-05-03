@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS traits (
 -- Yield trials metadata
 CREATE TABLE IF NOT EXISTS trials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    year INT,
+    year TEXT,
     season TEXT,
     harvest TEXT,
     site TEXT,

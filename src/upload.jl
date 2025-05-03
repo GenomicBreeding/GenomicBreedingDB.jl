@@ -31,7 +31,7 @@ Upload trial or phenotype data to a database from a delimited file or JLD2 forma
 - `species_classification::Union{Missing, String}`: Classification of the species
 - `analysis::Union{Missing, String}`: Name of the analysis if applicable
 - `analysis_description::Union{Missing, String}`: Description of the analysis
-- `year::Union{Missing, Int64}`: Year of the trial/phenotype data
+- `year::Union{Missing, String}`: Year of the trial/phenotype data which can be "2023-2024" for data with seasons spanning two years
 - `season::Union{Missing, String}`: Season of the trial/phenotype data
 - `harvest::Union{Missing, String}`: Harvest identifier
 - `site::Union{Missing, String}`: Site location
@@ -70,7 +70,7 @@ uploadtrialsorphenomes(fname=fname_phenomes, verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_1", verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_2", analysis_description="some description", verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_3", verbose=true)
-uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year=2030, season="Winter", verbose=true)
+uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year="2030-2031", season="Winter", verbose=true)
 
 ```
 """
@@ -80,7 +80,7 @@ function uploadtrialsorphenomes(;
     species_classification::Union{Missing,String} = missing,
     analysis::Union{Missing,String} = missing,
     analysis_description::Union{Missing,String} = missing,
-    year::Union{Missing,Int64} = missing,
+    year::Union{Missing,String} = missing,
     season::Union{Missing,String} = missing,
     harvest::Union{Missing,String} = missing,
     site::Union{Missing,String} = missing,
@@ -210,22 +210,13 @@ function uploadtrialsorphenomes(;
         for i = 1:nrow(df)
             # i = 1
             values = if isa(trials_or_phenomes, Trials)
-                year_from_df = try
-                    parse(Int64, df.years[i])
-                catch
-                    throw(
-                        ArgumentError(
-                            "The year in line $i, i.e. `$(df.years[i])` cannot be parsed into Int64.",
-                        ),
-                    )
-                end
                 [
                     df.entries[i],
                     df.populations[i],
                     species,
                     species_classification,
                     trait,
-                    year_from_df,
+                    df.years[i],
                     df.seasons[i],
                     df.harvests[i],
                     df.sites[i],
@@ -296,6 +287,18 @@ Update the description field in a specified table based on given identifiers.
 # Example
 ```julia
 DotEnv.load!(joinpath(homedir(), ".env"))
+querytable("entries")
+updatedescription(
+    "entries",
+    identifiers = Dict(
+        "name" => "entry_02",
+        "species" => "unspecified",
+        "population" => "pop_1",
+        "classification" => missing,
+    ),
+    description = "Entry number 2 from population 1 with unspecified species and no additional classification details",
+)
+querytable("entries")
 ```
 """
 function updatedescription(table::String;
@@ -382,6 +385,8 @@ function updatedescription(table::String;
     expression[end] = replace(expression[end], Regex(" AND\$") => "")
     # Update
     execute(conn, join(expression, " "), parameters)
+    # Output
+    nothing
 end
 
 # TODO TODO TODO TODO TODO TODO TODO TODO TODO
