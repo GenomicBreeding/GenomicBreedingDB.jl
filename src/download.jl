@@ -455,7 +455,7 @@ function querytrialsandphenomes(;
         unique(sort(matches))
     end
     for trait in traits
-        expression[end] = expression[end] * ",\n"
+        expression[end] = expression[end] * ","
         push!(
             expression,
             "MAX(CASE WHEN traits.name = '$trait' THEN phenotype_data.value END) AS $(cleaunptraitnames(trait))",
@@ -483,6 +483,7 @@ function querytrialsandphenomes(;
             "\n",
         ),
     )
+    # println(join(expression, "\n"))
     # Define the filters
     if verbose
         println("Setting the filter expressions and their respective parameters...")
@@ -639,7 +640,7 @@ function querytrialsandphenomes(;
     if verbose
         println("Executing the parameterised query...")
         println("=========================================")
-        println(expression)
+        println(join(expression, "\n"))
         println("=========================================")
     end
     res = if length(parameters) > 0
@@ -699,8 +700,7 @@ function queryanalyses(;
     sort_rows::Bool = true,
     verbose::Bool = false,
 )::DataFrame
-    # analyses = ["analysis_3"]
-    # verbose = true
+    # analyses = ["analysis_3", "analysis_4"]; sort_rows = true; verbose = true
     # Check arguments
     for a in analyses
         if !ismissing(a) && !isnothing(match(Regex(";"), a))
@@ -721,6 +721,7 @@ function queryanalyses(;
     end
     expression::Vector{String} =
         ["SELECT", join(string.(tables.table_name, ".", tables.column_name), ",\n")]
+    # println(join(expression, "\n"))
     # Extract the traits associated with the requested analyses
     expression_traits = [
         "SELECT DISTINCT traits.name as trait_names",
@@ -738,38 +739,42 @@ function queryanalyses(;
     ]
     traits = DataFrame(execute(conn, join(expression_traits, "\n"), analyses)).trait_names
     for trait in traits
-        expression[end] = expression[end] * ",\n"
+        # trait = traits[1]
+        expression[end] = expression[end] * ","
         push!(
             expression,
             "MAX(CASE WHEN traits.name = '$trait' THEN phenotype_data.value END) AS $(cleaunptraitnames(trait))",
         )
     end
+    # println(join(expression, "\n"))
     # Define and join the source tables
     if verbose
         println("Defining the source tables...")
     end
-    push!(
+    expression = vcat(
         expression,
-        join(
-            [
-                "FROM",
-                "analysis_tags",
-                "JOIN",
-                "phenotype_data ON analysis_tags.entry_id = phenotype_data.entry_id",
-                "JOIN",
-                "entries ON analysis_tags.entry_id = entries.id",
-                "JOIN",
-                "traits ON analysis_tags.trait_id = traits.id",
-                "JOIN",
-                "trials ON analysis_tags.trial_id = trials.id",
-                "JOIN",
-                "layouts ON analysis_tags.layout_id = layouts.id",
-                "JOIN",
-                "analyses ON analysis_tags.analysis_id = analyses.id",
-            ],
-            "\n",
-        ),
+        [
+            "FROM",
+            "analysis_tags",
+            "JOIN",
+            "analyses ON analysis_tags.analysis_id = analyses.id",
+            "JOIN",
+            "phenotype_data ON analysis_tags.entry_id = phenotype_data.entry_id",
+            "AND analysis_tags.trait_id = phenotype_data.trait_id",
+            "AND analysis_tags.trial_id = phenotype_data.trial_id",
+            "AND analysis_tags.layout_id = phenotype_data.layout_id",
+            "JOIN",
+            "entries ON analysis_tags.entry_id = entries.id",
+            "JOIN",
+            "traits ON analysis_tags.trait_id = traits.id -- Join traits based on analysis_tags",
+            "JOIN",
+            "trials ON analysis_tags.trial_id = trials.id",
+            "JOIN",
+            "layouts ON analysis_tags.layout_id = layouts.id",
+        ]
     )
+    # println(join(expression, "\n"))
+
     # Define the filters
     if verbose
         println("Setting the filter expression for analyses...")
