@@ -64,6 +64,7 @@ tebv = analyse(trials, "y ~ 1|entries")
 phenomes = merge(merge(tebv.phenomes[1], tebv.phenomes[2]), tebv.phenomes[3])
 fname_phenomes = writedelimited(phenomes)
 
+dbinit()
 DotEnv.load!(joinpath(homedir(), ".env"))
 uploadtrialsorphenomes(fname=fname_trials, verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, verbose=true)
