@@ -1,4 +1,66 @@
 """
+    checkparams(params)::Nothing
+
+Check input parameters for illegal characters that could be used in SQL injection attacks.
+
+# Arguments
+- `params`: Array or collection of parameters to check. Non-finite values (missing, NaN, Inf) are filtered out.
+
+# Returns
+- `Nothing`: Returns nothing if no illegal characters are found.
+
+# Throws
+- `ErrorException`: If illegal characters are found in any parameter, throws an error with details about which parameters
+  contained illegal characters.
+
+# Details
+Checks for the following illegal characters:
+- semicolon (;)
+- hash (#)
+- single quote (')
+- double quote (")
+- double dash (--)
+- forward slash (\\)
+- parentheses ( )
+- equal sign (=)
+- percent sign (%)
+"""
+function checkparams(params)::Nothing
+    # params = ["kjshdf;", "kjhdsfk#", "sdkjfg'", "jdkfg\"", "dkjfg--", "dkjfg\\", "dkjfg(", "dkjfg)", "dkjfg=", "dkjfg%", "klsdhfpg_"]
+    params = filter(x -> !ismissing(x) && !isnan(x) && !isinf(x), params)
+    illegal_chars = Dict(
+        "semicolon" => ";"[1],
+        "hash" => "#"[1],
+        "single-quote" => "'"[1],
+        "double-quote" => "\""[1],
+        "double-dash" => "--"[1],
+        "forward-slash" => "\\"[1],
+        "opening-parenthesis" => "("[1],
+        "closing-parenthesis" => ")"[1],
+        "equal-sign" => "="[1],
+        "percent-sign" => "%"[1],
+    )
+    illegal_chars_found = Dict()
+    for p in params
+        found = []
+        for (k, v) in illegal_chars
+            # k = "semicolon"; v = illegal_chars[k]
+            if sum(collect(p) .== v) > 0
+                push!(found, k)
+            end
+        end
+        if length(found) > 0
+            illegal_chars_found[string(p)] = found
+        end
+    end
+    if length(illegal_chars_found) > 0
+        error("Illegal characters found in the following parameters: $(illegal_chars_found).")
+    end
+    # Return nothing
+    return nothing
+end
+
+"""
     querytable(
         table::String;
         fields::Union{Missing, Vector{String}} = missing,
@@ -54,9 +116,8 @@ function querytable(
     # Connect to the database
     conn = dbconnect()
     # Check arguments
-    if !isnothing(match(Regex(";"), table))
-        throw(ArgumentError("The table: '$table' cannot contain a semicolon."))
-    end
+    checkparams([table])
+    # Query
     res = execute(
         conn,
         "SELECT table_name FROM information_schema.tables WHERE table_name = \$1",
@@ -262,12 +323,7 @@ function addfilters!(
     },
 )::Nothing
     # Check arguments
-    if !isnothing(match(Regex(";"), table))
-        throw(ArgumentError("The table: '$table' cannot contain a semicolon."))
-    end
-    if !isnothing(match(Regex(";"), column))
-        throw(ArgumentError("The column: '$column' cannot contain a semicolon."))
-    end
+    checkparams([table, column])
     # Build the expression
     push!(expression, "(")
     if isa(values, Vector{Union{String, Missing}}) || isa(values, Vector{String})
@@ -702,11 +758,7 @@ function queryanalyses(;
 )::DataFrame
     # analyses = ["analysis_3", "analysis_4"]; sort_rows = true; verbose = true
     # Check arguments
-    for a in analyses
-        if !ismissing(a) && !isnothing(match(Regex(";"), a))
-            throw(ArgumentError("The analysis: '$a' cannot contain a semicolon."))
-        end
-    end
+    checkparams(analyses)
     if verbose
         println("Connecting to the database...")
     end
