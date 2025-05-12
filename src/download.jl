@@ -27,7 +27,17 @@ Checks for the following illegal characters:
 """
 function checkparams(params)::Nothing
     # params = ["kjshdf;", "kjhdsfk#", "sdkjfg'", "jdkfg\"", "dkjfg--", "dkjfg\\", "dkjfg(", "dkjfg)", "dkjfg=", "dkjfg%", "klsdhfpg_"]
-    params = filter(x -> !ismissing(x) && !isnan(x) && !isinf(x), params)
+    params_filtered = []
+    for x in params
+        bool = try
+            !ismissing(x) && !isnan(x) && !isinf(x)
+        catch
+            !ismissing(x)
+        end
+        if bool
+            push!(params_filtered, x)
+        end
+    end
     illegal_chars = Dict(
         "semicolon" => ";"[1],
         "hash" => "#"[1],
@@ -41,7 +51,7 @@ function checkparams(params)::Nothing
         "percent-sign" => "%"[1],
     )
     illegal_chars_found = Dict()
-    for p in params
+    for p in params_filtered
         found = []
         for (k, v) in illegal_chars
             # k = "semicolon"; v = illegal_chars[k]

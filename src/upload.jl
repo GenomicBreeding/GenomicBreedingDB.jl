@@ -340,19 +340,19 @@ function updatedescription(table::String;
     # Check if the identifiers are valid - part 1 of 2
     if table == "entries" 
         if sort(string.(keys(identifiers))) != sort(["name", "species", "population", "classification"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["name", "species", "population", "classification"], "\n\t‣ ")))
         end
     elseif table == "traits" 
         if sort(string.(keys(identifiers))) != sort(["name"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["name"], "\n\t‣ ")))
         end
     elseif table == "trials" 
         if sort(string.(keys(identifiers))) != sort(["year", "season", "harvest", "site"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["year", "season", "harvest", "site"], "\n\t‣ ")))
         end
     elseif table == "analyses" 
         if sort(string.(keys(identifiers))) != sort(["name"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["name"], "\n\t‣ ")))
         end
     else
         throw(ArgumentError("The table $table does not have a `description` field."))
