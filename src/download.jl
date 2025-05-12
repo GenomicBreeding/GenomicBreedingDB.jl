@@ -26,7 +26,7 @@ Checks for the following illegal characters:
 - percent sign (%)
 """
 function checkparams(params)::Nothing
-    # params = ["kjshdf;", "kjhdsfk#", "sdkjfg'", "jdkfg\"", "dkjfg--", "dkjfg\\", "dkjfg(", "dkjfg)", "dkjfg=", "dkjfg%", "klsdhfpg_"]
+    # params = ["kjshdf;", "kjhdsfk#", "sdkjfg'", "jdkfg\"", "dkjfg--", "dkjfg\\", "dkjfg(", "dkjfg)", "dkjfg=", "dkjfg%", "klsdhfpg_", "test-test"]
     params_filtered = []
     for x in params
         bool = try
@@ -43,19 +43,22 @@ function checkparams(params)::Nothing
         "hash" => "#"[1],
         "single-quote" => "'"[1],
         "double-quote" => "\""[1],
-        "double-dash" => "--"[1],
         "forward-slash" => "\\"[1],
         "opening-parenthesis" => "("[1],
         "closing-parenthesis" => ")"[1],
         "equal-sign" => "="[1],
         "percent-sign" => "%"[1],
+        "double-dash" => "--",
     )
     illegal_chars_found = Dict()
     for p in params_filtered
+        # p = params_filtered[5]
         found = []
         for (k, v) in illegal_chars
-            # k = "semicolon"; v = illegal_chars[k]
-            if sum(collect(p) .== v) > 0
+            # k = "double-dash"; v = illegal_chars[k]
+            if isa(v, Char) && sum(collect(p) .== v) > 0
+                push!(found, k)
+            elseif !isa(v, Char) && !isnothing(match(Regex(v), p))
                 push!(found, k)
             end
         end
