@@ -81,9 +81,7 @@ uploadtrialsorphenomes(fname=fname_phenomes, verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_1", verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_2", analysis_description="some description", verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_3", verbose=true)
-uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year="2030-2031", season="Winter", verbose=true)
-uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", ploidy="diploid", season="Summer", verbose=true)
-uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", cultivar="mock_cultivar", season="Early Spring", verbose=true)
+uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year="2030-2031", ploidy="diploid", season="Winter", verbose=true)
 ```
 """
 function uploadtrialsorphenomes(;
