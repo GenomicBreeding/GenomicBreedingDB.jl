@@ -402,8 +402,13 @@ end
     querytrialsandphenomes(;
         traits::Vector{String},
         species::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-        classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        ploidies::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing, 
+        crop_durations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        individuals_or_pools::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        maternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        paternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        cultivars::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
@@ -421,18 +426,23 @@ Query trials and phenotype data from a database with various filtering options.
 
 # Arguments
 - `traits`: Vector of trait names to query. Supports wildcards using "*".
-- `species`: Optional vector of species names to filter by
-- `classifications`: Optional vector of classification names to filter by
-- `populations`: Optional vector of population names to filter by  
-- `entries`: Optional vector of entry names to filter by
-- `years`: Optional vector of years or tuple of (start_year, end_year) to filter by
-- `seasons`: Optional vector of season names to filter by
-- `harvests`: Optional vector of harvest names to filter by
-- `sites`: Optional vector of site names to filter by
-- `blocks`: Optional vector of block names to filter by
-- `rows`: Optional vector of row numbers to filter by
-- `cols`: Optional vector of column numbers to filter by
-- `replications`: Optional vector of replication numbers to filter by
+- `species`: Optional vector of species names or missing values to filter by
+- `ploidies`: Optional vector of ploidy values or missing values to filter by
+- `crop_durations`: Optional vector of crop duration values or missing values to filter by
+- `individuals_or_pools`: Optional vector of individual/pool indicators or missing values 
+- `populations`: Optional vector of population names or missing values to filter by
+- `maternal_families`: Optional vector of maternal family IDs or missing values to filter by
+- `paternal_families`: Optional vector of paternal family IDs or missing values to filter by
+- `cultivars`: Optional vector of cultivar names or missing values to filter by
+- `entries`: Optional vector of entry names or missing values to filter by
+- `years`: Optional vector of years or missing values to filter by
+- `seasons`: Optional vector of season names or missing values to filter by
+- `harvests`: Optional vector of harvest IDs or missing values to filter by
+- `sites`: Optional vector of site names or missing values to filter by
+- `blocks`: Optional vector of block IDs or missing values to filter by
+- `rows`: Optional vector of row numbers or missing values to filter by
+- `cols`: Optional vector of column numbers or missing values to filter by 
+- `replications`: Optional vector of replication numbers or missing values to filter by
 - `sort_rows`: Whether to sort the output rows (default: true)
 - `verbose`: Whether to print progress messages (default: false)
 
@@ -442,7 +452,7 @@ A DataFrame containing the queried trial and phenotype data with columns for all
 # Examples
 ```julia
 querytrialsandphenomes(traits = ["trait_1"], verbose=true)
-querytrialsandphenomes(traits = ["trait_1"], classifications=["", missing], entries=["entry_01","entry_09"], verbose=true)
+querytrialsandphenomes(traits = ["trait_1"], ploidies=["diploid"], entries=["entry_01","entry_09"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_1", "season_4"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_3"], years=["2021"], verbose=true)
@@ -452,8 +462,13 @@ querytrialsandphenomes(traits = ["trait_*"], entries=["*1*"], seasons=["Winter"]
 function querytrialsandphenomes(;
     traits::Vector{String},
     species::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-    classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    ploidies::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    crop_durations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    individuals_or_pools::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    maternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    paternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    cultivars::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
@@ -468,8 +483,13 @@ function querytrialsandphenomes(;
 )::DataFrame
     # traits::Vector{String} = ["trait_1"];
     # species::Union{Missing, Vector{String}} = missing;
-    # classifications::Union{Missing, Vector{String}} = missing;
+    # ploidies::Union{Missing, Vector{String}} = missing;
+    # crop_durations::Union{Missing, Vector{String}} = missing;
+    # individuals_or_pools::Union{Missing, Vector{String}} = missing;
     # populations::Union{Missing, Vector{String}} = missing;
+    # maternal_families::Union{Missing, Vector{String}} = missing;
+    # paternal_families::Union{Missing, Vector{String}} = missing;
+    # cultivars::Union{Missing, Vector{String}} = missing;
     # entries::Union{Missing, Vector{String}} = missing;
     # years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing;
     # seasons::Union{Missing, Vector{String}} = missing;
@@ -560,8 +580,13 @@ function querytrialsandphenomes(;
     counter = [0]
     parameters = []
     if !ismissing(species) ||
-       !ismissing(classifications) ||
+       !ismissing(ploidies) ||
+       !ismissing(crop_durations) ||
+       !ismissing(individuals_or_pools) ||
        !ismissing(populations) ||
+       !ismissing(maternal_families) ||
+       !ismissing(paternal_families) ||
+       !ismissing(cultivars) ||
        !ismissing(entries) ||
        !ismissing(years) ||
        !ismissing(seasons) ||
@@ -581,14 +606,32 @@ function querytrialsandphenomes(;
             column = "species",
             values = species,
         ) : nothing
-        !ismissing(classifications) ?
+        !ismissing(ploidies) ?
         addfilters!(
             expression,
             counter,
             parameters,
             table = "entries",
-            column = "classification",
-            values = classifications,
+            column = "ploidy",
+            values = ploidies,
+        ) : nothing
+        !ismissing(crop_durations) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "crop_duration",
+            values = crop_durations,
+        ) : nothing
+        !ismissing(individuals_or_pools) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "individual_or_pool",
+            values = individuals_or_pools,
         ) : nothing
         !ismissing(populations) ?
         addfilters!(
@@ -598,6 +641,33 @@ function querytrialsandphenomes(;
             table = "entries",
             column = "population",
             values = populations,
+        ) : nothing
+        !ismissing(maternal_families) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "maternal_family",
+            values = maternal_families,
+        ) : nothing
+        !ismissing(paternal_families) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "paternal_family",
+            values = paternal_families,
+        ) : nothing
+        !ismissing(cultivars) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "cultivar",
+            values = cultivars,
         ) : nothing
         !ismissing(entries) ?
         addfilters!(

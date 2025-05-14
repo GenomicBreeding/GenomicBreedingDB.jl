@@ -13,7 +13,12 @@
 
 """
     uploadtrialsorphenomes(; fname::String, species::String="unspecified", 
-        species_classification::Union{Missing, String}=missing,
+        ploidy::Union{Missing,String}=missing,
+        crop_duration::Union{Missing,String}=missing,
+        individual_or_pool::Union{Missing,String}=missing,
+        maternal_family::Union{Missing,String}=missing,
+        paternal_family::Union{Missing,String}=missing,
+        cultivar::Union{Missing,String}=missing,
         analysis::Union{Missing, String}=missing,
         analysis_description::Union{Missing, String}=missing,
         year::Union{Missing, String}=missing,
@@ -28,13 +33,18 @@ Upload trial or phenotype data to a database from a delimited file or JLD2 forma
 # Arguments
 - `fname::String`: Path to the input file containing trial or phenotype data
 - `species::String`: Species name (defaults to "unspecified")
-- `species_classification::Union{Missing, String}`: Classification of the species
-- `analysis::Union{Missing, String}`: Name of the analysis if applicable
-- `analysis_description::Union{Missing, String}`: Description of the analysis
-- `year::Union{Missing, String}`: Year of the trial/phenotype data which can be "2023-2024" for data with seasons spanning two years
-- `season::Union{Missing, String}`: Season of the trial/phenotype data
-- `harvest::Union{Missing, String}`: Harvest identifier
-- `site::Union{Missing, String}`: Site location
+- `ploidy::Union{Missing,String}`: Ploidy level of the species (e.g. diploid or tetraploid)
+- `crop_duration::Union{Missing,String}`: Duration category of the crop (e.g. annual, short-term, or perennial)
+- `individual_or_pool::Union{Missing,String}`: Whether entries are individuals or pools (e.g. individual, half-sib family, or synthetic population)
+- `maternal_family::Union{Missing,String}`: Maternal family identifier
+- `paternal_family::Union{Missing,String}`: Paternal family identifier 
+- `cultivar::Union{Missing,String}`: Cultivar name
+- `analysis::Union{Missing,String}`: Name of the analysis if applicable
+- `analysis_description::Union{Missing,String}`: Description of the analysis
+- `year::Union{Missing,String}`: Year of the trial/phenotype data which can be "2023-2024" for data with seasons spanning two years
+- `season::Union{Missing,String}`: Season of the trial/phenotype data
+- `harvest::Union{Missing,String}`: Harvest identifier
+- `site::Union{Missing,String}`: Site location
 - `sep::String`: Delimiter used in the input file (default is tab)
 - `verbose::Bool`: Whether to print additional information during processing
 
@@ -72,12 +82,19 @@ uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_1", verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_2", analysis_description="some description", verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_3", verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year="2030-2031", season="Winter", verbose=true)
+uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", ploidy="diploid", season="Summer", verbose=true)
+uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", cultivar="mock_cultivar", season="Early Spring", verbose=true)
 ```
 """
 function uploadtrialsorphenomes(;
     fname::String,
     species::String = "unspecified",
-    species_classification::Union{Missing,String} = missing,
+    ploidy::Union{Missing,String} = missing,
+    crop_duration::Union{Missing,String} = missing,
+    individual_or_pool::Union{Missing,String} = missing,
+    maternal_family::Union{Missing,String} = missing,
+    paternal_family::Union{Missing,String} = missing,
+    cultivar::Union{Missing,String} = missing,
     analysis::Union{Missing,String} = missing,
     analysis_description::Union{Missing,String} = missing,
     year::Union{Missing,String} = missing,
@@ -93,7 +110,12 @@ function uploadtrialsorphenomes(;
     # fname = writedelimited(trials)
     # # tebv = analyse(trials, "y ~ 1|entries"); phenomes = merge(merge(tebv.phenomes[1], tebv.phenomes[2]), tebv.phenomes[3]); fname = writedelimited(phenomes)
     # species = "unspecified"
-    # species_classification = missing
+    # ploidy
+    # crop_duration = missing
+    # individual_or_pool = missing
+    # maternal_family = missing
+    # paternal_family = missing
+    # cultivar = missing
     # analysis = missing
     # analysis_description = missing
     # year = missing
@@ -119,35 +141,35 @@ function uploadtrialsorphenomes(;
     expression = """
         WITH
             entry AS (
-                INSERT INTO entries (name, population, species, classification)
-                VALUES (\$1, \$2, \$3, \$4)
-                ON CONFLICT (name, population, species, classification) 
+                INSERT INTO entries (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar)
+                VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)
+                ON CONFLICT (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar) 
                 DO UPDATE SET description = EXCLUDED.description
                 RETURNING id
             ),
             trait AS (
                 INSERT INTO traits (name)
-                VALUES (\$5)
+                VALUES (\$10)
                 ON CONFLICT (name) 
                 DO UPDATE SET description = EXCLUDED.description
                 RETURNING id
             ),
             trial AS (
                 INSERT INTO trials (year, season, harvest, site)
-                VALUES (\$6, \$7, \$8, \$9)
+                VALUES (\$11, \$12, \$13, \$14)
                 ON CONFLICT (year, season, harvest, site)
                 DO UPDATE SET description = EXCLUDED.description
                 RETURNING id
             ),
             layout AS (
                 INSERT INTO layouts (replication, block, row, col)
-                VALUES (\$10, \$11, \$12, \$13)
+                VALUES (\$15, \$16, \$17, \$18)
                 ON CONFLICT (replication, block, row, col)
                 DO UPDATE SET replication = EXCLUDED.replication
                 RETURNING id
             )
         INSERT INTO phenotype_data (entry_id, trait_id, trial_id, layout_id, value)
-        SELECT entry.id, trait.id, trial.id, layout.id, \$14
+        SELECT entry.id, trait.id, trial.id, layout.id, \$19
         FROM entry, trait, trial, layout
         ON CONFLICT (entry_id, trait_id, trial_id, layout_id)
         DO NOTHING
@@ -156,36 +178,36 @@ function uploadtrialsorphenomes(;
         """
             WITH
                 entry AS (
-                    INSERT INTO entries (name, population, species, classification)
-                    VALUES (\$1, \$2, \$3, \$4)
-                    ON CONFLICT (name, population, species, classification) 
+                    INSERT INTO entries (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar)
+                    VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)
+                    ON CONFLICT (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar) 
                     DO UPDATE SET description = EXCLUDED.description
                     RETURNING id
                 ),
                 trait AS (
                     INSERT INTO traits (name)
-                    VALUES (\$5)
+                    VALUES (\$10)
                     ON CONFLICT (name) 
                     DO UPDATE SET description = EXCLUDED.description
                     RETURNING id
                 ),
                 trial AS (
                     INSERT INTO trials (year, season, harvest, site)
-                    VALUES (\$6, \$7, \$8, \$9)
+                    VALUES (\$11, \$12, \$13, \$14)
                     ON CONFLICT (year, season, harvest, site)
                     DO UPDATE SET description = EXCLUDED.description
                     RETURNING id
                 ),
                 layout AS (
                     INSERT INTO layouts (replication, block, row, col)
-                    VALUES (\$10, \$11, \$12, \$13)
+                    VALUES (\$15, \$16, \$17, \$18)
                     ON CONFLICT (replication, block, row, col)
                     DO UPDATE SET replication = EXCLUDED.replication
                     RETURNING id
                 ),
                 analysis AS (
                     INSERT INTO analyses (name, description)
-                    VALUES (\$14, \$15)
+                    VALUES (\$19, \$20)
                     ON CONFLICT (name)
                     DO UPDATE SET name = EXCLUDED.name
                     RETURNING id
@@ -214,9 +236,14 @@ function uploadtrialsorphenomes(;
             values = if isa(trials_or_phenomes, Trials)
                 [
                     df.entries[i],
-                    df.populations[i],
                     species,
-                    species_classification,
+                    ploidy,
+                    crop_duration,
+                    individual_or_pool,
+                    df.populations[i],
+                    maternal_family,
+                    paternal_family,
+                    cultivar,
                     trait,
                     df.years[i],
                     df.seasons[i],
@@ -231,9 +258,14 @@ function uploadtrialsorphenomes(;
             else
                 [
                     df.entries[i],
-                    df.populations[i],
                     species,
-                    species_classification,
+                    ploidy,
+                    crop_duration,
+                    individual_or_pool,
+                    df.populations[i],
+                    maternal_family,
+                    paternal_family,
+                    cultivar,
                     trait,
                     year,
                     season,

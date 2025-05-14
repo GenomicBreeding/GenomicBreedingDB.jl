@@ -10,12 +10,17 @@ CREATE TABLE IF NOT EXISTS entries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     species TEXT NOT NULL,
+    ploidy TEXT,
+    crop_duration TEXT,
+    individual_or_pool TEXT,
     population TEXT,
-    classification TEXT,
+    maternal_family TEXT,
+    paternal_family TEXT,
+    cultivar TEXT,
     description TEXT
 );
 -- Add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
-ALTER TABLE entries ADD CONSTRAINT unique_entry_instance UNIQUE NULLS NOT DISTINCT (name, species, population, classification); 
+ALTER TABLE entries ADD CONSTRAINT unique_entry_instance UNIQUE NULLS NOT DISTINCT (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar); 
 
 -- Traits (e.g., yield, height)
 CREATE TABLE IF NOT EXISTS traits (
