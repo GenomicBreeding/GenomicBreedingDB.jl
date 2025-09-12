@@ -97,7 +97,9 @@ DB_HOST="localhost"
 # cat $CONDA_PREFIX/pgsql_data/pg_hba.conf
 ```
 
-## Start the databse
+### 4. Initiliase the tables
+
+#### Start the database
 
 ```shell
 conda activate GenomicBreeding
@@ -106,12 +108,14 @@ conda activate GenomicBreeding
 pg_ctl -D $CONDA_PREFIX/pgsql_data -l $CONDA_PREFIX/pgsql_data/logfile.txt start
 ```
 
-## Use in Julia
+#### Initialise the tables
 
 ``julia
 using GenomicBreedingDB
 using DotEnv
 DotEnv.load!(joinpath(homedir(), ".env"))
+dbinit()
+# Test
 conn = dbconnect()
 querytable("entries")
 close(conn)

@@ -11,6 +11,188 @@
 #   2.d. analyses table with additional analyses and/or tags on existing entry-trait-trial-layout combinations
 #   2.e. TODO: genome marker variants table
 
+
+
+function test(;
+    fname::String,
+    species::String = "unspecified",
+    ploidy::Union{Missing,String} = missing,
+    crop_duration::Union{Missing,String} = missing,
+    individual_or_pool::Union{Missing,String} = missing,
+    maternal_family::Union{Missing,String} = missing,
+    paternal_family::Union{Missing,String} = missing,
+    cultivar::Union{Missing,String} = missing,
+    analysis::Union{Missing, String} = missing,
+    analysis_description::Union{Missing, String} = missing,
+    year::Union{Missing, String} = missing,
+    season::Union{Missing, String} = missing,
+    harvest::Union{Missing, String} = missing,
+    site::Union{Missing, String} = missing,
+    sep::String = "\t",
+    verbose::Bool = false,
+)::Nothing
+    # genomes = GenomicBreedingCore.simulategenomes(n=10, verbose=false);
+    # trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, verbose=false);
+    # trials.years = replace.(trials.years, "year_" => "202")
+    # fname = writedelimited(trials)
+    # # tebv = analyse(trials, "y ~ 1|entries"); phenomes = merge(merge(tebv.phenomes[1], tebv.phenomes[2]), tebv.phenomes[3]); fname = writedelimited(phenomes)
+    # species = "unspecified"
+    # ploidy = missing
+    # crop_duration = missing
+    # individual_or_pool = missing
+    # maternal_family = missing
+    # paternal_family = missing
+    # cultivar = missing
+    # analysis = missing
+    # analysis_description = missing
+    # year = missing
+    # season = missing
+    # harvest = missing
+    # site = missing
+    # sep = "\t"
+    # verbose = true
+    # 1. READ & PREPARE DATA
+    # Read the data file and determine its type.
+    is_trials_data = false
+    trials_or_phenomes = try
+        trials_or_phenomes = try
+            readdelimited(Trials, fname = fname, sep = sep, verbose = verbose)
+        catch
+            @suppress readjld2(Trials, fname = fname)
+        end
+        is_trials_data = true
+        trials_or_phenomes
+    catch
+        trials_or_phenomes = try
+            readdelimited(Phenomes, fname = fname, sep = sep, verbose = verbose)
+        catch
+            @suppress readjld2(Phenomes, fname = fname)
+        end
+        trials_or_phenomes
+    end
+
+    # Convert the wide data format into a long (tidy) format, ideal for bulk loading.
+    df = tabularise(trials_or_phenomes)
+    id_cols = is_trials_data ?
+        [:id, :entries, :populations, :years, :seasons, :harvests, :sites, :replications, :blocks, :rows, :cols] :
+        [:id, :entries, :populations]
+    
+    df_long = stack(df, Not(id_cols), variable_name=:trait)
+    # df_long.value = Float32.(df_long.value)
+
+    # 2. DATABASE UPLOAD
+    # DotEnv.load!(joinpath(homedir(), ".env"))
+    conn = dbconnect()
+    try
+        # Start a single transaction for the entire operation for speed and safety.
+        execute(conn, "BEGIN;")
+        
+        if verbose println("Creating temporary staging table...") end
+        # Create a temporary table that is dropped automatically when the transaction ends.
+        execute(conn, """
+            CREATE TEMP TABLE staging_data (
+                entry_name TEXT,
+                population TEXT,
+                trait_name TEXT,
+                year TEXT,
+                season TEXT,
+                harvest TEXT,
+                site TEXT,
+                replication TEXT,
+                block TEXT,
+                row_num TEXT,
+                col_num TEXT,
+                value DOUBLE PRECISION
+            ) ON COMMIT DROP;
+        """)
+
+        # NOTE: The column order in `select` MUST match the order in `CREATE TEMP TABLE`.
+        data_to_copy = select(df_long,
+            :entries => :entry_name,
+            :populations => :population,
+            :trait => :trait_name,
+            # Use data from the file if available, otherwise use function arguments
+            (is_trials_data ? :years : (x -> year)) => :year,
+            (is_trials_data ? :seasons : (x -> season)) => :season,
+            (is_trials_data ? :harvests : (x -> harvest)) => :harvest,
+            (is_trials_data ? :sites : (x -> site)) => :site,
+            (is_trials_data ? :replications : (x -> missing)) => :replication,
+            (is_trials_data ? :blocks : (x -> missing)) => :block,
+            (is_trials_data ? :rows : (x -> missing)) => :row_num,
+            (is_trials_data ? :cols : (x -> missing)) => :col_num,
+            :value
+        )
+        
+        if verbose println("Bulk-loading $(nrow(data_to_copy)) rows into staging table via COPY...") end
+        # Execute the high-performance COPY command.
+        for line in eachrow(data_to_copy)
+            # line = data_to_copy[1, :]
+            copyin = LibPQ.CopyIn("COPY staging_data FROM STDIN;", [join(Vector(line), "\t")])
+            execute(conn, copyin)
+        end
+
+        if verbose println("Inserting data from staging table into final tables...") end
+        
+        # 3. UPSERT DATA FROM STAGING TABLE INTO FINAL TABLES (SET-BASED)
+        # These queries run once on the entire dataset, not in a loop.
+        
+        # Upsert Entries
+        execute(conn, """
+            INSERT INTO entries (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar)
+            SELECT DISTINCT entry_name, \$1, \$2, \$3, \$4, population, \$5, \$6, \$7 FROM staging_data
+            ON CONFLICT (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar) DO NOTHING;
+        """, [species, ploidy, crop_duration, individual_or_pool, maternal_family, paternal_family, cultivar])
+
+        # Upsert Traits, Trials, and Layouts
+        execute(conn, "INSERT INTO traits (name) SELECT DISTINCT trait_name FROM staging_data ON CONFLICT (name) DO NOTHING;")
+        execute(conn, "INSERT INTO trials (year, season, harvest, site) SELECT DISTINCT year, season, harvest, site FROM staging_data ON CONFLICT (year, season, harvest, site) DO NOTHING;")
+        execute(conn, "INSERT INTO layouts (replication, block, row, col) SELECT DISTINCT replication, block, row_num, col_num FROM staging_data WHERE replication IS NOT NULL ON CONFLICT (replication, block, row, col) DO NOTHING;")
+
+        # Finally, insert the phenotype data by joining all the dimension tables to get their IDs.
+        if verbose println("Linking phenotype data...") end
+        execute(conn, """
+            INSERT INTO phenotype_data (entry_id, trait_id, trial_id, layout_id, value)
+            SELECT
+                e.id, t.id, tr.id, l.id, s.value
+            FROM staging_data s
+            JOIN entries e ON s.entry_name = e.name AND s.population = e.population -- Add other join conditions as needed
+            JOIN traits t ON s.trait_name = t.name
+            JOIN trials tr ON s.year = tr.year AND s.season = tr.season AND s.harvest = tr.harvest AND s.site = tr.site
+            LEFT JOIN layouts l ON s.replication = l.replication AND s.block = l.block AND s.row_num = l.row AND s.col_num = l.col
+            ON CONFLICT (entry_id, trait_id, trial_id, layout_id) DO NOTHING;
+        """)
+
+        # Handle analysis tags if provided.
+        if !ismissing(analysis)
+            if verbose println("Adding analysis tags...") end
+            execute(conn, "INSERT INTO analyses (name, description) VALUES (\$1, \$2) ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description;", [analysis, analysis_description])
+            execute(conn, """
+                INSERT INTO analysis_tags (entry_id, trait_id, trial_id, layout_id, analysis_id)
+                SELECT p.entry_id, p.trait_id, p.trial_id, p.layout_id, a.id
+                FROM phenotype_data p, analyses a
+                WHERE a.name = \$1
+                ON CONFLICT (entry_id, trait_id, trial_id, layout_id, analysis_id) DO NOTHING;
+            """, [analysis])
+        end
+
+        # If everything succeeded, commit the transaction.
+        execute(conn, "COMMIT;")
+        if verbose println("✅ Upload successful. Transaction committed.") end
+
+    catch e
+        # If any error occurs, roll back the entire transaction to ensure data integrity.
+        println("❌ An error occurred. Rolling back transaction.")
+        execute(conn, "ROLLBACK;")
+        rethrow(e)
+    finally
+        # Always close the connection.
+        close(conn)
+    end
+end
+
+
+
+
 """
     uploadtrialsorphenomes(; fname::String, species::String="unspecified", 
         species_classification::Union{Missing, String}=missing,
@@ -56,15 +238,17 @@ Requires a properly configured database connection and appropriate table structu
 
 # Examples
 ```julia
-genomes = GenomicBreedingCore.simulategenomes(n=10, verbose=false)
-trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, verbose=false)
-trials.years = replace.(trials.years, "year_" => "202")
+using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DotEnv
+genomes = GenomicBreedingCore.simulategenomes(n=1_000, l=100, verbose=true)
+trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, f_add_dom_epi=rand(50, 3), proportion_of_variance=rand(9, 50), verbose=false);
+trials.years = replace.(trials.years, "year_" => "203")
 fname_trials = writedelimited(trials)
 tebv = analyse(trials, "y ~ 1|entries")
 phenomes = merge(merge(tebv.phenomes[1], tebv.phenomes[2]), tebv.phenomes[3])
 fname_phenomes = writedelimited(phenomes)
 
 DotEnv.load!(joinpath(homedir(), ".env"))
+dbinit()
 uploadtrialsorphenomes(fname=fname_trials, verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_1", verbose=true)
