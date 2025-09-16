@@ -195,10 +195,15 @@ end
 
 """
     uploadtrialsorphenomes(; fname::String, species::String="unspecified", 
-        species_classification::Union{Missing, String}=missing,
+        ploidy::Union{Missing,String}=missing,
+        crop_duration::Union{Missing,String}=missing,
+        individual_or_pool::Union{Missing,String}=missing,
+        maternal_family::Union{Missing,String}=missing,
+        paternal_family::Union{Missing,String}=missing,
+        cultivar::Union{Missing,String}=missing,
         analysis::Union{Missing, String}=missing,
         analysis_description::Union{Missing, String}=missing,
-        year::Union{Missing, Int64}=missing,
+        year::Union{Missing, String}=missing,
         season::Union{Missing, String}=missing,
         harvest::Union{Missing, String}=missing,
         site::Union{Missing, String}=missing,
@@ -210,13 +215,18 @@ Upload trial or phenotype data to a database from a delimited file or JLD2 forma
 # Arguments
 - `fname::String`: Path to the input file containing trial or phenotype data
 - `species::String`: Species name (defaults to "unspecified")
-- `species_classification::Union{Missing, String}`: Classification of the species
-- `analysis::Union{Missing, String}`: Name of the analysis if applicable
-- `analysis_description::Union{Missing, String}`: Description of the analysis
-- `year::Union{Missing, Int64}`: Year of the trial/phenotype data
-- `season::Union{Missing, String}`: Season of the trial/phenotype data
-- `harvest::Union{Missing, String}`: Harvest identifier
-- `site::Union{Missing, String}`: Site location
+- `ploidy::Union{Missing,String}`: Ploidy level of the species (e.g. diploid or tetraploid)
+- `crop_duration::Union{Missing,String}`: Duration category of the crop (e.g. annual, short-term, or perennial)
+- `individual_or_pool::Union{Missing,String}`: Whether entries are individuals or pools (e.g. individual, half-sib family, or synthetic population)
+- `maternal_family::Union{Missing,String}`: Maternal family identifier
+- `paternal_family::Union{Missing,String}`: Paternal family identifier 
+- `cultivar::Union{Missing,String}`: Cultivar name
+- `analysis::Union{Missing,String}`: Name of the analysis if applicable
+- `analysis_description::Union{Missing,String}`: Description of the analysis
+- `year::Union{Missing,String}`: Year of the trial/phenotype data which can be "2023-2024" for data with seasons spanning two years
+- `season::Union{Missing,String}`: Season of the trial/phenotype data
+- `harvest::Union{Missing,String}`: Harvest identifier
+- `site::Union{Missing,String}`: Site location
 - `sep::String`: Delimiter used in the input file (default is tab)
 - `verbose::Bool`: Whether to print additional information during processing
 
@@ -247,6 +257,7 @@ tebv = analyse(trials, "y ~ 1|entries")
 phenomes = merge(merge(tebv.phenomes[1], tebv.phenomes[2]), tebv.phenomes[3])
 fname_phenomes = writedelimited(phenomes)
 
+dbinit()
 DotEnv.load!(joinpath(homedir(), ".env"))
 dbinit()
 uploadtrialsorphenomes(fname=fname_trials, verbose=true)
@@ -254,17 +265,21 @@ uploadtrialsorphenomes(fname=fname_phenomes, verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_1", verbose=true)
 uploadtrialsorphenomes(fname=fname_trials, analysis="analysis_2", analysis_description="some description", verbose=true)
 uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_3", verbose=true)
-uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year=2030, season="Winter", verbose=true)
-
+uploadtrialsorphenomes(fname=fname_phenomes, analysis="analysis_4", year="2030-2031", ploidy="diploid", season="Winter", verbose=true)
 ```
 """
 function uploadtrialsorphenomes(;
     fname::String,
     species::String = "unspecified",
-    species_classification::Union{Missing,String} = missing,
+    ploidy::Union{Missing,String} = missing,
+    crop_duration::Union{Missing,String} = missing,
+    individual_or_pool::Union{Missing,String} = missing,
+    maternal_family::Union{Missing,String} = missing,
+    paternal_family::Union{Missing,String} = missing,
+    cultivar::Union{Missing,String} = missing,
     analysis::Union{Missing,String} = missing,
     analysis_description::Union{Missing,String} = missing,
-    year::Union{Missing,Int64} = missing,
+    year::Union{Missing,String} = missing,
     season::Union{Missing,String} = missing,
     harvest::Union{Missing,String} = missing,
     site::Union{Missing,String} = missing,
@@ -277,7 +292,12 @@ function uploadtrialsorphenomes(;
     # fname = writedelimited(trials)
     # # tebv = analyse(trials, "y ~ 1|entries"); phenomes = merge(merge(tebv.phenomes[1], tebv.phenomes[2]), tebv.phenomes[3]); fname = writedelimited(phenomes)
     # species = "unspecified"
-    # species_classification = missing
+    # ploidy
+    # crop_duration = missing
+    # individual_or_pool = missing
+    # maternal_family = missing
+    # paternal_family = missing
+    # cultivar = missing
     # analysis = missing
     # analysis_description = missing
     # year = missing
@@ -303,35 +323,35 @@ function uploadtrialsorphenomes(;
     expression = """
         WITH
             entry AS (
-                INSERT INTO entries (name, population, species, classification)
-                VALUES (\$1, \$2, \$3, \$4)
-                ON CONFLICT (name, population, species, classification) 
+                INSERT INTO entries (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar)
+                VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)
+                ON CONFLICT (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar) 
                 DO UPDATE SET description = EXCLUDED.description
                 RETURNING id
             ),
             trait AS (
                 INSERT INTO traits (name)
-                VALUES (\$5)
+                VALUES (\$10)
                 ON CONFLICT (name) 
                 DO UPDATE SET description = EXCLUDED.description
                 RETURNING id
             ),
             trial AS (
                 INSERT INTO trials (year, season, harvest, site)
-                VALUES (\$6, \$7, \$8, \$9)
+                VALUES (\$11, \$12, \$13, \$14)
                 ON CONFLICT (year, season, harvest, site)
                 DO UPDATE SET description = EXCLUDED.description
                 RETURNING id
             ),
             layout AS (
                 INSERT INTO layouts (replication, block, row, col)
-                VALUES (\$10, \$11, \$12, \$13)
+                VALUES (\$15, \$16, \$17, \$18)
                 ON CONFLICT (replication, block, row, col)
                 DO UPDATE SET replication = EXCLUDED.replication
                 RETURNING id
             )
         INSERT INTO phenotype_data (entry_id, trait_id, trial_id, layout_id, value)
-        SELECT entry.id, trait.id, trial.id, layout.id, \$14
+        SELECT entry.id, trait.id, trial.id, layout.id, \$19
         FROM entry, trait, trial, layout
         ON CONFLICT (entry_id, trait_id, trial_id, layout_id)
         DO NOTHING
@@ -340,36 +360,36 @@ function uploadtrialsorphenomes(;
         """
             WITH
                 entry AS (
-                    INSERT INTO entries (name, population, species, classification)
-                    VALUES (\$1, \$2, \$3, \$4)
-                    ON CONFLICT (name, population, species, classification) 
+                    INSERT INTO entries (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar)
+                    VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)
+                    ON CONFLICT (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar) 
                     DO UPDATE SET description = EXCLUDED.description
                     RETURNING id
                 ),
                 trait AS (
                     INSERT INTO traits (name)
-                    VALUES (\$5)
+                    VALUES (\$10)
                     ON CONFLICT (name) 
                     DO UPDATE SET description = EXCLUDED.description
                     RETURNING id
                 ),
                 trial AS (
                     INSERT INTO trials (year, season, harvest, site)
-                    VALUES (\$6, \$7, \$8, \$9)
+                    VALUES (\$11, \$12, \$13, \$14)
                     ON CONFLICT (year, season, harvest, site)
                     DO UPDATE SET description = EXCLUDED.description
                     RETURNING id
                 ),
                 layout AS (
                     INSERT INTO layouts (replication, block, row, col)
-                    VALUES (\$10, \$11, \$12, \$13)
+                    VALUES (\$15, \$16, \$17, \$18)
                     ON CONFLICT (replication, block, row, col)
                     DO UPDATE SET replication = EXCLUDED.replication
                     RETURNING id
                 ),
                 analysis AS (
                     INSERT INTO analyses (name, description)
-                    VALUES (\$14, \$15)
+                    VALUES (\$19, \$20)
                     ON CONFLICT (name)
                     DO UPDATE SET name = EXCLUDED.name
                     RETURNING id
@@ -388,28 +408,26 @@ function uploadtrialsorphenomes(;
     else
         names(df)[4:end]
     end
-    pb = ProgressMeter.Progress(length(traits) * nrow(df), desc = "Uploading data: ")
+    if verbose
+        pb = ProgressMeter.Progress(length(traits) * nrow(df), desc = "Uploading data: ")
+    end
     for trait in traits
         # trait = traits[1]
         for i = 1:nrow(df)
             # i = 1
             values = if isa(trials_or_phenomes, Trials)
-                year_from_df = try
-                    parse(Int64, df.years[i])
-                catch
-                    throw(
-                        ArgumentError(
-                            "The year in line $i, i.e. `$(df.years[i])` cannot be parsed into Int64.",
-                        ),
-                    )
-                end
                 [
                     df.entries[i],
-                    df.populations[i],
                     species,
-                    species_classification,
+                    ploidy,
+                    crop_duration,
+                    individual_or_pool,
+                    df.populations[i],
+                    maternal_family,
+                    paternal_family,
+                    cultivar,
                     trait,
-                    year_from_df,
+                    df.years[i],
                     df.seasons[i],
                     df.harvests[i],
                     df.sites[i],
@@ -422,9 +440,14 @@ function uploadtrialsorphenomes(;
             else
                 [
                     df.entries[i],
-                    df.populations[i],
                     species,
-                    species_classification,
+                    ploidy,
+                    crop_duration,
+                    individual_or_pool,
+                    df.populations[i],
+                    maternal_family,
+                    paternal_family,
+                    cultivar,
                     trait,
                     year,
                     season,
@@ -437,6 +460,10 @@ function uploadtrialsorphenomes(;
                     df[i, trait],
                 ]
             end
+            # println("EXPRESSION:")
+            # println(expression)
+            # println("VALUES:")
+            # println(values)
             execute(conn, expression, values)
             if !ismissing(analysis)
                 execute(
@@ -445,10 +472,14 @@ function uploadtrialsorphenomes(;
                     vcat(values[1:(end-1)], analysis, analysis_description),
                 )
             end
-            ProgressMeter.next!(pb)
+            if verbose
+                ProgressMeter.next!(pb)
+            end
         end
     end
-    ProgressMeter.finish!(pb)
+    if verbose
+        ProgressMeter.finish!(pb)
+    end
     # println("To commit please leave empty. To rollback enter any key:")
     # commit_else_rollback = readline()
     # if commit_else_rollback == ""
@@ -480,6 +511,18 @@ Update the description field in a specified table based on given identifiers.
 # Example
 ```julia
 DotEnv.load!(joinpath(homedir(), ".env"))
+querytable("entries")
+updatedescription(
+    "entries",
+    identifiers = Dict(
+        "name" => "entry_02",
+        "species" => "unspecified",
+        "population" => "pop_1",
+        "classification" => missing,
+    ),
+    description = "Entry number 2 from population 1 with unspecified species and no additional classification details",
+)
+querytable("entries")
 ```
 """
 function updatedescription(table::String;
@@ -511,19 +554,19 @@ function updatedescription(table::String;
     # Check if the identifiers are valid - part 1 of 2
     if table == "entries" 
         if sort(string.(keys(identifiers))) != sort(["name", "species", "population", "classification"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["name", "species", "population", "classification"], "\n\t‣ ")))
         end
     elseif table == "traits" 
         if sort(string.(keys(identifiers))) != sort(["name"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["name"], "\n\t‣ ")))
         end
     elseif table == "trials" 
         if sort(string.(keys(identifiers))) != sort(["year", "season", "harvest", "site"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["year", "season", "harvest", "site"], "\n\t‣ ")))
         end
     elseif table == "analyses" 
         if sort(string.(keys(identifiers))) != sort(["name"])
-            throw(ArgumentError("The identifiers for the table $table are not correct."))
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["name"], "\n\t‣ ")))
         end
     else
         throw(ArgumentError("The table $table does not have a `description` field."))
@@ -566,6 +609,8 @@ function updatedescription(table::String;
     expression[end] = replace(expression[end], Regex(" AND\$") => "")
     # Update
     execute(conn, join(expression, " "), parameters)
+    # Output
+    nothing
 end
 
 # TODO TODO TODO TODO TODO TODO TODO TODO TODO

@@ -12,8 +12,8 @@ include("upload.jl")
 include("download.jl")
 
 export dbconnect, dbinit
-export uploadtrialsorphenomes
-export querytable, extractmainfieldstablesandcols, querytrialsandphenomes, queryanalyses, df_to_io
+export uploadtrialsorphenomes, updatedescription
+export checkparams, querytable, extractmainfieldstablesandcols, addfilters!, cleaunptraitnames, querytrialsandphenomes, queryanalyses, df_to_io
 
 
 end

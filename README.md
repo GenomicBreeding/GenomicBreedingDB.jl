@@ -110,13 +110,17 @@ pg_ctl -D $CONDA_PREFIX/pgsql_data -l $CONDA_PREFIX/pgsql_data/logfile.txt start
 
 #### Initialise the tables
 
-``julia
+```julia
 using GenomicBreedingDB
 using DotEnv
+# Load your database user credentials
 DotEnv.load!(joinpath(homedir(), ".env"))
 dbinit()
 # Test
 conn = dbconnect()
-querytable("entries")
 close(conn)
+# Initialise the database
+dbinit()
+# Test query
+querytable("entries")
 ```

@@ -1,4 +1,79 @@
 """
+    checkparams(params)::Nothing
+
+Check input parameters for illegal characters that could be used in SQL injection attacks.
+
+# Arguments
+- `params`: Array or collection of parameters to check. Non-finite values (missing, NaN, Inf) are filtered out.
+
+# Returns
+- `Nothing`: Returns nothing if no illegal characters are found.
+
+# Throws
+- `ErrorException`: If illegal characters are found in any parameter, throws an error with details about which parameters
+  contained illegal characters.
+
+# Details
+Checks for the following illegal characters:
+- semicolon (;)
+- hash (#)
+- single quote (')
+- double quote (")
+- double dash (--)
+- forward slash (\\)
+- parentheses ( )
+- equal sign (=)
+- percent sign (%)
+"""
+function checkparams(params)::Nothing
+    # params = ["kjshdf;", "kjhdsfk#", "sdkjfg'", "jdkfg\"", "dkjfg--", "dkjfg\\", "dkjfg(", "dkjfg)", "dkjfg=", "dkjfg%", "klsdhfpg_", "test-test"]
+    params_filtered = []
+    for x in params
+        bool = try
+            !ismissing(x) && !isnan(x) && !isinf(x)
+        catch
+            !ismissing(x)
+        end
+        if bool
+            push!(params_filtered, x)
+        end
+    end
+    illegal_chars = Dict(
+        "semicolon" => ";"[1],
+        "hash" => "#"[1],
+        "single-quote" => "'"[1],
+        "double-quote" => "\""[1],
+        "forward-slash" => "\\"[1],
+        "opening-parenthesis" => "("[1],
+        "closing-parenthesis" => ")"[1],
+        "equal-sign" => "="[1],
+        "percent-sign" => "%"[1],
+        "double-dash" => "--",
+    )
+    illegal_chars_found = Dict()
+    for p in params_filtered
+        # p = params_filtered[5]
+        found = []
+        for (k, v) in illegal_chars
+            # k = "double-dash"; v = illegal_chars[k]
+            if isa(v, Char) && sum(collect(p) .== v) > 0
+                push!(found, k)
+            elseif !isa(v, Char) && !isnothing(match(Regex(v), p))
+                push!(found, k)
+            end
+        end
+        if length(found) > 0
+            illegal_chars_found[string(p)] = found
+        end
+    end
+    if length(illegal_chars_found) > 0
+        error("Illegal characters found in the following parameters: $(illegal_chars_found).")
+    end
+    # Return nothing
+    return nothing
+end
+
+"""
     querytable(
         table::String;
         fields::Union{Missing, Vector{String}} = missing,
@@ -32,9 +107,9 @@ querytable("analysis_tags")
 
 querytable("phenotype_data", fields=["id", "value"])
 querytable("analyses", fields=["name", "description"])
-querytable("trials", filters=Dict("year" => (2000, 2025)))
+querytable("trials", filters=Dict("year" => ["2021", "2030-2031"]))
 querytable("layouts", filters=Dict("replication" => ["replication_1"]))
-querytable("phenotype_data", fields=["id", "value"], filters=Dict("value" => (100.0, 200.0)))
+querytable("phenotype_data", fields=["id", "value"], filters=Dict("value" => (1.0, 10.0)))
 ```
 """
 function querytable(
@@ -54,9 +129,8 @@ function querytable(
     # Connect to the database
     conn = dbconnect()
     # Check arguments
-    if !isnothing(match(Regex(";"), table))
-        throw(ArgumentError("The table: '$table' cannot contain a semicolon."))
-    end
+    checkparams([table])
+    # Query
     res = execute(
         conn,
         "SELECT table_name FROM information_schema.tables WHERE table_name = \$1",
@@ -262,12 +336,7 @@ function addfilters!(
     },
 )::Nothing
     # Check arguments
-    if !isnothing(match(Regex(";"), table))
-        throw(ArgumentError("The table: '$table' cannot contain a semicolon."))
-    end
-    if !isnothing(match(Regex(";"), column))
-        throw(ArgumentError("The column: '$column' cannot contain a semicolon."))
-    end
+    checkparams([table, column])
     # Build the expression
     push!(expression, "(")
     if isa(values, Vector{Union{String, Missing}}) || isa(values, Vector{String})
@@ -333,10 +402,15 @@ end
     querytrialsandphenomes(;
         traits::Vector{String},
         species::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-        classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        ploidies::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing, 
+        crop_durations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        individuals_or_pools::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        maternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        paternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+        cultivars::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-        years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}, Vector{Int64}} = missing,
+        years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         harvests::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
         sites::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
@@ -352,18 +426,23 @@ Query trials and phenotype data from a database with various filtering options.
 
 # Arguments
 - `traits`: Vector of trait names to query. Supports wildcards using "*".
-- `species`: Optional vector of species names to filter by
-- `classifications`: Optional vector of classification names to filter by
-- `populations`: Optional vector of population names to filter by  
-- `entries`: Optional vector of entry names to filter by
-- `years`: Optional vector of years or tuple of (start_year, end_year) to filter by
-- `seasons`: Optional vector of season names to filter by
-- `harvests`: Optional vector of harvest names to filter by
-- `sites`: Optional vector of site names to filter by
-- `blocks`: Optional vector of block names to filter by
-- `rows`: Optional vector of row numbers to filter by
-- `cols`: Optional vector of column numbers to filter by
-- `replications`: Optional vector of replication numbers to filter by
+- `species`: Optional vector of species names or missing values to filter by
+- `ploidies`: Optional vector of ploidy values or missing values to filter by
+- `crop_durations`: Optional vector of crop duration values or missing values to filter by
+- `individuals_or_pools`: Optional vector of individual/pool indicators or missing values 
+- `populations`: Optional vector of population names or missing values to filter by
+- `maternal_families`: Optional vector of maternal family IDs or missing values to filter by
+- `paternal_families`: Optional vector of paternal family IDs or missing values to filter by
+- `cultivars`: Optional vector of cultivar names or missing values to filter by
+- `entries`: Optional vector of entry names or missing values to filter by
+- `years`: Optional vector of years or missing values to filter by
+- `seasons`: Optional vector of season names or missing values to filter by
+- `harvests`: Optional vector of harvest IDs or missing values to filter by
+- `sites`: Optional vector of site names or missing values to filter by
+- `blocks`: Optional vector of block IDs or missing values to filter by
+- `rows`: Optional vector of row numbers or missing values to filter by
+- `cols`: Optional vector of column numbers or missing values to filter by 
+- `replications`: Optional vector of replication numbers or missing values to filter by
 - `sort_rows`: Whether to sort the output rows (default: true)
 - `verbose`: Whether to print progress messages (default: false)
 
@@ -373,20 +452,25 @@ A DataFrame containing the queried trial and phenotype data with columns for all
 # Examples
 ```julia
 querytrialsandphenomes(traits = ["trait_1"], verbose=true)
-querytrialsandphenomes(traits = ["trait_1"], classifications=["", missing], entries=["entry_01","entry_09"], verbose=true)
+querytrialsandphenomes(traits = ["trait_1"], ploidies=["diploid"], entries=["entry_01","entry_09"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06"], verbose=true)
 querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_1", "season_4"], verbose=true)
-querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_3"], years=(2000, 3000), verbose=true)
-querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["*1*"], seasons=["*_1"], years=(2030, 2020), sites=["*_3"], verbose=true)
+querytrialsandphenomes(traits = ["trait_1", "trait_3"], entries=["entry_06", "entry_03"], seasons=["season_3"], years=["2021"], verbose=true)
+querytrialsandphenomes(traits = ["trait_*"], entries=["*1*"], seasons=["Winter"], years=["2030-2031"], verbose=true)
 ```
 """
 function querytrialsandphenomes(;
     traits::Vector{String},
     species::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-    classifications::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    ploidies::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    crop_durations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    individuals_or_pools::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     populations::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    maternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    paternal_families::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
+    cultivars::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     entries::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
-    years::Union{Missing,Tuple{Int64,Int64},Vector{Union{Int64, Missing}}, Vector{Int64}} = missing,
+    years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     seasons::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     harvests::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
     sites::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing,
@@ -399,10 +483,15 @@ function querytrialsandphenomes(;
 )::DataFrame
     # traits::Vector{String} = ["trait_1"];
     # species::Union{Missing, Vector{String}} = missing;
-    # classifications::Union{Missing, Vector{String}} = missing;
+    # ploidies::Union{Missing, Vector{String}} = missing;
+    # crop_durations::Union{Missing, Vector{String}} = missing;
+    # individuals_or_pools::Union{Missing, Vector{String}} = missing;
     # populations::Union{Missing, Vector{String}} = missing;
+    # maternal_families::Union{Missing, Vector{String}} = missing;
+    # paternal_families::Union{Missing, Vector{String}} = missing;
+    # cultivars::Union{Missing, Vector{String}} = missing;
     # entries::Union{Missing, Vector{String}} = missing;
-    # years::Union{Missing, Tuple{Int64, Int64}, Vector{Int64}} = missing;
+    # years::Union{Missing,Vector{Union{String, Missing}}, Vector{String}} = missing;
     # seasons::Union{Missing, Vector{String}} = missing;
     # harvests::Union{Missing, Vector{String}} = missing;
     # sites::Union{Missing, Vector{String}} = missing;
@@ -455,7 +544,7 @@ function querytrialsandphenomes(;
         unique(sort(matches))
     end
     for trait in traits
-        expression[end] = expression[end] * ",\n"
+        expression[end] = expression[end] * ","
         push!(
             expression,
             "MAX(CASE WHEN traits.name = '$trait' THEN phenotype_data.value END) AS $(cleaunptraitnames(trait))",
@@ -483,6 +572,7 @@ function querytrialsandphenomes(;
             "\n",
         ),
     )
+    # println(join(expression, "\n"))
     # Define the filters
     if verbose
         println("Setting the filter expressions and their respective parameters...")
@@ -490,8 +580,13 @@ function querytrialsandphenomes(;
     counter = [0]
     parameters = []
     if !ismissing(species) ||
-       !ismissing(classifications) ||
+       !ismissing(ploidies) ||
+       !ismissing(crop_durations) ||
+       !ismissing(individuals_or_pools) ||
        !ismissing(populations) ||
+       !ismissing(maternal_families) ||
+       !ismissing(paternal_families) ||
+       !ismissing(cultivars) ||
        !ismissing(entries) ||
        !ismissing(years) ||
        !ismissing(seasons) ||
@@ -511,14 +606,32 @@ function querytrialsandphenomes(;
             column = "species",
             values = species,
         ) : nothing
-        !ismissing(classifications) ?
+        !ismissing(ploidies) ?
         addfilters!(
             expression,
             counter,
             parameters,
             table = "entries",
-            column = "classification",
-            values = classifications,
+            column = "ploidy",
+            values = ploidies,
+        ) : nothing
+        !ismissing(crop_durations) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "crop_duration",
+            values = crop_durations,
+        ) : nothing
+        !ismissing(individuals_or_pools) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "individual_or_pool",
+            values = individuals_or_pools,
         ) : nothing
         !ismissing(populations) ?
         addfilters!(
@@ -528,6 +641,33 @@ function querytrialsandphenomes(;
             table = "entries",
             column = "population",
             values = populations,
+        ) : nothing
+        !ismissing(maternal_families) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "maternal_family",
+            values = maternal_families,
+        ) : nothing
+        !ismissing(paternal_families) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "paternal_family",
+            values = paternal_families,
+        ) : nothing
+        !ismissing(cultivars) ?
+        addfilters!(
+            expression,
+            counter,
+            parameters,
+            table = "entries",
+            column = "cultivar",
+            values = cultivars,
         ) : nothing
         !ismissing(entries) ?
         addfilters!(
@@ -639,7 +779,7 @@ function querytrialsandphenomes(;
     if verbose
         println("Executing the parameterised query...")
         println("=========================================")
-        println(expression)
+        println(join(expression, "\n"))
         println("=========================================")
     end
     res = if length(parameters) > 0
@@ -699,14 +839,9 @@ function queryanalyses(;
     sort_rows::Bool = true,
     verbose::Bool = false,
 )::DataFrame
-    # analyses = ["analysis_1", "analysis_2"]
-    # verbose = true
+    # analyses = ["analysis_3", "analysis_4"]; sort_rows = true; verbose = true
     # Check arguments
-    for a in analyses
-        if !ismissing(a) && !isnothing(match(Regex(";"), a))
-            throw(ArgumentError("The analysis: '$a' cannot contain a semicolon."))
-        end
-    end
+    checkparams(analyses)
     if verbose
         println("Connecting to the database...")
     end
@@ -721,6 +856,7 @@ function queryanalyses(;
     end
     expression::Vector{String} =
         ["SELECT", join(string.(tables.table_name, ".", tables.column_name), ",\n")]
+    # println(join(expression, "\n"))
     # Extract the traits associated with the requested analyses
     expression_traits = [
         "SELECT DISTINCT traits.name as trait_names",
@@ -738,38 +874,42 @@ function queryanalyses(;
     ]
     traits = DataFrame(execute(conn, join(expression_traits, "\n"), analyses)).trait_names
     for trait in traits
-        expression[end] = expression[end] * ",\n"
+        # trait = traits[1]
+        expression[end] = expression[end] * ","
         push!(
             expression,
             "MAX(CASE WHEN traits.name = '$trait' THEN phenotype_data.value END) AS $(cleaunptraitnames(trait))",
         )
     end
+    # println(join(expression, "\n"))
     # Define and join the source tables
     if verbose
         println("Defining the source tables...")
     end
-    push!(
+    expression = vcat(
         expression,
-        join(
-            [
-                "FROM",
-                "analysis_tags",
-                "JOIN",
-                "phenotype_data ON analysis_tags.entry_id = phenotype_data.entry_id",
-                "JOIN",
-                "entries ON analysis_tags.entry_id = entries.id",
-                "JOIN",
-                "traits ON analysis_tags.trait_id = traits.id",
-                "JOIN",
-                "trials ON analysis_tags.trial_id = trials.id",
-                "JOIN",
-                "layouts ON analysis_tags.layout_id = layouts.id",
-                "JOIN",
-                "analyses ON analysis_tags.analysis_id = analyses.id",
-            ],
-            "\n",
-        ),
+        [
+            "FROM",
+            "analysis_tags",
+            "JOIN",
+            "analyses ON analysis_tags.analysis_id = analyses.id",
+            "JOIN",
+            "phenotype_data ON analysis_tags.entry_id = phenotype_data.entry_id",
+            "AND analysis_tags.trait_id = phenotype_data.trait_id",
+            "AND analysis_tags.trial_id = phenotype_data.trial_id",
+            "AND analysis_tags.layout_id = phenotype_data.layout_id",
+            "JOIN",
+            "entries ON analysis_tags.entry_id = entries.id",
+            "JOIN",
+            "traits ON analysis_tags.trait_id = traits.id -- Join traits based on analysis_tags",
+            "JOIN",
+            "trials ON analysis_tags.trial_id = trials.id",
+            "JOIN",
+            "layouts ON analysis_tags.layout_id = layouts.id",
+        ]
     )
+    # println(join(expression, "\n"))
+
     # Define the filters
     if verbose
         println("Setting the filter expression for analyses...")
@@ -805,7 +945,7 @@ function queryanalyses(;
     if verbose
         println("Executing the parameterised query...")
         println("=========================================")
-        println(expression)
+        println(join(expression, "\n"))
         println("=========================================")
     end
     res = execute(conn, join(expression, "\n"), analyses)
