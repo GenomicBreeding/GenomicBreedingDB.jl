@@ -1,11 +1,11 @@
--- PostgreSQL Schema for Genomic Breeding (Optimized for VCF and Performance)
+-- PostgreSQL Schema for GenomicBreedingDB.jl
 
 -- Add extensions first
-CREATE EXTENSION IF NOT EXISTS pgcrypto; -- for UUID instead of SERIAL IDs (2^128 possible UUIDs!)
-CREATE EXTENSION IF NOT EXISTS pg_trgm; -- fuzzy matching
+CREATE EXTENSION IF NOT EXISTS pgcrypto; -- for UUID instead of SERIAL IDs (2^128 possible UUIDs! Which should be exceedingly rare to have conflicts.)
+CREATE EXTENSION IF NOT EXISTS pg_trgm; -- fuzzy matching stuff
 
-
--- Entries (e.g., breeding lines, populations, families, cultivars, etc.)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Entries (e.g., breeding lines, populations, families, cultivars, etc...)
 CREATE TABLE IF NOT EXISTS entries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -19,29 +19,33 @@ CREATE TABLE IF NOT EXISTS entries (
     cultivar TEXT,
     description TEXT
 );
--- Add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
+-- Add unique constraint making sure that the NULLs are not considered distinct since in SQL, one NULL is not equivalent to other NULLs.
 ALTER TABLE entries ADD CONSTRAINT unique_entry_instance UNIQUE NULLS NOT DISTINCT (name, species, ploidy, crop_duration, individual_or_pool, population, maternal_family, paternal_family, cultivar); 
 
--- Traits (e.g., yield, height)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Traits (e.g., grain yield, milk yield, plant height, animal fertility)
 CREATE TABLE IF NOT EXISTS traits (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT UNIQUE NOT NULL,
     description TEXT
 );
 
--- Yield trials metadata
-CREATE TABLE IF NOT EXISTS trials (
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Experiments (plant/animal experiments/tests/trials)
+CREATE TABLE IF NOT EXISTS experiments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     year TEXT,
     season TEXT,
-    harvest TEXT,
+    measurement TEXT,
     site TEXT,
+    treatment TEXT,
     description TEXT
 );
--- Add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
-ALTER TABLE trials ADD CONSTRAINT unique_trial_instance UNIQUE NULLS NOT DISTINCT (year, season, harvest, site);
+-- Again add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
+ALTER TABLE experiments ADD CONSTRAINT unique_experiment_instance UNIQUE NULLS NOT DISTINCT (year, season, measurement, site, treatment);
 
--- Field/experiment layout metadata
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Experiment layout metadata
 CREATE TABLE IF NOT EXISTS layouts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     replication TEXT,
@@ -49,41 +53,24 @@ CREATE TABLE IF NOT EXISTS layouts (
     row TEXT,
     col TEXT
 );
--- Add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
+-- Again add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
 ALTER TABLE layouts ADD CONSTRAINT unique_layout_instance UNIQUE NULLS NOT DISTINCT (replication, block, row, col);
 
--- Analyses metadata
-CREATE TABLE IF NOT EXISTS analyses (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT UNIQUE NOT NULL,
-    description TEXT
-);
-
+------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Phenotype measurements
 CREATE TABLE IF NOT EXISTS phenotype_data (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     entry_id UUID REFERENCES entries(id),
     trait_id UUID REFERENCES traits(id),
-    trial_id UUID REFERENCES trials(id),
+    experiment_id UUID REFERENCES experiments(id),
     layout_id UUID REFERENCES layouts(id),
     value FLOAT,
     CHECK (value IS NULL OR value != 'NaN'::FLOAT) -- Make sure we have FLOAT OR NULL, but never NAN
 );
--- Add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
-ALTER TABLE phenotype_data ADD CONSTRAINT unique_phenotype_measurement UNIQUE NULLS NOT DISTINCT (entry_id, trait_id, trial_id, layout_id);
+-- Again add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
+ALTER TABLE phenotype_data ADD CONSTRAINT unique_phenotype_measurement UNIQUE NULLS NOT DISTINCT (entry_id, trait_id, experiment_id, layout_id);
 
--- Analysis tags, where each entry-trait-trial-layout combination may have multiple analyses associated with them
-CREATE TABLE IF NOT EXISTS analysis_tags (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    analysis_id UUID REFERENCES analyses(id),
-    entry_id UUID REFERENCES entries(id),
-    trait_id UUID REFERENCES traits(id),
-    trial_id UUID REFERENCES trials(id),
-    layout_id UUID REFERENCES layouts(id)
-);
--- Add unique constraint making sure that the NULLs are not considered distinct since in SQL, a NULL is not equivalent to other NULLs.
-ALTER TABLE analysis_tags ADD CONSTRAINT unique_analysis_instance UNIQUE NULLS NOT DISTINCT (analysis_id, entry_id, trait_id, trial_id, layout_id);
-
+------------------------------------------------------------------------------------------------------------------------------------------------------
 -- TODO: GENOTYPE DATA
 -- -- Reference genomes
 -- CREATE TABLE IF NOT EXISTS reference_genomes (
@@ -103,6 +90,7 @@ ALTER TABLE analysis_tags ADD CONSTRAINT unique_analysis_instance UNIQUE NULLS N
 --     UNIQUE(reference_genome_id, chrom, pos)
 -- );
 
+------------------------------------------------------------------------------------------------------------------------------------------------------
 -- -- Genotype matrix (entry × variant, VCF-style data)
 -- CREATE TABLE IF NOT EXISTS genotype_data (
 --     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -114,11 +102,13 @@ ALTER TABLE analysis_tags ADD CONSTRAINT unique_analysis_instance UNIQUE NULLS N
 --     UNIQUE(entry_id, variant_id)
 -- );
 
+------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_phenotype_entry_trait_trial_layout ON phenotype_data (entry_id, trait_id, trial_id, layout_id);
-CREATE INDEX IF NOT EXISTS idx_analysis_tag_lookup ON analysis_tags (analysis_id, entry_id, trait_id, trial_id, layout_id);
+CREATE INDEX IF NOT EXISTS idx_phenotype_entry_trait_experiment_layout ON phenotype_data (entry_id, trait_id, experiment_id, layout_id);
+CREATE INDEX IF NOT EXISTS idx_experiment_tag_lookup ON experiment_tags (experiment_id, entry_id, trait_id, layout_id);
 
+------------------------------------------------------------------------------------------------------------------------------------------------------
 -- -- Create a GIN index for fuzzy search lookup performance on entry, site and trait names
 -- CREATE INDEX trgm_entries_name_idx ON entries USING GIN (name gin_trgm_ops);
--- CREATE INDEX trgm_trials_site_idx ON trials USING GIN (site gin_trgm_ops);
+-- CREATE INDEX trgm_experiments_site_idx ON experiments USING GIN (site gin_trgm_ops);
 -- CREATE INDEX trgm_traits_name_idx ON traits USING GIN (name gin_trgm_ops);

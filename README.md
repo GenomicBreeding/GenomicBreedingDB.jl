@@ -7,60 +7,15 @@
 
 ## Example PostgreSQL setup
 
-### 1. Install PostgreSQL within a conda environment and start the server
+### 1. Install PostgreSQL with pixi, and initialise the server
 
 ```shell
-# conda install anaconda::postgresql
-# pg_ctl -D $CONDA_PREFIX/pgsql_data start
-# psql postgres
-wget https://ftp.postgresql.org/pub/source/v17.4/postgresql-17.4.tar.gz
-wget https://ftp.postgresql.org/pub/source/v17.4/postgresql-17.4.tar.gz.sha256
-x=$(cat postgresql-17.4.tar.gz.sha256 | cut -f1 -d' ')
-y=$(sha256sum postgresql-17.4.tar.gz | cut -f1 -d' ')
-if [ $x = $y ]
-then
-    echo "OK"
-fi
-tar -xzvf postgresql-17.4.tar.gz
-rm postgresql-17.4.tar.gz
-cd postgresql-17.4/
-# Create a new conda environment, install dependencies and build PostgreSQL from source
-# conda create -n postgresql
-# conda activate postgresql
-# Or install directly into GenomicBreeding conda environment
-conda install -c conda-forge make icu bison flex openssl perl-lib
-./configure --without-icu --with-openssl --prefix=$CONDA_PREFIX # OpenSSL is required by pgcrypto
-make world-bin
-make install-world-bin
-# Initialise the database cluster
-initdb -D $CONDA_PREFIX/pgsql_data
-# Start the server
-touch $CONDA_PREFIX/pgsql_data/logfile.txt
-pg_ctl -D $CONDA_PREFIX/pgsql_data -l $CONDA_PREFIX/pgsql_data/logfile.txt start
-# bat $CONDA_PREFIX/pgsql_data/logfile.txt --wrap never
-# pg_ctl -D $CONDA_PREFIX/pgsql_data stop
-# rm $CONDA_PREFIX/pgsql_data/logfile.txt
-psql postgres
-# Clean-up
-cd ..
-rm -R postgresql-17.4*
-# # On Debian-based systems
-# sudo apt install postgresql postgresql-common postgresql-contrib
-# sudo systemctl start postgresql.service
-# # sudo nano /etc/postgresql/*/main/postgresql.conf # --> set: `listen_addresses = '*'` and `port = 5432`
-# sudo systemctl restart postgresql.service
-# sudo -u postgres psql
-# # MISC
-# # sudo systemctl start postgresql
-# # sudo systemctl enable postgresql
-# # sudo ufw allow 5432/tcp
-# # sudo -u postgres psql
-# # sudo systemctl start postgresql.service
-# # sudo systemctl restart postgresql.service
-# # sudo -i -u postgres
-# # initdb -D ${HOME}/db
-# # pg_ctl -D ${HOME}/db -l logfile start &
-# # pg_ctl -D ${HOME}/db status
+cd GenomicBreedingDB.jl/
+pixi init
+pixi add postgresql
+pixi run initdb -D ./pgsql_data
+pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt start
+pixi run psql postgres
 ```
 
 ### 2. Instantiate the database
@@ -68,7 +23,8 @@ rm -R postgresql-17.4*
 Open the PostgreSQL shell:
 
 ```shell
-psql postgres
+cd GenomicBreedingDB.jl/
+pixi run psql postgres
 ```
 
 Create a new database:
@@ -88,13 +44,12 @@ GRANT ALL PRIVILEGES ON DATABASE gbdb TO himynamejeff;
 ### 3. Define the login credentials
 
 ```shell
-# Save as ~/.env
+cat > ~/.env << 'EOF'
 DB_USER="himynamejeff"
 DB_PASSWORD="qwerty12345"
 DB_NAME="gbdb"
 DB_HOST="localhost"
-# ls -lhtr $CONDA_PREFIX/pgsql_data/
-# cat $CONDA_PREFIX/pgsql_data/pg_hba.conf
+EOF
 ```
 
 ### 4. Initiliase the tables
@@ -102,18 +57,20 @@ DB_HOST="localhost"
 #### Start the database
 
 ```shell
-conda activate GenomicBreeding
-# conda env export > GenomicBreeding_conda.yaml
-# pg_ctl stop
-pg_ctl -D $CONDA_PREFIX/pgsql_data -l $CONDA_PREFIX/pgsql_data/logfile.txt start
+pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt start
+# pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt restart
 ```
 
 #### Initialise the tables
 
+```shell
+cd GenomicBreedingDB.jl/
+julia --project=. --threads=2,1 --load test/interactive_prelude.jl
+```
+
 ```julia
 using GenomicBreedingDB
 using DotEnv
-# Load your database user credentials
 DotEnv.load!(joinpath(homedir(), ".env"))
 dbinit()
 # Test
@@ -123,4 +80,19 @@ close(conn)
 dbinit()
 # Test query
 querytable("entries")
+```
+
+## Dev stuff:
+
+### REPL prelude
+
+```shell
+julia --project=. --threads=2,1 --load test/interactive_prelude.jl
+```
+
+### Format and test
+
+```shell
+time julia --project=. --threads=2 -e "using Pkg; Pkg.update()"
+time julia --project=. --threads=2  test/cli_tester.jl
 ```

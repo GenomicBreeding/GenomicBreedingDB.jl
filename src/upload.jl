@@ -26,7 +26,7 @@ function test(;
     analysis_description::Union{Missing, String} = missing,
     year::Union{Missing, String} = missing,
     season::Union{Missing, String} = missing,
-    harvest::Union{Missing, String} = missing,
+    measurement::Union{Missing, String} = missing,
     site::Union{Missing, String} = missing,
     sep::String = "\t",
     verbose::Bool = false,
@@ -47,7 +47,7 @@ function test(;
     # analysis_description = missing
     # year = missing
     # season = missing
-    # harvest = missing
+    # measurement = missing
     # site = missing
     # sep = "\t"
     # verbose = true
@@ -74,7 +74,7 @@ function test(;
     # Convert the wide data format into a long (tidy) format, ideal for bulk loading.
     df = tabularise(trials_or_phenomes)
     id_cols = is_trials_data ?
-        [:id, :entries, :populations, :years, :seasons, :harvests, :sites, :replications, :blocks, :rows, :cols] :
+        [:id, :entries, :populations, :years, :seasons, :measurements, :sites, :replications, :blocks, :rows, :cols] :
         [:id, :entries, :populations]
     
     df_long = stack(df, Not(id_cols), variable_name=:trait)
@@ -96,7 +96,7 @@ function test(;
                 trait_name TEXT,
                 year TEXT,
                 season TEXT,
-                harvest TEXT,
+                measurement TEXT,
                 site TEXT,
                 replication TEXT,
                 block TEXT,
@@ -114,7 +114,7 @@ function test(;
             # Use data from the file if available, otherwise use function arguments
             (is_trials_data ? :years : (x -> year)) => :year,
             (is_trials_data ? :seasons : (x -> season)) => :season,
-            (is_trials_data ? :harvests : (x -> harvest)) => :harvest,
+            (is_trials_data ? :measurements : (x -> measurement)) => :measurement,
             (is_trials_data ? :sites : (x -> site)) => :site,
             (is_trials_data ? :replications : (x -> missing)) => :replication,
             (is_trials_data ? :blocks : (x -> missing)) => :block,
@@ -145,7 +145,7 @@ function test(;
 
         # Upsert Traits, Trials, and Layouts
         execute(conn, "INSERT INTO traits (name) SELECT DISTINCT trait_name FROM staging_data ON CONFLICT (name) DO NOTHING;")
-        execute(conn, "INSERT INTO trials (year, season, harvest, site) SELECT DISTINCT year, season, harvest, site FROM staging_data ON CONFLICT (year, season, harvest, site) DO NOTHING;")
+        execute(conn, "INSERT INTO trials (year, season, measurement, site) SELECT DISTINCT year, season, measurement, site FROM staging_data ON CONFLICT (year, season, measurement, site) DO NOTHING;")
         execute(conn, "INSERT INTO layouts (replication, block, row, col) SELECT DISTINCT replication, block, row_num, col_num FROM staging_data WHERE replication IS NOT NULL ON CONFLICT (replication, block, row, col) DO NOTHING;")
 
         # Finally, insert the phenotype data by joining all the dimension tables to get their IDs.
@@ -157,7 +157,7 @@ function test(;
             FROM staging_data s
             JOIN entries e ON s.entry_name = e.name AND s.population = e.population -- Add other join conditions as needed
             JOIN traits t ON s.trait_name = t.name
-            JOIN trials tr ON s.year = tr.year AND s.season = tr.season AND s.harvest = tr.harvest AND s.site = tr.site
+            JOIN trials tr ON s.year = tr.year AND s.season = tr.season AND s.measurement = tr.measurement AND s.site = tr.site
             LEFT JOIN layouts l ON s.replication = l.replication AND s.block = l.block AND s.row_num = l.row AND s.col_num = l.col
             ON CONFLICT (entry_id, trait_id, trial_id, layout_id) DO NOTHING;
         """)
@@ -177,20 +177,34 @@ function test(;
 
         # If everything succeeded, commit the transaction.
         execute(conn, "COMMIT;")
-        if verbose println("✅ Upload successful. Transaction committed.") end
-
+        if verbose println("Upload successful! Transaction committed.") end
     catch e
         # If any error occurs, roll back the entire transaction to ensure data integrity.
-        println("❌ An error occurred. Rolling back transaction.")
+        println("An error occurred! Rolling back transaction.")
         execute(conn, "ROLLBACK;")
         rethrow(e)
     finally
-        # Always close the connection.
         close(conn)
     end
 end
 
+"""
+    cleaunptraitnames(trait_name::String)::String
 
+Clean up trait names by replacing whitespace and special characters with underscores.
+
+# Arguments
+- `trait_name::String`: The trait name to be cleaned
+
+# Returns
+- `String`: The cleaned trait name with spaces, tabs and pipe characters replaced with underscores
+"""
+function cleaunptraitnames(trait_name::String)::String
+    trait_name = replace(trait_name, " " => "_")
+    trait_name = replace(trait_name, "\t" => "_")
+    trait_name = replace(trait_name, "|" => "_")
+    trait_name
+end
 
 
 """
@@ -205,7 +219,7 @@ end
         analysis_description::Union{Missing, String}=missing,
         year::Union{Missing, String}=missing,
         season::Union{Missing, String}=missing,
-        harvest::Union{Missing, String}=missing,
+        measurement::Union{Missing, String}=missing,
         site::Union{Missing, String}=missing,
         sep::String="\\t",
         verbose::Bool=false)::Nothing
@@ -225,7 +239,7 @@ Upload trial or phenotype data to a database from a delimited file or JLD2 forma
 - `analysis_description::Union{Missing,String}`: Description of the analysis
 - `year::Union{Missing,String}`: Year of the trial/phenotype data which can be "2023-2024" for data with seasons spanning two years
 - `season::Union{Missing,String}`: Season of the trial/phenotype data
-- `harvest::Union{Missing,String}`: Harvest identifier
+- `measurement::Union{Missing,String}`: Harvest identifier
 - `site::Union{Missing,String}`: Site location
 - `sep::String`: Delimiter used in the input file (default is tab)
 - `verbose::Bool`: Whether to print additional information during processing
@@ -281,7 +295,7 @@ function uploadtrialsorphenomes(;
     analysis_description::Union{Missing,String} = missing,
     year::Union{Missing,String} = missing,
     season::Union{Missing,String} = missing,
-    harvest::Union{Missing,String} = missing,
+    measurement::Union{Missing,String} = missing,
     site::Union{Missing,String} = missing,
     sep::String = "\t",
     verbose::Bool = false,
@@ -302,7 +316,7 @@ function uploadtrialsorphenomes(;
     # analysis_description = missing
     # year = missing
     # season = missing
-    # harvest = missing
+    # measurement = missing
     # site = missing
     # sep = "\t"
     # verbose = true
@@ -337,9 +351,9 @@ function uploadtrialsorphenomes(;
                 RETURNING id
             ),
             trial AS (
-                INSERT INTO trials (year, season, harvest, site)
+                INSERT INTO trials (year, season, measurement, site)
                 VALUES (\$11, \$12, \$13, \$14)
-                ON CONFLICT (year, season, harvest, site)
+                ON CONFLICT (year, season, measurement, site)
                 DO UPDATE SET description = EXCLUDED.description
                 RETURNING id
             ),
@@ -374,9 +388,9 @@ function uploadtrialsorphenomes(;
                     RETURNING id
                 ),
                 trial AS (
-                    INSERT INTO trials (year, season, harvest, site)
+                    INSERT INTO trials (year, season, measurement, site)
                     VALUES (\$11, \$12, \$13, \$14)
-                    ON CONFLICT (year, season, harvest, site)
+                    ON CONFLICT (year, season, measurement, site)
                     DO UPDATE SET description = EXCLUDED.description
                     RETURNING id
                 ),
@@ -429,7 +443,7 @@ function uploadtrialsorphenomes(;
                     trait,
                     df.years[i],
                     df.seasons[i],
-                    df.harvests[i],
+                    df.measurements[i],
                     df.sites[i],
                     df.replications[i],
                     df.blocks[i],
@@ -451,7 +465,7 @@ function uploadtrialsorphenomes(;
                     trait,
                     year,
                     season,
-                    harvest,
+                    measurement,
                     site,
                     missing,
                     missing,
@@ -561,8 +575,8 @@ function updatedescription(table::String;
             throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["name"], "\n\t‣ ")))
         end
     elseif table == "trials" 
-        if sort(string.(keys(identifiers))) != sort(["year", "season", "harvest", "site"])
-            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["year", "season", "harvest", "site"], "\n\t‣ ")))
+        if sort(string.(keys(identifiers))) != sort(["year", "season", "measurement", "site"])
+            throw(ArgumentError("The identifiers for the table $table are not correct. You need to specify:\n\t‣ " * join(["year", "season", "measurement", "site"], "\n\t‣ ")))
         end
     elseif table == "analyses" 
         if sort(string.(keys(identifiers))) != sort(["name"])

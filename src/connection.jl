@@ -1,3 +1,4 @@
+
 """
     dbconnect()::LibPQ.Connection
 
@@ -40,12 +41,15 @@ and executes them sequentially. Each statement in the file should be separated b
 function dbinit(schema_path::String = "db/schema.sql")::Nothing
     # schema_path = "db/schema.sql"
     conn = dbconnect()
-    sql = read(schema_path, String)
-    for stmt in split(sql, ';')
-        stmt = strip(stmt)
-        if !isempty(stmt)
-            execute(conn, stmt)
+    try
+        sql = read(schema_path, String)
+        for stmt in split(sql, ';')
+            stmt = strip(stmt)
+            if !isempty(stmt)
+                execute(conn, stmt)
+            end
         end
+    finally
+        close(conn)
     end
-    close(conn)
 end
