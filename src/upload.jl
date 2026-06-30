@@ -1,15 +1,20 @@
-# Database interactions:
-# 1. Upload new:
-#   1.a. trials data
-#   1.b. phenomes data
-#   1.c. analysis information (including name and description)
-#   1.d. TODO: reference genomes, and allele frequency data including genome coordinates
-# 2. Update:
-#   2.a. entries table with description
-#   2.b. traits table with description
-#   2.c. trials table with description
-#   2.d. analyses table with additional analyses and/or tags on existing entry-trait-trial-layout combinations
-#   2.e. TODO: genome marker variants table
+
+# We expect 2 types ways of uploading data:
+#   1. File upload
+#   2. Manual information adding and editing
+# 1. We expect to upload only 2 types of files:
+#   1.1. Trials data with 12 mandatory fields
+
+function simtestdata()
+
+end
+
+
+
+
+
+
+
 
 
 
