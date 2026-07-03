@@ -3,6 +3,7 @@ module GenomicBreedingDB
 using GenomicBreedingCore, GenomicBreedingIO
 using DotEnv, LibPQ, DataFrames, Tables, StatsBase, CSV
 using Suppressor, ProgressMeter
+using Random, Dates
 
 # # Load database credentials
 # DotEnv.load!(joinpath(homedir(), ".env"))
@@ -12,8 +13,11 @@ include("upload.jl")
 include("download.jl")
 
 export dbconnect, dbinit
-export cleaunptraitnames, uploadtrialsorphenomes, updatedescription
-export checkparams, querytable #, extractmainfieldstablesandcols, addfilters!, querytrialsandphenomes, queryanalyses, df_to_io
+export simulate, validate_trials, add_col!, validate_date, layout_info_parser!, add_measurement_dates!
+export insert_names!, delete_names!, update_table_field_by_name!, insert_entry_relationships!
 
+
+# export cleaunptraitnames, uploadtrialsorphenomes, updatedescription
+# export checkparams, querytable #, extractmainfieldstablesandcols, addfilters!, querytrialsandphenomes, queryanalyses, df_to_io
 
 end

@@ -38,6 +38,10 @@ CREATE USER himynamejeff WITH PASSWORD 'qwerty12345';
 GRANT ALL PRIVILEGES ON SCHEMA public TO himynamejeff;
 GRANT ALL PRIVILEGES ON DATABASE gbdb TO himynamejeff;
 -- GRANT SELECT ON ALL TABLES IN SCHEMA public TO other_user;
+-- \c postgres
+-- DROP DATABASE gbdb;
+-- \l
+-- SELECT * FROM pg_database;
 \q
 ```
 
@@ -57,7 +61,9 @@ EOF
 #### Start the database
 
 ```shell
+cd GenomicBreedingDB.jl/
 pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt start
+# pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt stop
 # pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt restart
 ```
 
@@ -69,9 +75,6 @@ julia --project=. --threads=2,1 --load test/interactive_prelude.jl
 ```
 
 ```julia
-using GenomicBreedingDB
-using DotEnv
-DotEnv.load!(joinpath(homedir(), ".env"))
 dbinit()
 # Test
 conn = dbconnect()
@@ -87,7 +90,7 @@ querytable("entries")
 ### REPL prelude
 
 ```shell
-julia --project=. --threads=2,1 --load test/interactive_prelude.jl
+julia --project=. --threads=2 --load test/interactive_prelude.jl
 ```
 
 ### Format and test
