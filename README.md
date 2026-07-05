@@ -4,6 +4,9 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://GenomicBreeding.github.io/GenomicBreedingDB.jl/dev/)
 [![Build Status](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
+## Database schema
+
+![](./db/graph.svg)
 
 ## Example PostgreSQL setup
 
@@ -83,6 +86,14 @@ close(conn)
 dbinit()
 # Test query
 querytable("entries")
+```
+
+## Database schema visualisation
+
+```shell
+cd GenomicBreedingDB.jl/db
+pixi run eralchemy -i postgresql://himynamejeff@localhost:5432/gbdb -o graph.dot
+pixi run dot -Tsvg graph.dot -o graph.svg
 ```
 
 ## Dev stuff:

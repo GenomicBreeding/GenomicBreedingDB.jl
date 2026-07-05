@@ -85,6 +85,7 @@ function layout_info_parser!(df::DataFrame)::Nothing
     validate_trials(df)
     for f in [:replications, :blocks, :rows, :cols]
         # f = :replications
+        isa(df[!, f], Vector{Int64}) ? continue : nothing
         df[!, f] = try
             df[!, f] |>
                 x -> [split(xi, "_")[end] for xi in x] |>
