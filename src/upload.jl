@@ -24,9 +24,9 @@ function simulate(;
     verbose::Bool = false,
 )::String
     # output_fname::String = "simulated_trial_data.tsv"; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing
-    # additional_params::Union{Nothing, Dict{String, String}} = Dict("species" => "Lolium multiflorum", "experiment" => "STR_trial-2026", "treatment" => "control")
+    # additional_params::Union{Nothing, Dict{String, String}} = Dict("species" => "Lolium multiflorum", "experiments" => "STR_trial-2026", "treatments" => "control")
     genomes = GenomicBreedingCore.simulategenomes(verbose=verbose)
-    (trials, _) = GenomicBreedingCore.simulatetrials(genomes=genomes, verbose=verbose)
+    (trials, _) = GenomicBreedingCore.simulatetrials(genomes=genomes, sparsity=0.05, verbose=verbose)
     if overwrite && isfile(output_fname)
         rm(output_fname)
     end
@@ -157,30 +157,41 @@ function insert_names!(
         df_tmp = try
             DataFrame(execute(conn,"SELECT name FROM $table;"))
         catch
-            throw("Missing \"$table\" table in the database! (Note that the existence of the 'name' field is checked every time a connection to the database is made via `dbconnect()`.)")
+            throw(join(
+                "Missing \"$table\" table in the database!\n", 
+                "(Note that the existence of the 'name' field is checked every time a connection to the database is made via `dbconnect()`,\n",
+                "i.e. for the following tables: 'species', 'entries', 'experiments', 'sites', 'treatments', 'traits', 'measurements', 'reference_genomes', 'genotype_vcfs', 'genomes', 'phenomes', 'fits')"
+            ))
         end
         String.(string.(df_tmp[:, 1]))
     end
     counter = 0
     pb = ProgressMeter.Progress(length(uploaded_names), "Inserting names listed in \"$df_col\" into \"$table\" table...")
-    for x in uploaded_names
-        # x = uploaded_names[1]
-        if x ∉ existing_names
-            execute(
-                conn,
-                """
-                INSERT INTO $table (name)
-                VALUES (\$1);
-                """,
-                [x]
-            )
-            counter += 1
-            verbose ? ProgressMeter.next!(pb) : nothing
+    execute(conn, "BEGIN")
+    try
+        for x in uploaded_names
+            # x = uploaded_names[1]
+            if x ∉ existing_names
+                execute(
+                    conn,
+                    """
+                    INSERT INTO $table (name)
+                    VALUES (\$1);
+                    """,
+                    [x]
+                )
+                counter += 1
+                verbose ? ProgressMeter.next!(pb) : nothing
+            end
         end
-    end
-    if verbose
-        ProgressMeter.finish!(pb)
-        println("Inserted $counter new names in the \"$table\" table.")
+        if verbose
+            ProgressMeter.finish!(pb)
+            println("Inserted $counter new names in the \"$table\" table.")
+        end
+        execute(conn, "COMMIT")
+    catch e
+        execute(conn, "ROLLBACK")
+        rethrow(e)
     end
     nothing
 end
@@ -235,7 +246,7 @@ function update_table_field_by_name!(
         df_tmp = unique(select(df, [df_name_col, df_source_col]))
         root_table = join(split(table_destination_field, "_")[1:(end-1)], "_")
         ids = String[]
-        for x in df_tmp[!, df_source_col]
+        for x in String.(string.(df_tmp[!, df_source_col]))
             # x = df_tmp[!, df_source_col][1]
             push!(ids, execute(conn, "SELECT id FROM $root_table WHERE name = \$1", [x]) |> DataFrame |> x -> first(x.id))
         end
@@ -244,28 +255,47 @@ function update_table_field_by_name!(
     else
         unique(select(df, [df_name_col, df_source_col]))
     end
+    counter = 0
     pb = ProgressMeter.Progress(nrow(df_tmp), desc="Updating $(nrow(df_tmp)) values of the \"$table_destination_field\" field in the \"$table\" table at ...")
-    for i in 1:nrow(df_tmp)
-        # i = 1
-        execute(
-            conn,
-            """
-            UPDATE $table
-            SET
-                $table_destination_field = \$1,
-                updated_at = now()
-            WHERE name = \$2
-            ;
-            """,
-            [df_tmp[i, df_source_col], df_tmp[i, df_name_col]]
-        )
-        verbose ? ProgressMeter.next!(pb) : nothing
+    execute(conn, "BEGIN")
+    try
+        bool = execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |> DataFrame |> x -> x.exists[1]
+        if !bool
+            throw("The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.")
+        end
+        for i in 1:nrow(df_tmp)
+            # i = 1
+            res = execute(
+                conn,
+                """
+                UPDATE $table
+                SET
+                    $table_destination_field = \$1,
+                    updated_at = now()
+                WHERE name = \$2
+                ;
+                """,
+                [df_tmp[i, df_source_col], df_tmp[i, df_name_col]]
+            )
+            if LibPQ.num_affected_rows(res) != 1
+                throw("Unexepcted number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"!")
+            end
+            counter += 1
+            verbose ? ProgressMeter.next!(pb) : nothing
+        end
+        if verbose
+            ProgressMeter.finish!(pb)
+            println("Updated $counter rows in the \"$table\" table.")
+        end
+        execute(conn, "COMMIT")
+    catch e
+        execute(conn, "ROLLBACK")
+        rethrow(e)
     end
-    verbose ? ProgressMeter.finish!(pb) : nothing
     nothing
 end
 
-function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame)::Nothing
+function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool=false)::Nothing
     expected_columns = ["entries", "populations", "relationship_types"]
     if sum([x ∉ names(df) for x in expected_columns]) > 0
         throw("We have missing columns: [\", $(join(setdiff(expected_columns, names(df)), "\", \""))\"]")
@@ -273,29 +303,87 @@ function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame)::Not
     entry_population_relationship = string.(df.entries, "|||", df.populations, "|||", df.relationship_types) |> 
         unique |>
         x -> split.(x, "|||")
-    for i in eachindex(entry_population_relationship)
-        # i = 1
-        child = entry_population_relationship[i][1]
-        parent = entry_population_relationship[i][2]
-        rel_type = entry_population_relationship[i][3]
-        child_id = execute(conn, "SELECT id FROM entries WHERE name = \$1", [child]) |> DataFrame |> x -> first(x.id)
-        parent_id = execute(conn, "SELECT id FROM entries WHERE name = \$1", [parent]) |> DataFrame |> x -> first(x.id)
-        execute(
-            conn,
-            """
-            INSERT INTO entry_relationships
-            (
-                child_id,
-                parent_id,
-                rel_type
+    counter = 0
+    pb = ProgressMeter.Progress(length(entry_population_relationship), desc="Inserting relationships between entries and populations...")
+    execute(conn, "BEGIN")
+    try
+        for i in eachindex(entry_population_relationship)
+            # i = 1
+            child = entry_population_relationship[i][1]
+            parent = entry_population_relationship[i][2]
+            rel_type = entry_population_relationship[i][3]
+            child_id = execute(conn, "SELECT id FROM entries WHERE name = \$1", [child]) |> DataFrame |> x -> first(x.id)
+            parent_id = execute(conn, "SELECT id FROM entries WHERE name = \$1", [parent]) |> DataFrame |> x -> first(x.id)
+            execute(
+                conn,
+                """
+                INSERT INTO entry_relationships
+                (
+                    child_id,
+                    parent_id,
+                    rel_type
+                )
+                VALUES (\$1, \$2, \$3)
+                ON CONFLICT (child_id, parent_id, rel_type) DO NOTHING
+                """,
+                [child_id, parent_id, rel_type]
             )
-            VALUES (\$1, \$2, \$3)
-            ON CONFLICT (child_id, parent_id, rel_type) DO NOTHING
-            """,
-            [child_id, parent_id, rel_type]
-        )
+            counter += 1
+            verbose ? ProgressMeter.next!(pb) : nothing
+        end
+        if verbose
+            ProgressMeter.finish!(pb)
+            println("Inserted $counter relationships between entries in the \"$table\" table.")
+        end
+        execute(conn, "COMMIT")
+    catch e
+        execute(conn, "ROLLBACK")
+        rethrow(e)
     end
     nothing
+end
+
+function extract_traits(df::DataFrame; verbose::Bool=false)::Vector{String}
+    trial_columns = sort(filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))))
+    additional_columns = ["dates", "species", "experiments", "treatments", "entry_types", "population_types", "relationship_types", "dates", "years_seasons", "layouts"]
+    trait_names = setdiff(names(df), vcat(trial_columns, additional_columns))
+    for trait in trait_names
+        # trait = trait_names[2]
+        # trait = "dates"
+        if (trait == "id") || !isnothing(match(Regex("_id\$"), trait))
+            filter!(x -> x != trait, trait_names)
+            continue
+        end
+        y = df[!, trait] |>
+            x -> filter(xi -> !ismissing(xi), x) |>
+            x -> filter(xi -> try !isnan(xi); catch; false; end, x) |>
+            x -> filter(xi -> try !isinf(xi); catch; false; end, x)
+        if length(y) < 1
+            filter!(x -> x != trait, trait_names)
+        end
+    end
+    if length(trait_names) < 1
+        trait_names = setdiff(names(df), vcat(trial_columns, additional_columns))
+        throw("Found $(length(trait_names)) candidate traits but were all non-numeric: [\"$(join(trait_names, "\", \""))\"].")
+    end
+    if verbose
+        println("Found $(length(trait_names)) traits: [\"$(join(trait_names, "\", \""))\"].")
+    end
+    String.(trait_names)
+end
+
+function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::String)::DataFrame
+    ids = String[]
+    for name in names
+        # name = names[1]
+        res = try
+            execute(conn, "SELECT id FROM $table WHERE name = \$1", [name])
+        catch
+            throw("The table \"$table\" and/or \"name\" field does not exist.")
+        end
+        push!(ids, DataFrame(res).id[1])
+    end
+    DataFrame(id=ids, name=names)
 end
 
 function load_trial_data(
@@ -319,6 +407,7 @@ function load_trial_data(
     # entry_type::Union{Nothing, String} = "family"
     # population_type::Union{Nothing, String} = "population"
     # relationship_type::Union{Nothing, String} = "parent_is"
+    # verbose::Bool = true
     df = CSV.read(fname, DataFrame)
     try
         rename!(df, "#years" => "years")
@@ -340,6 +429,7 @@ function load_trial_data(
     insert_names!(conn, df=df, table="species", df_col="species", verbose=verbose)
     insert_names!(conn, df=df, table="experiments", df_col="experiments", verbose=verbose)
     insert_names!(conn, df=df, table="treatments", df_col="treatments", verbose=verbose)
+    insert_names!(conn, df=df, table="sites", df_col="sites", verbose=verbose)
     insert_names!(conn, df=df, table="measurements", df_col="measurements", verbose=verbose)
     insert_names!(conn, df=df, table="layouts", df_col="layouts", verbose=verbose)
     insert_names!(conn, df=df, table="entries", df_col="entries", verbose=verbose)
@@ -370,11 +460,99 @@ function load_trial_data(
     # ids_parents = execute(conn, "SELECT * FROM entry_relationships") |> DataFrame |> x -> unique(x.parent_id)
     # execute(conn, "SELECT * FROM entries WHERE id IN (\$1)", [join(ids_parents, ",")]) |> DataFrame
 
-    # TODO: extract traits
-    # TODO: extract phenotype data and connect with the other related tables...
+    traits = extract_traits(df, verbose=verbose)
+    insert_names!(conn, df=DataFrame(traits=traits), table="traits", df_col="traits", verbose=verbose)
+    # df_tmp = execute(conn, "SELECT name FROM traits") |> DataFrame |> x -> filter(xi -> isnothing(match(Regex("trait"), xi.name)), x)
+    # delete_names!(conn, df=df_tmp, table="traits", df_col="name")
+    # execute(conn, "SELECT * FROM traits") |> DataFrame
+
+    df_entries = extract_ids(conn, names=String.(unique(df.entries)), table="entries")
+    df_experiments = extract_ids(conn, names=String.(unique(df.experiments)), table="experiments")
+    df_sites = extract_ids(conn, names=String.(unique(df.sites)), table="sites")
+    df_treatments = extract_ids(conn, names=String.(unique(df.treatments)), table="treatments")
+    df_layouts = extract_ids(conn, names=String.(unique(df.layouts)), table="layouts")
+    df_measurements = extract_ids(conn, names=String.(unique(df.measurements)), table="measurements")
+    df_traits = extract_ids(conn, names=traits, table="traits")
+
+    pb = ProgressMeter.Progress(nrow(df)*length(traits), "Importing phenotype data...")
+    execute(conn, "BEGIN")
+    try
+        for i in 1:nrow(df)
+            # i = 1
+            entry_id = filter(x -> x.name == df.entries[i], df_entries).id[1]
+            experiment_id = filter(x -> x.name == df.experiments[i], df_experiments).id[1]
+            site_id = filter(x -> x.name == df.sites[i], df_sites).id[1]
+            treatment_id = filter(x -> x.name == df.treatments[i], df_treatments).id[1]
+            layout_id = filter(x -> x.name == df.layouts[i], df_layouts).id[1]
+            measurement_id = filter(x -> x.name == df.measurements[i], df_measurements).id[1]
+            for trait in traits
+                # trait = traits[1]
+                trait_id = filter(x -> x.name == trait, df_traits).id[1]
+                y = !ismissing(df[i, trait]) ? df[i, trait] : NaN
+                # y = NaN
+                execute(
+                    conn,
+                    """
+                    INSERT INTO phenotype_data
+                    (
+                        entry_id,
+                        experiment_id,
+                        site_id,
+                        treatment_id,
+                        layout_id,
+                        measurement_id,
+                        trait_id,
+                        value
+                    )
+                    VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8)
+                    ON CONFLICT 
+                    (
+                        entry_id,
+                        experiment_id,
+                        site_id,
+                        treatment_id,
+                        layout_id,
+                        measurement_id,
+                        trait_id
+                    ) DO NOTHING
+                    """,
+                    [
+                        entry_id,
+                        experiment_id,
+                        site_id,
+                        treatment_id,
+                        layout_id,
+                        measurement_id,
+                        trait_id,
+                        y,
+                    ]
+                )
+                verbose ? ProgressMeter.next!(pb) : nothing
+            end
+        end
+        verbose ? ProgressMeter.finish!(pb) : nothing
+        execute(conn, "COMMIT")
+    catch e
+        execute(conn, "ROLLBACK")
+        rethrow(e)
+    end
+    # execute(conn, "SELECT value FROM phenotype_data") |> DataFrame
 
 
 
+    # # Clean-up remove all traits not used in the phenotype_data table
+    # execute(
+    #     conn,
+    #     """
+    #     SELECT name
+    #     FROM traits
+    #     WHERE NOT EXISTS (
+    #         SELECT 1
+    #         FROM phenotype_data
+    #         WHERE phenotype_data.trait_id = traits.id
+    #     )
+    #     """
+    # ) |> DataFrame
 
 
 

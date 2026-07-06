@@ -15,7 +15,7 @@ include("download.jl")
 
 export dbconnect, dbinit
 export simulate, validate_trials, add_col!, validate_date, layout_info_parser!, add_measurement_dates!
-export insert_names!, update_table_field_by_name!, insert_entry_relationships!
+export insert_names!, update_table_field_by_name!, insert_entry_relationships!, extract_traits, extract_ids
 export delete_names!
 
 

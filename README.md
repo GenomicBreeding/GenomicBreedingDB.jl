@@ -93,8 +93,6 @@ querytable("entries")
 ```shell
 cd GenomicBreedingDB.jl/db
 pixi run eralchemy -i postgresql://himynamejeff@localhost:5432/gbdb -o graph.svg
-pixi run dot -Tsvg graph.dot -o graph.svg
-pixi run dot -Tsvg graph.dot -o graph.png
 ```
 
 ## Dev stuff:
