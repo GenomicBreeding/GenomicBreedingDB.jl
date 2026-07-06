@@ -10,11 +10,13 @@ using Random, Dates
 # Load functions
 include("connection.jl")
 include("upload.jl")
+include("delete.jl")
 include("download.jl")
 
 export dbconnect, dbinit
 export simulate, validate_trials, add_col!, validate_date, layout_info_parser!, add_measurement_dates!
-export insert_names!, delete_names!, update_table_field_by_name!, insert_entry_relationships!
+export insert_names!, update_table_field_by_name!, insert_entry_relationships!
+export delete_names!
 
 
 # export cleaunptraitnames, uploadtrialsorphenomes, updatedescription
