@@ -19,6 +19,10 @@ pixi add postgresql
 pixi run initdb -D ./pgsql_data
 pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt start
 pixi run psql postgres
+# # Or using a specific port:
+# PORT=5433
+# pixi run pg_ctl -D ~/pgsql_data -l ~/pgsql_data/logfile.txt -o "-p $PORT" start
+# pixi run psql -h localhost -p $PORT postgres
 ```
 
 ### 2. Instantiate the database

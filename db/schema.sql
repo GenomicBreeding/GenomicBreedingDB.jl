@@ -6,6 +6,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Notes
+-- All references to id columns are UUIDs and named with the "_id" suffix (e.g. species_id, entries_id, trait_id), which are generated using the gen_random_uuid() function from the pgcrypto extension. 
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Entry type
 CREATE TYPE entry_type AS ENUM (
     'cultivar',
