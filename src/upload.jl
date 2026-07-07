@@ -1,3 +1,35 @@
+"""
+    check_illegal_strings(x::Vector{String}; additional_illegal_strings::Union{Nothing, Vector{String}}=nothing)::Nothing
+
+Validates that a vector of strings contains only allowed characters for database identifiers and names.
+
+This function performs opinionated validation to ensure consistent naming conventions for identifiers
+and text fields uploaded to database tables (excluding notes fields).
+
+# Arguments
+- `x::Vector{String}`: Vector of strings to check for illegal characters and non-ASCII content
+- `additional_illegal_strings::Union{Nothing, Vector{String}}`: Optional additional strings to treat as illegal
+
+# Throws
+- `String`: Error message listing all validation failures (non-ASCII characters or illegal characters found)
+
+# Illegal Characters
+- The following characters are not allowed:
+`;`, `|`, `,`, `.`, `/`, `\\`, `\"`, `\'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, 
+`(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`
+- Any non-ASCII characters are rejected.
+- Users can supply additional strings considered illegal
+
+# Returns
+- `nothing` if all validation checks pass
+
+# Examples
+
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
+julia> println("TODO");
+```
+"""
 function check_illegal_strings(x::Vector{String}; additional_illegal_strings::Union{Nothing, Vector{String}}=nothing)::Nothing
     # This is a very opinionated check for strings/characters
     # Used to make sure we have consistent expectations on the type of names, and identifiers we have for any text (except notes) uploaded into the database tables
@@ -30,8 +62,6 @@ function check_illegal_strings(x::Vector{String}; additional_illegal_strings::Un
         '[',
         ']',
         ':',
-        '\"',
-        '\'',
         '<',
         '>',
         '?',
@@ -48,13 +78,19 @@ function check_illegal_strings(x::Vector{String}; additional_illegal_strings::Un
         if sum([xij ∈ illegal_characters for xij in collect(xi)]) > 0
             push!(errors, "Illegal character/s in $xi.")
         end
+        if !isnothing(additional_illegal_strings)
+            for s in additional_illegal_strings
+                if !isnothing(match(Regex(s), xi))
+                    push!(errors, "Illegal string (i.e. $s) in $xi.")
+                end
+            end 
+        end
     end
     if length(errors) > 0
         throw(join(error, "\n"))
     end
     nothing
 end
-
 
 """
     simulate(; output_fname::String = "simulated_trial_data.tsv", 
