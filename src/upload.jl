@@ -598,7 +598,7 @@ Insert new names from a DataFrame column into a specified database table.
 This function performs the following operations:
 1. Validates that the specified column exists in the DataFrame
 2. Validates that all names in the column contain only allowed characters using `check_illegal_strings()`
-   - Illegal characters: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`
+   - Illegal characters: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`
    - Non-ASCII characters are rejected
 3. Extracts, sorts, and deduplicates names from the specified column
 4. Retrieves existing names from the database table
@@ -720,7 +720,7 @@ Update a specific field in a database table by matching records based on a name 
 # Behaviour
 - Validates that both source columns exist in the provided DataFrame.
 - Validates that the target table and field exist in the database.
-- Validates string columns using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names. The following characters are not allowed: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`. Non-ASCII characters are also rejected.
+- Validates string columns using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names. The following characters are not allowed: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`. Non-ASCII characters are also rejected.
 - Automatically handles foreign key relationships when the destination field ends with "_id" by looking up IDs from the related table.
 - Updates the `updated_at` timestamp for each modified record.
 - Uses database transactions (BEGIN/COMMIT/ROLLBACK) to ensure atomicity.
