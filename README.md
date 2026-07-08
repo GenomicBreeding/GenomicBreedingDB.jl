@@ -23,6 +23,14 @@ pixi run psql postgres
 # PORT=5433
 # pixi run pg_ctl -D ~/pgsql_data -l ~/pgsql_data/logfile.txt -o "-p $PORT" start
 # pixi run psql -h localhost -p $PORT postgres
+# pixi run createuser --interactive --pwprompt
+# #!/bin/bash
+# createuser \
+#   --pwprompt \
+#   --no-superuser \
+#   --no-createdb \
+#   --no-createrole \
+#   "$@"
 ```
 
 ### 2. Instantiate the database

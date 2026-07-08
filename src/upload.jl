@@ -25,16 +25,23 @@ and text fields uploaded to database tables (excluding notes fields).
 
 # Examples
 
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> x_legals = String["geno_1", "2026-07-08", "ABC-def_123-2026", "camelCase"];
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+julia> x_illegals = String["geno.1", "2026/07/08", "ABC|def_123-2026;", "#camelCase%", "∈LEMENT"];
+
+julia> check_illegal_strings(x_legals)
+
+julia> try check_illegal_strings(x_illegals); catch; true; end
+true
 ```
 """
 function check_illegal_strings(x::Vector{String}; additional_illegal_strings::Union{Nothing, Vector{String}}=nothing)::Nothing
     # This is a very opinionated check for strings/characters
     # Used to make sure we have consistent expectations on the type of names, and identifiers we have for any text (except notes) uploaded into the database tables
     # x = String["xdgdfg", "sdgdfgdf", "sdsdg.sdgdf"]
-    illegal_characters = String[
+    # additional_illegal_strings = ["eno"]
+    illegal_characters = Char[
         ';',
         '|',
         ',',
@@ -67,33 +74,42 @@ function check_illegal_strings(x::Vector{String}; additional_illegal_strings::Un
         '?',
     ] # plus any non-ascii characters
     if isempty(x)
-        throw("Vector of strings is empty")
+        error("Vector of strings is empty")
     end
     errors = String[]
     for xi in x
         # xi = x[1]
         if !isascii(xi)
-            push!(errors, "Non-ASCII character/s in $xi.")
+            xi_chars = collect(xi)
+            idx_non_ascii = findall([!isascii(c) for c in xi_chars])
+            push!(errors, "Non-ASCII character/s [$(join(xi_chars[idx_non_ascii], ", "))] in $xi.")
         end
-        if sum([xij ∈ illegal_characters for xij in collect(xi)]) > 0
-            push!(errors, "Illegal character/s in $xi.")
+        illegal_matches = collect(xi) ∩ illegal_characters
+        if length(illegal_matches) > 0
+            push!(errors, "Illegal character/s: [$(join(illegal_matches, ", "))] in $xi.")
         end
         if !isnothing(additional_illegal_strings)
             for s in additional_illegal_strings
+                # s = additional_illegal_strings[1]
                 if !isnothing(match(Regex(s), xi))
-                    push!(errors, "Illegal string (i.e. $s) in $xi.")
+                    push!(errors, "Illegal string [$s] in $xi.")
                 end
             end 
         end
     end
     if length(errors) > 0
-        throw(join(error, "\n"))
+        if length(errors) > 1
+            errors = "\n\t- " .* errors
+            error(join(errors))
+        else
+            error(join(errors, "\n"))
+        end
     end
     nothing
 end
 
 """
-    simulate(; output_fname::String = "simulated_trial_data.tsv", 
+    simulate(; fname_output::String = "simulated_trial_data.tsv", 
              additional_params::Union{Nothing, Dict{String, String}} = nothing,
              sparsity::Float64 = 0.05,
              overwrite::Bool = true,
@@ -106,49 +122,129 @@ This function generates simulated genomes and trial data (with or without missin
 with additional parameters before writing to disk.
 
 # Arguments
-- `output_fname::String`: Path to the output file where simulated trial data will be written. 
+- `fname_output::String`: Path to the output file where simulated trial data will be written. 
   Defaults to `"simulated_trial_data.tsv"`.
 - `additional_params::Union{Nothing, Dict{String, String}}`: Optional dictionary of additional 
   columns to append to the trial data (e.g., species, experiment ID, treatment). Each key-value 
-  pair will be added as a column with the value repeated for all rows. Defaults to `nothing`.
+  pair will be added as a column with the value repeated for all rows. Keys and values are validated
+  using `check_illegal_strings()` to ensure they contain only allowed characters. Defaults to `nothing`.
 - `sparsity::Float64`: Fraction of missing values in the simulated trial data. Defaults to `0.05`.
 - `overwrite::Bool`: If `true`, removes the output file if it already exists before writing. 
   Defaults to `true`.
 - `verbose::Bool`: If `true`, enables verbose output during simulation. Defaults to `false`.
 
 # Returns
-- `String`: The path to the output file (`output_fname`).
+- `String`: The path to the output file (`fname_output`).
+
+# Throws
+- `String`: If `additional_params` contains illegal characters or non-ASCII content in column names or values.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> fname_no_missing = simulate(fname_output="test_no_missing.tsv", sparsity=0.0);
+
+julia> fname_with_missing = simulate(fname_output="test_with_missing.tsv", sparsity=0.1);
+
+julia> df_no_missing = CSV.read(fname_no_missing, DataFrame, missingstring="NA");
+
+julia> df_with_missing = CSV.read(fname_with_missing, DataFrame, missingstring="NA");
+
+julia> rm.([fname_no_missing, fname_with_missing]);
+
+julia> sum(Matrix(ismissing.(df_no_missing))) == 0
+true
+
+julia> mean(Matrix(ismissing.(df_with_missing))) > 0.0
+true
 ```
 """
 function simulate(; 
-    output_fname::String = "simulated_trial_data.tsv", 
+    fname_output::String = "simulated_trial_data.tsv", 
     additional_params::Union{Nothing, Dict{String, String}} = nothing,
     sparsity::Float64 = 0.05,
     overwrite::Bool = true,
     verbose::Bool = false,
 )::String
-    # output_fname::String = "simulated_trial_data.tsv"; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing; sparsity=0.05
+    # fname_output::String = "simulated_trial_data.tsv"; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing; sparsity=0.05
     # additional_params::Union{Nothing, Dict{String, String}} = Dict("species" => "Lolium multiflorum", "experiments" => "STR_trial-2026", "treatments" => "control")
     genomes = GenomicBreedingCore.simulategenomes(verbose=verbose)
     (trials, _) = GenomicBreedingCore.simulatetrials(genomes=genomes, sparsity=sparsity, verbose=verbose)
-    if overwrite && isfile(output_fname)
-        rm(output_fname)
+    if overwrite && isfile(fname_output)
+        rm(fname_output)
     end
     if isnothing(additional_params)
-        GenomicBreedingIO.writedelimited(trials, fname=output_fname)
+        GenomicBreedingIO.writedelimited(trials, fname=fname_output)
     else
         df = tabularise(trials)
         for (k, v) in additional_params
+            try
+                check_illegal_strings([k, v])
+            catch e
+                new_error = join([
+                    "Illegal string/s in the requested new column [name=$k, value=$v]!\n",
+                    sprint(showerror, e)
+                ])
+                error(new_error)
+            end
             df[!, k] .= v
         end
-        CSV.write(output_fname, df; delim='\t')
+        CSV.write(fname_output, df; delim='\t')
     end
-    output_fname
+    fname_output
+end
+
+"""
+    load_trial_df(fname::String; missingstring::Vector{String}=[])::DataFrame
+
+Load trial data from a delimited file and return it as a DataFrame.
+
+# Arguments
+- `fname::String`: Path to the input file containing trial data.
+- `missingstring::Vector{String}=[]`: Vector of strings to be interpreted as missing values. 
+  If empty, attempts to use `GenomicBreedingIO.readdelimited()` with default missing strings 
+  `["missing", "NA", "na", "N/A", "n/a", ""]`. Falls back to `CSV.read()` if that fails.
+
+# Returns
+- `DataFrame`: A tabularised DataFrame containing the trial data with standardised column names.
+
+# Details
+The function attempts to load trial data in the following order:
+1. If `missingstring` is empty, tries to read using `GenomicBreedingIO.readdelimited()` with default 
+   missing value specifications and applies `tabularise()`.
+2. On failure, falls back to `CSV.read()` with default missing strings.
+3. If `missingstring` is provided, directly uses `CSV.read()` with the specified missing value strings.
+
+Column names are standardised by renaming `"#years"` to `"years"` if present.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname);
+
+julia> rm(fname);
+
+julia> size(df)
+(12800, 14)
+```
+"""
+function load_trial_df(fname::String; missing_strings::Vector{String}=String[])::DataFrame
+    if length(missing_strings) == 0
+        try
+            trials = GenomicBreedingIO.readdelimited(Trials, fname=fname, sep="\t")
+            return GenomicBreedingCore.tabularise(trials)
+        catch
+            df = CSV.read(fname, DataFrame, missingstring = ["missing", "NA", "na", "N/A", "n/a", ""]) # same as the missing strings in `GenomicBreedingIO.readdelimited(Trials, ...)`
+            try rename!(df, "#years" => "years"); catch; nothing; end
+            return df
+        end
+    else
+        df = CSV.read(fname, DataFrame, missingstring = missing_strings)
+        try rename!(df, "#years" => "years"); catch; nothing; end
+        return df
+    end
 end
 
 """
@@ -157,8 +253,9 @@ end
 Validate that a DataFrame contains all required columns for the Trials structure.
 
 Checks that the input DataFrame includes all mandatory fields from the Trials struct,
-excluding columns that match the patterns "phenotypes" or "traits". Raises an error
-if any required columns are missing.
+excluding columns that match the patterns "phenotypes" or "traits". Validates that string
+columns contain only allowed characters using `check_illegal_strings()`. Raises an error
+if any required columns are missing or contain illegal characters.
 
 # Arguments
 - `df::DataFrame`: The DataFrame to validate against the Trials structure requirements.
@@ -168,17 +265,98 @@ if any required columns are missing.
 
 # Throws
 - `String`: An error message listing missing columns if validation fails.
+- `String`: An error message if any string column contains illegal characters or non-ASCII content.
+
+# Details
+String columns are validated to ensure they contain only allowed characters for database 
+identifiers and names (see `check_illegal_strings()` for details on allowed characters).
+The following columns are exempt from character validation: `replications`, `blocks`, `rows`, and `cols`.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> isnothing(validate_trials(df))
+true
 ```
 """
 function validate_trials(df::DataFrame)::Nothing
     required_columns = sort(filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))))
     if required_columns != sort(required_columns ∩ names(df))
-        throw("Missing columns: [\"$(join(setdiff(required_columns, names(df)), "\", \""))\"] in \"$fname\".")
+        error("Missing columns: [\"$(join(setdiff(required_columns, names(df)), "\", \""))\"].")
+    end
+    for x in setdiff(required_columns, ["replications", "blocks", "rows", "cols"])
+        # x = setdiff(required_columns, ["replications", "blocks", "rows", "cols"])[1]
+        if eltype(df[!, x]) <: AbstractString
+            try
+                check_illegal_strings(String.(unique(df[!, x])))
+            catch e
+                new_error = join([
+                    "Illegal string in the \"$x\" column!\n",
+                    sprint(showerror, e)
+                ])
+                error(new_error)
+            end
+        end
+    end
+    nothing
+end
+
+"""
+    validate_date(date::String)::Bool
+
+Validate that a date string follows the strict `yyyy-mm-dd` format.
+Note that we also allow `yyyy-m-d`, i.e. single digits for the month and day.
+
+# Arguments
+- `date::String`: A date string to validate.
+
+# Returns
+- `Bool`: `true` if the date string is valid, `false` otherwise.
+
+# Details
+The function checks that:
+- The date contains exactly 3 parts separated by `-`
+- The year part has exactly 4 digits
+- The month part has 1-2 digits
+- The day part has 1-2 digits
+- All parts can be parsed as integers
+
+# Example
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> validate_date("2026-07-08") |> x -> isnothing(x)
+true
+
+julia> validate_date("2026-7-8") |> x -> isnothing(x)
+true
+
+julia> try validate_date("2026/07/08"); catch; false; end
+false
+
+julia> try validate_date("2026|07|08"); catch; false; end
+false
+
+julia> try validate_date("2026/JUL/08"); catch; false; end
+false
+
+julia> try validate_date("2026-July-8"); catch; false; end
+false
+```
+"""
+function validate_date(date::String)::Nothing
+    date_split = split(date, '-')
+    if (
+        (length(date_split) != 3) || 
+        (length(date_split[1]) != 4) || 
+        ((length(date_split[2]) < 1) && (length(date_split[2]) > 2)) || 
+        ((length(date_split[3]) < 1) && (length(date_split[3]) > 2)) ||
+        sum(isnothing.(tryparse.(Int64, date_split))) > 0
+    )
+        error("Invalid date format: \"$date\". We expect \"yyyy-mm-dd\" format, where all values are integers.")
     end
     nothing
 end
@@ -197,17 +375,29 @@ Verifies and adds a column in a DataFrame filling it with a single specified str
 - If the column already exists in `df`, the function warns the user and ignores the `value` argument.
 - If the column does not exist and `value` is `nothing`, an error is thrown.
 - If the column does not exist and `value` is a string, the column is created and all rows are assigned the `value`.
+- Both the column name and value are validated using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names.
 
 # Throws
 - `String`: If the specified column is not found in the DataFrame and no value is provided.
+- `String`: If the column name or value contains illegal characters or non-ASCII content (see `check_illegal_strings()` for details).
 
 # Returns
 - `nothing`
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> size(df)
+(12800, 14)
+
+julia> add_col!(df, col="some_new_column", value="Dolorem ipsum")
+
+julia> size(df)
+(12800, 15)
 ```
 """
 function add_col!(df::DataFrame; col::String, value::Union{Nothing, String})::Nothing
@@ -219,53 +409,20 @@ function add_col!(df::DataFrame; col::String, value::Union{Nothing, String})::No
         end
     else
         if isnothing(value)
-            throw("Please define the \"$col\" of the entries in the dataframe as no \"$col\" col was detected.")
+            error("Please define the \"$col\" of the entries in the dataframe as no \"$col\" col was detected.")
+        end
+        try
+            check_illegal_strings([col, value])
+        catch e
+            new_error = join([
+                "Illegal string/s in new column name [$col] and/or its value [$value]!\n",
+                sprint(showerror, e)
+            ])
+            error(new_error)
         end
         df[!, col] .= value
     end
     nothing
-end
-
-"""
-    validate_date(date::String)::Bool
-
-Validate that a date string follows the strict `yyyy/mm/dd` format.
-Note that we also allow `yyyy/m/d`, i.e. single digits for the month and day.
-
-# Arguments
-- `date::String`: A date string to validate.
-
-# Returns
-- `Bool`: `true` if the date string is valid, `false` otherwise.
-
-# Details
-The function checks that:
-- The date contains exactly 3 parts separated by `/`
-- The year part has exactly 4 digits
-- The month part has 1-2 digits
-- The day part has 1-2 digits
-- All parts can be parsed as integers
-
-# Example
-
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
-```
-"""
-function validate_date(date::String)::Bool
-    date_split = split(date, '/')
-    # date_split = split(date_split, '-') # we are being very strict here, i.e. we assume yyyy/mm/dd date format!
-    if (
-        (length(date_split) != 3) || 
-        (length(date_split[1]) != 4) || 
-        ((length(date_split[2]) < 1) && (length(date_split[2]) > 2)) || 
-        ((length(date_split[3]) < 1) && (length(date_split[3]) > 2)) ||
-        sum(isnothing.(tryparse.(Int64, date_split))) > 0
-    )
-        false
-    else
-        true
-    end
 end
 
 """
@@ -298,8 +455,26 @@ If a column is already of type `Vector{Int64}`, it is skipped.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> df_ids = DataFrame(entries=repeat([""],3), measurements=repeat([""],3), populations=repeat([""],3), seasons=repeat([""],3), sites=repeat([""],3), years=repeat([""],3));
+
+julia> df_expected = hcat(df_ids, DataFrame(replications=[1, 2, 3], blocks=[1, 1, 2], rows=[1, 2, 3], cols=[10, 11, 12]));
+
+julia> df_1 = copy(df_expected);
+
+julia> layout_info_parser!(df_1)
+
+julia> df_1 == df_expected
+true
+
+julia> df_input = hcat(df_ids, DataFrame(replications=["rep_1", "rep_2", "3"], blocks=["b_1", "1", "block-2"], rows=[1, 2, 3], cols=["column|10", "COL-11", "column_12"]));
+
+julia> df_2 = copy(df_input);
+
+julia> layout_info_parser!(df_2)
+
+julia> df_2 == df_expected
+true
 ```
 """
 function layout_info_parser!(df::DataFrame)::Nothing
@@ -314,7 +489,7 @@ function layout_info_parser!(df::DataFrame)::Nothing
                 x -> [split(xi, "|")[end] for xi in x] |>
                 x -> [parse(Int64, xi) for xi in x]
         catch
-            throw("Cannot parse $(f)!")
+            error("Cannot parse $(f)!")
         end
     end
 end
@@ -335,7 +510,7 @@ have associated dates.
   in the DataFrame.
 
 # Details
-- **Date Format**: Dates must be in "yyyy/mm/dd" format with integer values.
+- **Date Format**: Dates must be in "yyyy-mm-dd" format with integer values.
 - **Column Handling**: If a "dates" column exists in `df` and `measurement_dates` is provided,
   a warning is issued and the DataFrame column takes precedence.
 - **Validation**: All measurements in the DataFrame must have corresponding dates defined,
@@ -353,8 +528,17 @@ Throws an error if:
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname); measurements = String.(unique(df.measurements));
+
+julia> measurement_dates::Dict{String,String} = Dict(); [measurement_dates[x] = x for x in measurements];
+
+julia> add_measurement_dates!(df, measurement_dates=measurement_dates);
+
+julia> isa(df.dates, Vector{DateTime})
+true
 ```
 """
 function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing, Dict{String, String}})::Nothing
@@ -367,29 +551,27 @@ function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,
         end
         dates = unique(df.dates) # dates[1] = "2025/JA/01"
         if !isa(dates, Vector{DateTime}) && (sum(.!validate_date.(dates)) > 0)
-            throw("Invalid date format/s: [\"$(join(dates, "\", \""))\"]. We expect \"yyyy/mm/dd\" format, where all values are integers.")
+            error("Invalid date format/s: [\"$(join(dates, "\", \""))\"]. We expect \"yyyy-mm-dd\" format, where all values are integers.")
         end
     else
         if isnothing(measurement_dates)
-            throw("Please supply the measurement dates either as \"dates\" in the dataframe or as a dictionary mapping the \"measurements\" with \"dates\". Format of dates: 'yyyy/mm/dd'.")
+            error("Please supply the measurement dates either as \"dates\" in the dataframe or as a dictionary mapping the \"measurements\" with \"dates\". Format of dates: 'yyyy-mm-dd'.")
         end
         measurements = sort(String.(unique(df.measurements)))
         measurements_input = sort(String.(keys(measurement_dates)))
         if measurements != sort(measurements ∩ measurements_input)
-            throw("Please define all the dates for all the measurements. We have the following measurements: [$(join(measurements, ", "))] but only the following were defined in the input: [$(join(measurements_input, ", "))]")
+            error("Please define all the dates for all the measurements. We have the following measurements: [$(join(measurements, ", "))] but only the following were defined in the input: [$(join(measurements_input, ", "))]")
         end
         df[!, "dates"] .= Dates.now()
         for (k, v) in measurement_dates
             # k = string.(keys(measurement_dates))[1]; v = measurement_dates[k]
             # v = "10062026"
-            # v = "2025-03-dd"
-            if !validate_date(v)
-                throw("Invalid date format: \"$v\". We expect \"yyyy/mm/dd\" format, where all values are integers.")
-            end
+            # v = "2025/03/dd"
+            validate_date(v)
             idx = findall(df.measurements .== k)
             # println("k=$k; v=$v; length(idx)=$(length(idx))")
-            length(idx) == 0 ? throw("Measurement \"$k\" not found in the dataframe!") : nothing
-            df.dates[idx] .= Date(v, dateformat"yyyy/mm/dd")
+            length(idx) == 0 ? error("Measurement \"$k\" not found in the dataframe!") : nothing
+            df.dates[idx] .= Date(v, dateformat"yyyy-mm-dd")
         end
     end
     nothing
@@ -410,14 +592,18 @@ Insert new names from a DataFrame column into a specified database table.
 # Throws
 - `String`: If the specified column `df_col` does not exist in the DataFrame
 - `String`: If the specified `table` does not exist in the database or lacks a 'name' field
+- `String`: If the column contains illegal characters or non-ASCII content (see `check_illegal_strings()` for details on allowed characters)
 
 # Details
 This function performs the following operations:
 1. Validates that the specified column exists in the DataFrame
-2. Extracts, sorts, and deduplicates names from the specified column
-3. Retrieves existing names from the database table
-4. Inserts only new names that don't already exist in the table
-5. Uses database transactions with rollback on error
+2. Validates that all names in the column contain only allowed characters using `check_illegal_strings()`
+   - Illegal characters: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`
+   - Non-ASCII characters are rejected
+3. Extracts, sorts, and deduplicates names from the specified column
+4. Retrieves existing names from the database table
+5. Inserts only new names that don't already exist in the table
+6. Uses database transactions with rollback on error
 
 The function maintains data integrity through transaction handling (BEGIN/COMMIT/ROLLBACK).
 Progress tracking is displayed if `verbose=true`.
@@ -427,8 +613,23 @@ Progress tracking is displayed if `verbose=true`.
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> conn = dbconnect();
+
+julia> df_before = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
+
+julia> insert_names!(conn, df=df, table="entries", df_col="entries");
+
+julia> df_after = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
+
+julia> close(conn);
+
+julia> nrow(df_before) < nrow(df_after)
+true
 ```
 """
 function insert_names!(
@@ -444,14 +645,23 @@ function insert_names!(
     # df_col = "entries"
     # verbose::Bool = true
     if df_col ∉ names(df)
-        throw("The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!")
+        error("The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!")
+    end
+    try
+        check_illegal_strings(String.(unique(df[!, df_col])))
+    catch e
+        new_error = join([
+            "Illegal string in the \"$df_col\" column!\n",
+            sprint(showerror, e)
+        ])
+        error(new_error)
     end
     uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
     existing_names = let
         df_tmp = try
             DataFrame(execute(conn,"SELECT name FROM $table;"))
         catch
-            throw(join(
+            error(join(
                 "Missing \"$table\" table in the database!\n", 
                 "(Note that the existence of the 'name' field is checked every time a connection to the database is made via `dbconnect()`,\n",
                 "i.e. for the following tables: 'species', 'entries', 'experiments', 'sites', 'treatments', 'traits', 'measurements', 'reference_genomes', 'genotype_vcfs', 'genomes', 'phenomes', 'fits')"
@@ -510,6 +720,7 @@ Update a specific field in a database table by matching records based on a name 
 # Behaviour
 - Validates that both source columns exist in the provided DataFrame.
 - Validates that the target table and field exist in the database.
+- Validates string columns using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names. The following characters are not allowed: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`. Non-ASCII characters are also rejected.
 - Automatically handles foreign key relationships when the destination field ends with "_id" by looking up IDs from the related table.
 - Updates the `updated_at` timestamp for each modified record.
 - Uses database transactions (BEGIN/COMMIT/ROLLBACK) to ensure atomicity.
@@ -518,14 +729,37 @@ Update a specific field in a database table by matching records based on a name 
 
 # Throws
 - `String`: If required columns don't exist in the DataFrame.
+- `String`: If string columns contain illegal characters or non-ASCII content (see `check_illegal_strings()` for details).
 - `String`: If the table or field doesn't exist in the database.
 - `String`: If the table is empty before updating.
 - `String`: If an unexpected number of rows are affected during update.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> df.species .= "Elysia chlorotica"
+
+julia> conn = dbconnect();
+
+julia> df_before = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
+
+julia> insert_names!(conn, df=df, table="species", df_col="species");
+
+julia> update_table_field_by_name!(conn, df=df, table="entries", df_name_col="entries", df_source_col="species", table_destination_field="species_id");
+
+julia> df_after = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
+
+julia> close(conn);
+
+julia> sum(ismissing.(unique(df_before.species_id))) > 0
+true
+
+julia> sum(ismissing.(unique(df_after.species_id))) > 0
+false
 ```
 """
 function update_table_field_by_name!(
@@ -545,10 +779,30 @@ function update_table_field_by_name!(
     # table_destination_field = "measure_date"
     # verbose::Bool = true
     if df_name_col ∉ names(df)
-        throw("The \"$df_name_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!")
+        error("The \"$df_name_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!")
     end
     if df_source_col ∉ names(df)
-        throw("The \"$df_source_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!")
+        error("The \"$df_source_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!")
+    end
+    try
+        check_illegal_strings(String.(unique(df[!, df_name_col])))
+    catch e
+        new_error = join([
+            "Illegal string in the \"$df_name_col\" column!\n",
+            sprint(showerror, e)
+        ])
+        error(new_error)
+    end
+    if eltype(df[!, df_source_col]) <: AbstractString
+       try
+            check_illegal_strings(String.(unique(df[!, df_source_col])))
+        catch e
+            new_error = join([
+                "Illegal string in the \"$df_source_col\" column!\n",
+                sprint(showerror, e)
+            ])
+            error(new_error)
+        end 
     end
     table_exists = nrow(DataFrame(execute(conn,
         """
@@ -559,7 +813,7 @@ function update_table_field_by_name!(
         [table]
     ))) > 0
     if !table_exists
-        throw("The \"$table\" table does not exist in the database!")
+        error("The \"$table\" table does not exist in the database!")
     end
     field_exists = nrow(DataFrame(execute(conn,
         """
@@ -571,7 +825,7 @@ function update_table_field_by_name!(
         [table, table_destination_field]
     ))) > 0
     if !field_exists
-        throw("The \"$table_destination_field\" field does not exist in the \"$table\" table!")
+        error("The \"$table_destination_field\" field does not exist in the \"$table\" table!")
     end
     # We extract the ids if we need to update the ids from some related table, i.e. if we have the pattern "*_id" for the `table_destination_field`
     df_tmp = if split(table_destination_field, "_")[end] == "id"
@@ -600,7 +854,7 @@ function update_table_field_by_name!(
     try
         bool = execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |> DataFrame |> x -> x.exists[1]
         if !bool
-            throw("The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.")
+            error("The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.")
         end
         for i in 1:nrow(df_tmp)
             # i = 1
@@ -617,7 +871,7 @@ function update_table_field_by_name!(
                 [df_tmp[i, df_source_col], df_tmp[i, df_name_col]]
             )
             if LibPQ.num_affected_rows(res) != 1
-                throw("Unexepcted number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"!")
+                error("Unexepcted number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"!")
             end
             counter += 1
             verbose ? ProgressMeter.next!(pb) : nothing
@@ -671,14 +925,14 @@ Insert entry relationship records into the database from a DataFrame.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
 julia> println("TODO");
 ```
 """
 function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool=false)::Nothing
     expected_columns = ["entries", "populations", "relationship_types"]
     if sum([x ∉ names(df) for x in expected_columns]) > 0
-        throw("We have missing columns: [\", $(join(setdiff(expected_columns, names(df)), "\", \""))\"]")
+        error("We have missing columns: [\", $(join(setdiff(expected_columns, names(df)), "\", \""))\"]")
     end
     entry_population_relationship = string.(df.entries, "|||", df.populations, "|||", df.relationship_types) |> 
         unique |>
@@ -692,6 +946,9 @@ function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verb
             child = entry_population_relationship[i][1]
             parent = entry_population_relationship[i][2]
             rel_type = entry_population_relationship[i][3]
+            if rel_type ∉ ["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is", "not_set_yet"]
+                error("Invalide relationship type: \"$rel_type\".")
+            end
             child_id = execute(conn, "SELECT id FROM entries WHERE name = \$1", [child]) |> DataFrame |> x -> first(x.id)
             parent_id = execute(conn, "SELECT id FROM entries WHERE name = \$1", [parent]) |> DataFrame |> x -> first(x.id)
             execute(
@@ -748,7 +1005,7 @@ This function identifies trait columns by:
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
 julia> println("TODO");
 ```
 """
@@ -756,6 +1013,15 @@ function extract_traits(df::DataFrame; verbose::Bool=false)::Vector{String}
     trial_columns = sort(filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))))
     additional_columns = ["dates", "species", "experiments", "treatments", "entry_types", "population_types", "relationship_types", "dates", "years_seasons", "layouts"]
     trait_names = setdiff(names(df), vcat(trial_columns, additional_columns))
+    try
+        check_illegal_strings(String.(trait_names))
+    catch e
+        new_error = join([
+            "Illegal string/s in the list of \"$trait_names\"!\n",
+            sprint(showerror, e)
+        ])
+        error(new_error)
+    end
     for trait in trait_names
         # trait = trait_names[1]
         # trait = "dates"
@@ -773,7 +1039,7 @@ function extract_traits(df::DataFrame; verbose::Bool=false)::Vector{String}
     end
     if length(trait_names) < 1
         trait_names = setdiff(names(df), vcat(trial_columns, additional_columns))
-        throw("Found $(length(trait_names)) candidate traits but were all non-numeric: [\"$(join(trait_names, "\", \""))\"].")
+        error("Found $(length(trait_names)) candidate traits but were all non-numeric: [\"$(join(trait_names, "\", \""))\"].")
     end
     if verbose
         println("Found $(length(trait_names)) traits: [\"$(join(trait_names, "\", \""))\"].")
@@ -799,7 +1065,7 @@ Extract database IDs for a given list of names from a specified table.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
 julia> println("TODO");
 ```
 """
@@ -810,7 +1076,7 @@ function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::Strin
         res = try
             execute(conn, "SELECT id FROM $table WHERE name = \$1", [name])
         catch
-            throw("The table \"$table\" and/or \"name\" field does not exist.")
+            error("The table \"$table\" and/or \"name\" field does not exist.")
         end
         push!(ids, DataFrame(res).id[1])
     end
@@ -846,7 +1112,7 @@ The function uses database transactions for data consistency, where all inserts 
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
 julia> println("TODO");
 ```
 """
@@ -929,7 +1195,7 @@ end
     load_trial_data!(
         conn::LibPQ.Connection;
         fname::String,
-        missingstring::Union{String, Char, Vector{String}, Vector{Char}} = ["NA", "NAN", "NaN", "na", "nan", ".", "-", ""],
+        missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""],
         species::Union{Nothing, String} = nothing,
         experiment::Union{Nothing, String} = nothing,
         treatment::Union{Nothing, String} = nothing,
@@ -950,8 +1216,7 @@ entries, traits, and phenotype values.
 # Arguments
 - `conn::LibPQ.Connection`: Active database connection for data insertion
 - `fname::String`: Path to the input data file (supports both Trial struct format and CSV)
-- `missingstring::Union{String, Char, Vector{String}, Vector{Char}}`: Missing value strings 
-  (default: `["NA", "NAN", "NaN", "na", "nan", ".", "-", ""]`)
+- `missing_strings::Vector{String}`: Missing value strings (default: `["missing", "NA", "na", "N/A", "n/a", ""]`)
 - Include the following arguments if they are not present in the input dta file as separate columns:
     + `species::Union{Nothing, String}`: Species name to associate with the trial data
     + `experiment::Union{Nothing, String}`: Experiment identifier
@@ -982,14 +1247,14 @@ The function performs the following operations in sequence:
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
 julia> println("TODO");
 ```
 """
 function load_trial_data!(
     conn::LibPQ.Connection;
     fname::String,
-    missingstring::Union{String, Char, Vector{String}, Vector{Char}} = ["NA", "NAN", "NaN", "na", "nan", ".", "-", ""],
+    missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""],
     species::Union{Nothing, String} = nothing,
     experiment::Union{Nothing, String} = nothing,
     treatment::Union{Nothing, String} = nothing,
@@ -1001,7 +1266,7 @@ function load_trial_data!(
 )::Nothing
     # conn::LibPQ.Connection = dbconnect()
     # fname = simulate()
-    # missingstring::Union{String, Char, Vector{String}, Vector{Char}} = ["NA", "NAN", "NaN", "na", "nan", ".", "-", ""]
+    # missing_strings::Union{String, Char, Vector{String}, Vector{Char}} = ["missing", "NA", "na", "N/A", "n/a", ""]
     # species::String = "Lolium multiflorum"
     # experiment::String = "STR_trial-2026"
     # treatment::String = "control"; verbose::Bool = true
@@ -1011,14 +1276,7 @@ function load_trial_data!(
     # relationship_type::Union{Nothing, String} = "parent_is"
     # verbose::Bool = true
     # Load the trial data which assumed by default to be in Trial struct delimited file format (see: https://genomicbreeding.github.io/GenomicBreedingIO.jl/stable/#GenomicBreedingIO.readdelimited-Tuple{Type{GenomicBreedingCore.Trials}})
-    df = try
-        trials = GenomicBreedingIO.readdelimited(Trials, fname=fname, sep="\t", verbose=verbose)
-        tabularise(trials)
-    catch
-        df = CSV.read(fname, DataFrame, missingstring=missingstring)
-        try rename!(df, "#years" => "years"); catch; nothing; end
-        df
-    end
+    df = load_trial_df(fname, missing_strings=missing_strings)
     # Make sure we have all the required columns
     validate_trials(df)
     layout_info_parser!(df)
