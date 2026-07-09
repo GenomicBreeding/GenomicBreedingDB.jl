@@ -15,7 +15,7 @@ include("download.jl")
 
 export dbconnect, dbinit
 export check_illegal_strings, simulate, load_trial_df, validate_trials, validate_date
-export add_col!, layout_info_parser!, add_measurement_dates!
+export add_col!, parse_layout!, add_measurement_dates!
 export insert_names!, update_table_field_by_name!, insert_entry_relationships!, extract_traits, extract_ids, insert_phenotype_data!, load_trial_data!
 export delete_names!
 

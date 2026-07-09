@@ -25,7 +25,7 @@ and text fields uploaded to database tables (excluding notes fields).
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> x_legals = String["geno_1", "2026-07-08", "ABC-def_123-2026", "camelCase"];
 
 julia> x_illegals = String["geno.1", "2026/07/08", "ABC|def_123-2026;", "#camelCase%", "∈LEMENT"];
@@ -141,7 +141,7 @@ with additional parameters before writing to disk.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> fname_no_missing = simulate(fname_output="test_no_missing.tsv", sparsity=0.0);
 
 julia> fname_with_missing = simulate(fname_output="test_with_missing.tsv", sparsity=0.1);
@@ -219,7 +219,7 @@ Column names are standardised by renaming `"#years"` to `"years"` if present.
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> fname = simulate(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname);
@@ -274,7 +274,7 @@ The following columns are exempt from character validation: `replications`, `blo
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> fname = simulate(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
@@ -327,7 +327,7 @@ The function checks that:
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> validate_date("2026-07-08") |> x -> isnothing(x)
 true
 
@@ -386,7 +386,7 @@ Verifies and adds a column in a DataFrame filling it with a single specified str
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> fname = simulate(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
@@ -426,7 +426,7 @@ function add_col!(df::DataFrame; col::String, value::Union{Nothing, String})::No
 end
 
 """
-    layout_info_parser!(df::DataFrame)::Nothing
+    parse_layout!(df::DataFrame)::Nothing
 
 Parse and validate layout information columns in a DataFrame.
 
@@ -455,14 +455,14 @@ If a column is already of type `Vector{Int64}`, it is skipped.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> df_ids = DataFrame(entries=repeat([""],3), measurements=repeat([""],3), populations=repeat([""],3), seasons=repeat([""],3), sites=repeat([""],3), years=repeat([""],3));
 
 julia> df_expected = hcat(df_ids, DataFrame(replications=[1, 2, 3], blocks=[1, 1, 2], rows=[1, 2, 3], cols=[10, 11, 12]));
 
 julia> df_1 = copy(df_expected);
 
-julia> layout_info_parser!(df_1)
+julia> parse_layout!(df_1)
 
 julia> df_1 == df_expected
 true
@@ -471,13 +471,13 @@ julia> df_input = hcat(df_ids, DataFrame(replications=["rep_1", "rep_2", "3"], b
 
 julia> df_2 = copy(df_input);
 
-julia> layout_info_parser!(df_2)
+julia> parse_layout!(df_2)
 
 julia> df_2 == df_expected
 true
 ```
 """
-function layout_info_parser!(df::DataFrame)::Nothing
+function parse_layout!(df::DataFrame)::Nothing
     validate_trials(df)
     for f in [:replications, :blocks, :rows, :cols]
         # f = :replications
@@ -504,13 +504,14 @@ to their corresponding dates from a dictionary. It validates date formats and en
 have associated dates.
 
 # Arguments
-- `df::DataFrame`: The input DataFrame containing a "measurements" column.
+- `df::DataFrame`: The input DataFrame containing a "measurements" column (must be a `Vector{String}` or will be converted).
 - `measurement_dates::Union{Nothing, Dict{String, String}}`: Optional dictionary mapping measurement
   identifiers (keys) to date strings (values). If `nothing`, the function expects a "dates" column
   in the DataFrame.
 
 # Details
 - **Date Format**: Dates must be in "yyyy-mm-dd" format with integer values.
+- **Measurements Column**: The "measurements" column is converted to `Vector{String}` if needed.
 - **Column Handling**: If a "dates" column exists in `df` and `measurement_dates` is provided,
   a warning is issued and the DataFrame column takes precedence.
 - **Validation**: All measurements in the DataFrame must have corresponding dates defined,
@@ -528,7 +529,7 @@ Throws an error if:
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> fname = simulate(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname); measurements = String.(unique(df.measurements));
@@ -556,6 +557,9 @@ function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,
     else
         if isnothing(measurement_dates)
             error("Please supply the measurement dates either as \"dates\" in the dataframe or as a dictionary mapping the \"measurements\" with \"dates\". Format of dates: 'yyyy-mm-dd'.")
+        end
+        if !(eltype(df[!, :measurements]) <: AbstractString)
+            df.measurements = [String("$x") for x in df.measurements]
         end
         measurements = sort(String.(unique(df.measurements)))
         measurements_input = sort(String.(keys(measurement_dates)))
@@ -613,7 +617,7 @@ Progress tracking is displayed if `verbose=true`.
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> fname = simulate(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
@@ -736,18 +740,22 @@ Update a specific field in a database table by matching records based on a name 
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> fname = simulate(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
+
+julia> df.entries = string.("test_update_table_$(Dates.time() |> x -> replace("$x", "." => "_"))-", df.entries);
 
 julia> df.species .= "Elysia chlorotica"
 
 julia> conn = dbconnect();
 
-julia> df_before = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
+julia> insert_names!(conn, df=df, table="entries", df_col="entries")
 
 julia> insert_names!(conn, df=df, table="species", df_col="species");
+
+julia> df_before = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
 
 julia> update_table_field_by_name!(conn, df=df, table="entries", df_name_col="entries", df_source_col="species", table_destination_field="species_id");
 
@@ -888,6 +896,107 @@ function update_table_field_by_name!(
     nothing
 end
 
+"""
+    insert_layout!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool=false) -> Nothing
+
+Insert unique layout positions from `df` into the `layouts` table.
+
+The function extracts unique combinations of:
+
+- `replications`
+- `blocks`
+- `rows`
+- `cols`
+
+from the supplied `DataFrame` and inserts them into the database within a
+single transaction.
+
+Rows that already exist in the `layouts` table (based on the unique
+constraint `(replication, block, row, col)`) are silently ignored via
+`ON CONFLICT DO NOTHING`.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: An open PostgreSQL connection.
+- `df::DataFrame`: A data frame containing the columns
+  `replications`, `blocks`, `rows`, and `cols`.
+- `verbose::Bool=false`: If `true`, display progress information and a
+  summary after completion.
+
+# Transaction Behaviour
+
+All inserts are executed inside a single database transaction:
+
+- On success, the transaction is committed.
+- On error, the transaction is rolled back and the original exception is rethrown.
+
+# Returns
+
+- `Nothing`
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> parse_layout!(df);
+
+julia> conn = dbconnect();
+
+julia> insert_layout!(conn, df=df);
+
+julia> n = execute(conn, "SELECT * FROM layouts") |> DataFrame |> nrow;
+
+julia> m = string.(df.replications, "-", df.blocks, "-", df.rows, "-", df.cols) |> unique |> length;
+
+julia> n == m
+true
+```
+"""
+function insert_layout!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool=false)::Nothing
+    # conn::LibPQ.Connection = dbconnect()
+    # df = load_trial_df(simulate()); parse_layout!(df)
+    # verbose::Bool = true
+    ids = split.(unique(string.(df.replications, "-", df.blocks, "-", df.rows, "-", df.cols)), "-")
+    execute(conn, "BEGIN")
+    counter = 0
+    pb = ProgressMeter.Progress(length(ids), "Inserting layout information...")
+    try
+        for i in 1:length(ids)
+            # i = 1
+            replication = ids[i][1]
+            block = ids[i][2]
+            row = ids[i][3]
+            col = ids[i][4]
+            execute(
+                conn,
+                """
+                INSERT INTO layouts
+                (
+                    replication, 
+                    block, 
+                    row, 
+                    col
+                ) 
+                VALUES (\$1, \$2, \$3, \$4)
+                ON CONFLICT (replication, block, row, col) DO NOTHING
+                """,
+                [replication, block, row, col]
+            )
+        end
+        if verbose
+            ProgressMeter.finish!(pb)
+            println("Inserted $counter relationships between entries in the \"$table\" table.")
+        end
+        execute(conn, "COMMIT")
+    catch e
+        execute(conn, "ROLLBACK")
+        rethrow(e)
+    end
+    nothing
+end
 
 """
     insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool=false)::Nothing
@@ -925,14 +1034,44 @@ Insert entry relationship records into the database from a DataFrame.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> df.entries = string.("test_entry_rels_$(Dates.time() |> x -> replace("$x", "." => "_"))-", df.entries);
+
+julia> df.populations = string.("test_entry_rels_$(Dates.time() |> x -> replace("$x", "." => "_"))-", df.populations);
+
+julia> df[!, "relationship_types"] .= "member_of";
+
+julia> conn = dbconnect();
+
+julia> insert_names!(conn, df=df, table="entries", df_col="entries")
+
+julia> insert_names!(conn, df=df, table="entries", df_col="populations")
+
+julia> df_before = LibPQ.execute(conn, "SELECT * FROM entry_relationships") |> DataFrame;
+
+julia> insert_entry_relationships!(conn, df=df);
+
+julia> df_after = LibPQ.execute(conn, "SELECT * FROM entry_relationships") |> DataFrame;
+
+julia> close(conn);
+
+julia> nrow(df_before) < nrow(df_after)
+true
 ```
 """
 function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool=false)::Nothing
     expected_columns = ["entries", "populations", "relationship_types"]
     if sum([x ∉ names(df) for x in expected_columns]) > 0
-        error("We have missing columns: [\", $(join(setdiff(expected_columns, names(df)), "\", \""))\"]")
+        missing_columns = setdiff(expected_columns, names(df))
+        if "relationship_types" ∈ missing_columns
+            error("We have missing columns: [\"$(join(missing_columns, "\", \""))\"]. (Hint: relationship_types: {\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\", \"not_set_yet\"})")
+        else
+            error("We have missing columns: [\"$(join(missing_columns, "\", \""))\"]")
+        end
     end
     entry_population_relationship = string.(df.entries, "|||", df.populations, "|||", df.relationship_types) |> 
         unique |>
@@ -1005,8 +1144,15 @@ This function identifies trait columns by:
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> traits = extract_traits(df);
+
+julia> traits == filter(x -> !isnothing(match(Regex("^trait_"), x)), names(df))
+true
 ```
 """
 function extract_traits(df::DataFrame; verbose::Bool=false)::Vector{String}
@@ -1065,8 +1211,23 @@ Extract database IDs for a given list of names from a specified table.
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> df.entries = string.("test_extract_ids_$(Dates.time() |> x -> replace("$x", "." => "_"))-", df.entries);
+
+julia> conn = dbconnect();
+
+julia> insert_names!(conn, df=df, table="entries", df_col="entries")
+
+julia> df_entries = extract_ids(conn, names=sort(unique(df.entries)), table="entries");
+
+julia> close(conn);
+
+julia> df_entries.name == sort(unique(df.entries))
+true
 ```
 """
 function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::String)::DataFrame
@@ -1112,33 +1273,83 @@ The function uses database transactions for data consistency, where all inserts 
 
 # Example
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> [df[!, name] .= string("dummy_", name) for name in ["experiments", "treatments"]];
+
+julia> df[!, "layouts"] = string.("replication_", df.replications, "-block_", df.blocks, "-row_", df.rows, "-col_", df.cols);
+
+julia> [insert_names!(conn, df=df, table=name, df_col=name) for name in ["experiments", "sites", "treatments", "layouts", "measurements"]];
+
+julia> traits = extract_traits(df); insert_names!(conn, df=DataFrame(traits=traits), table="traits", df_col="traits");
+
+julia> insert_phenotype_data!(conn, df=df, traits=["trait_1"]);
+
+julia> df_exported = execute(conn, "SELECT * FROM phenotype_data") |> DataFrame;
+
+julia> ids = Dict(); [ids[x] = Dict("df" => extract_ids(conn, names=unique(df[!, x]), table=x), "name" => x == "entries" ? "entry" : join(collect(x)[1:(end-1)]) ) for x in [x == "entrys" ? "entries" : x for x in replace.(names(df_exported)[2:(end-4)], "_id" => "s")]];
+
+julia> close(conn);
+
+julia> [v["df"] = rename(v["df"], ["id" => string(v["name"], "_id"), "name" => v["name"]]) for (k, v) in ids];
+
+julia> for (k, v) in ids; df_exported = leftjoin(df_exported, v["df"], on=string(v["name"], "_id")); end
+
+julia> ids_exported = ["experiment", "site", "treatment", "layout", "measurement", "entry", "value"]; select!(df_exported, ids_exported)
+
+julia> ids = ["experiments", "sites", "treatments", "layouts", "measurements", "entries", "trait_1"]; select!(df, ids)
+
+julia> df.trait_1[ismissing.(df.trait_1)] .= Inf;
+
+julia> df_exported.value[isnan.(df_exported.value)] .= Inf;
+
+julia> sort!(df_exported, ids_exported);
+
+julia> sort!(df, ids);
+
+julia> Matrix(df_exported) == Matrix(df)
+true
 ```
 """
 function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::Vector{String}, verbose::Bool=false)
-    df_entries = extract_ids(conn, names=String.(unique(df.entries)), table="entries")
-    df_experiments = extract_ids(conn, names=String.(unique(df.experiments)), table="experiments")
-    df_sites = extract_ids(conn, names=String.(unique(df.sites)), table="sites")
-    df_treatments = extract_ids(conn, names=String.(unique(df.treatments)), table="treatments")
-    df_layouts = extract_ids(conn, names=String.(unique(df.layouts)), table="layouts")
-    df_measurements = extract_ids(conn, names=String.(unique(df.measurements)), table="measurements")
-    df_traits = extract_ids(conn, names=traits, table="traits")
-
+    tables = ["entries", "experiments", "sites", "treatments", "layouts", "measurements", "traits"]
+    names_in_db::Dict{String, DataFrame} = Dict()
+    errors = String[]
+    for table in tables
+        # table = tables[end]
+        names_df = if table != "traits"
+            String.(unique(df[!, table]))
+        else
+            traits
+        end
+        try
+            names_in_db[table] = extract_ids(conn, names=names_df, table=table)
+        catch
+            push!(errors, "Please initialise the \"$table\" table!")
+        end
+    end
+    if length(errors) > 0
+        error(join(string.("\n\t- ", errors)))
+    end
     pb = ProgressMeter.Progress(nrow(df)*length(traits), "Importing phenotype data...")
     execute(conn, "BEGIN")
     try
         for i in 1:nrow(df)
             # i = 1
-            entry_id = filter(x -> x.name == df.entries[i], df_entries).id[1]
-            experiment_id = filter(x -> x.name == df.experiments[i], df_experiments).id[1]
-            site_id = filter(x -> x.name == df.sites[i], df_sites).id[1]
-            treatment_id = filter(x -> x.name == df.treatments[i], df_treatments).id[1]
-            layout_id = filter(x -> x.name == df.layouts[i], df_layouts).id[1]
-            measurement_id = filter(x -> x.name == df.measurements[i], df_measurements).id[1]
+            entry_id = filter(x -> x.name == df.entries[i], names_in_db["entries"]).id[1]
+            experiment_id = filter(x -> x.name == df.experiments[i], names_in_db["experiments"]).id[1]
+            site_id = filter(x -> x.name == df.sites[i], names_in_db["sites"]).id[1]
+            treatment_id = filter(x -> x.name == df.treatments[i], names_in_db["treatments"]).id[1]
+            layout_id = filter(x -> x.name == df.layouts[i], names_in_db["layouts"]).id[1]
+            measurement_id = filter(x -> x.name == df.measurements[i], names_in_db["measurements"]).id[1]
             for trait in traits
                 # trait = traits[1]
-                trait_id = filter(x -> x.name == trait, df_traits).id[1]
+                trait_id = filter(x -> x.name == trait, names_in_db["traits"]).id[1]
                 y = !ismissing(df[i, trait]) ? df[i, trait] : NaN
                 # y = NaN
                 execute(
@@ -1247,8 +1458,21 @@ The function performs the following operations in sequence:
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ)
-julia> println("TODO");
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> fname = simulate(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname);
+
+julia> measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]];
+
+julia> try load_trial_data!(conn, fname=fname); catch; false; end
+false
+
+julia> load_trial_data!(conn, fname=fname, species="Acacia neglecta", experiment="some-exp", treatment="some_trt", measurement_dates=measurement_dates, entry_type="family", population_type="population", relationship_type="member_of")
+
+julia> close(conn); rm(fname);
 ```
 """
 function load_trial_data!(
@@ -1262,7 +1486,7 @@ function load_trial_data!(
     entry_type::Union{Nothing, String} = nothing,
     population_type::Union{Nothing, String} = nothing,
     relationship_type::Union{Nothing, String} = nothing,
-    verbose::Bool = true,
+    verbose::Bool = false,
 )::Nothing
     # conn::LibPQ.Connection = dbconnect()
     # fname = simulate()
@@ -1270,16 +1494,25 @@ function load_trial_data!(
     # species::String = "Lolium multiflorum"
     # experiment::String = "STR_trial-2026"
     # treatment::String = "control"; verbose::Bool = true
-    # measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); df = CSV.read(fname, DataFrame); [measurement_dates[x] = x for x in unique(df.measurements)]
+    # measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); df = CSV.read(fname, DataFrame); [measurement_dates[x] = x for x in ["$x" for x in unique(df.measurements)]]
     # entry_type::Union{Nothing, String} = "family"
     # population_type::Union{Nothing, String} = "population"
     # relationship_type::Union{Nothing, String} = "parent_is"
     # verbose::Bool = true
+    if entry_type ∉ ["cultivar", "population", "individual", "family", "not_set_yet"]
+        error("Invalid entry_type: \"$entry_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\", \"not_set_yet\"].")
+    end
+    if population_type ∉ ["cultivar", "population", "individual", "family", "not_set_yet"]
+        error("Invalid population_type: \"$population_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\", \"not_set_yet\"].")
+    end
+    if relationship_type ∉ ["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is", "not_set_yet"]
+        error("Invalid relationship_type: \"$relationship_type\". Choose from: [\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\", \"not_set_yet\"].")
+    end
     # Load the trial data which assumed by default to be in Trial struct delimited file format (see: https://genomicbreeding.github.io/GenomicBreedingIO.jl/stable/#GenomicBreedingIO.readdelimited-Tuple{Type{GenomicBreedingCore.Trials}})
     df = load_trial_df(fname, missing_strings=missing_strings)
     # Make sure we have all the required columns
     validate_trials(df)
-    layout_info_parser!(df)
+    parse_layout!(df)
     add_col!(df, col="species", value=species)
     add_col!(df, col="experiments", value=experiment)
     add_col!(df, col="treatments", value=treatment)
@@ -1287,15 +1520,14 @@ function load_trial_data!(
     add_col!(df, col="population_types", value=population_type)
     add_col!(df, col="relationship_types", value=relationship_type)
     add_measurement_dates!(df; measurement_dates=measurement_dates)
-    df[!, "years_seasons"] = string.("seasons=", df.years, "|", df.seasons, ";")
-    df[!, "layouts"] .= string.("replication=", df.replications, "|block", df.blocks, "|row", df.rows, "|col", df.cols)
+    df[!, "years_seasons"] = string.("seasons_", df.years, "-", df.seasons)
     # Insert the names if they do not yet exist
     insert_names!(conn, df=df, table="species", df_col="species", verbose=verbose)
     insert_names!(conn, df=df, table="experiments", df_col="experiments", verbose=verbose)
     insert_names!(conn, df=df, table="treatments", df_col="treatments", verbose=verbose)
     insert_names!(conn, df=df, table="sites", df_col="sites", verbose=verbose)
     insert_names!(conn, df=df, table="measurements", df_col="measurements", verbose=verbose)
-    insert_names!(conn, df=df, table="layouts", df_col="layouts", verbose=verbose)
+    # insert_names!(conn, df=df, table="layouts", df_col="layouts", verbose=verbose)
     insert_names!(conn, df=df, table="entries", df_col="entries", verbose=verbose)
     insert_names!(conn, df=df, table="entries", df_col="populations", verbose=verbose)
     # insert_names!(conn, df=df, table="entries", df_col="layouts", verbose=verbose)
@@ -1307,12 +1539,6 @@ function load_trial_data!(
     # df_tmp = execute(conn, "SELECT * FROM measurements") |> DataFrame |> x -> select(x, [:name])
     # delete_names!(conn, df=df_tmp, table="measurements", df_col="name", verbose=verbose)
     # execute(conn, "SELECT * FROM measurements") |> DataFrame
-    # Update the layouts table with the full replication-by-block-by-row-by-column combinations
-    update_table_field_by_name!(conn, df=df, table="layouts", df_name_col="layouts", df_source_col="replications", table_destination_field="replication", verbose=verbose)
-    update_table_field_by_name!(conn, df=df, table="layouts", df_name_col="layouts", df_source_col="blocks", table_destination_field="block", verbose=verbose)
-    update_table_field_by_name!(conn, df=df, table="layouts", df_name_col="layouts", df_source_col="rows", table_destination_field="row", verbose=verbose)
-    update_table_field_by_name!(conn, df=df, table="layouts", df_name_col="layouts", df_source_col="cols", table_destination_field="col", verbose=verbose)
-    # execute(conn, "SELECT * FROM layouts") |> DataFrame
     # Update the entries with their corresponding types and species
     update_table_field_by_name!(conn, df=df, table="entries", df_name_col="entries", df_source_col="entry_types", table_destination_field="entry_type", verbose=verbose)
     update_table_field_by_name!(conn, df=df, table="entries", df_name_col="populations", df_source_col="population_types", table_destination_field="entry_type", verbose=verbose)
