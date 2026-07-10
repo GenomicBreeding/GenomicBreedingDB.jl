@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS species (
     ploidy INT NOT NULL DEFAULT 0,
     notes TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
-    updated_at TIMESTAMP NOT NULL DEFAULT now()
+    updated_at TIMESTAMP NOT NULL DEFAULT now(),
+    CONSTRAINT check_ploidy
+        CHECK (ploidy >= 0)
 );
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -90,7 +92,9 @@ CREATE TABLE IF NOT EXISTS experiments (
     end_date DATE,
     notes TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
-    updated_at TIMESTAMP NOT NULL DEFAULT now()
+    updated_at TIMESTAMP NOT NULL DEFAULT now(),
+    CONSTRAINT check_end_date
+        CHECK (end_date IS NULL OR end_date >= start_date)
 );
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -147,7 +151,10 @@ CREATE TABLE IF NOT EXISTS measurements (
 );
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
--- Traits (e.g., grain yield, milk yield, plant height, animal fertility)
+-- Traits (e.g., grain yield: biomass_T_per_ha, milk yield: milk_L_per_day, plant height: height_cm, animal fertility: litter_size or calving_interval_days)
+-- Note: I have decided not to include a unit field here because there are just so many possible units, and 
+--      I believe it is better to just put the units in the name of the traits, and also
+--      add more info in the notes field for each trait
 CREATE TABLE IF NOT EXISTS traits (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT UNIQUE NOT NULL,

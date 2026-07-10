@@ -24,9 +24,15 @@ function dbconnect()::LibPQ.Connection
     db_user = ENV["DB_USER"]
     db_password = ENV["DB_PASSWORD"]
     db_host = ENV["DB_HOST"]
-    conn = LibPQ.Connection(
-        "dbname=$db_name user=$db_user password=$db_password host=$db_host",
-    )
+    conn = try
+        LibPQ.Connection("dbname=$db_name user=$db_user password=$db_password host=$db_host")
+    catch e
+        errors = [
+            "Please make sure the \"$db_name\" database, and \"$db_user\" user exist, as well as the password and \"$db_host\" host port are correct!",
+            sprint(showerror, e),
+        ]
+        error(join(string.("\n\t- ", errors)))
+    end
     df_tables_without_names = DataFrame(
         execute(
             conn,
