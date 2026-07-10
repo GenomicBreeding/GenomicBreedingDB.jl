@@ -27,24 +27,29 @@ function dbconnect()::LibPQ.Connection
     conn = LibPQ.Connection(
         "dbname=$db_name user=$db_user password=$db_password host=$db_host",
     )
-    df_tables_without_names = DataFrame(execute(conn,
-        """
-        SELECT t.table_schema, t.table_name
-        FROM information_schema.tables t
-        WHERE t.table_type = 'BASE TABLE'
-        AND t.table_schema NOT IN ('pg_catalog', 'information_schema')
-        AND NOT EXISTS (
-            SELECT 1
-            FROM information_schema.columns c
-            WHERE c.table_schema = t.table_schema
-            AND c.table_name IN ('species', 'entries', 'experiments', 'sites', 'treatments', 'traits', 'measurements', 'reference_genomes', 'genotype_vcfs', 'genomes', 'phenomes', 'fits')
-            AND c.column_name = 'name'
-        )
-        ORDER BY t.table_schema, t.table_name;
-        """
-    ))
+    df_tables_without_names = DataFrame(
+        execute(
+            conn,
+            """
+            SELECT t.table_schema, t.table_name
+            FROM information_schema.tables t
+            WHERE t.table_type = 'BASE TABLE'
+            AND t.table_schema NOT IN ('pg_catalog', 'information_schema')
+            AND NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns c
+                WHERE c.table_schema = t.table_schema
+                AND c.table_name IN ('species', 'entries', 'experiments', 'sites', 'treatments', 'traits', 'measurements', 'reference_genomes', 'genotype_vcfs', 'genomes', 'phenomes', 'fits')
+                AND c.column_name = 'name'
+            )
+            ORDER BY t.table_schema, t.table_name;
+            """,
+        ),
+    )
     if nrow(df_tables_without_names) > 0
-        throw("Invalid tables: [$(join(df_tables_without_names.table_name, ", "))], i.e. missing the mandatory 'name' field in ['species', 'entries', 'experiments', 'sites', 'treatments', 'traits', 'measurements', 'reference_genomes', 'genotype_vcfs', 'genomes', 'phenomes', 'fits'].")
+        throw(
+            "Invalid tables: [$(join(df_tables_without_names.table_name, ", "))], i.e. missing the mandatory 'name' field in ['species', 'entries', 'experiments', 'sites', 'treatments', 'traits', 'measurements', 'reference_genomes', 'genotype_vcfs', 'genomes', 'phenomes', 'fits'].",
+        )
     end
     return conn
 end
@@ -87,7 +92,9 @@ function dbinit(schema_path::String = "db/schema.sql")::Nothing
         end
     end
     errors = [x.msg for x in errors]
-    if (length(errors) > 0) && (sum(.!isnothing.(match.(Regex("entry_type|relationship_type"), errors))) < length(errors))
+    if (length(errors) > 0) && (
+        sum(.!isnothing.(match.(Regex("entry_type|relationship_type"), errors))) < length(errors)
+    )
         println("At least one error occurred! Resetting the database!")
         close(conn)
         throw(join(errors, ""))

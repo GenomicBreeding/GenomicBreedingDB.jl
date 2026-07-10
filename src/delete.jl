@@ -1,7 +1,7 @@
 function delete_names!(
     conn::LibPQ.Connection;
-    df::DataFrame, 
-    table::String, 
+    df::DataFrame,
+    table::String,
     df_col::String,
     verbose::Bool = false,
 )::Nothing
@@ -10,20 +10,28 @@ function delete_names!(
     # table = "entries"
     # df_col = "entries"
     # verbose::Bool = true
-    if df_col ∉ names(df)
-        throw("The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!")
+    if df_col∉names(df)
+        throw(
+            "The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
+        )
     end
-    uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
+    uploaded_names =
+        select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
     existing_names = let
         df_tmp = try
-            DataFrame(execute(conn,"SELECT name FROM $table;"))
+            DataFrame(execute(conn, "SELECT name FROM $table;"))
         catch
-            throw("Missing \"$table\" table in the database! (Note that the existence of the 'name' field is checked every time a connection to the database is made via `dbconnect()`.)")
+            throw(
+                "Missing \"$table\" table in the database! (Note that the existence of the 'name' field is checked every time a connection to the database is made via `dbconnect()`.)",
+            )
         end
         String.(string.(df_tmp[:, 1]))
     end
     counter = 0
-    pb = ProgressMeter.Progress(length(uploaded_names), "Deleting names listed in \"$df_col\" from \"$table\" table...")
+    pb = ProgressMeter.Progress(
+        length(uploaded_names),
+        "Deleting names listed in \"$df_col\" from \"$table\" table...",
+    )
     execute(conn, "BEGIN")
     try
         for x in uploaded_names
@@ -35,7 +43,7 @@ function delete_names!(
                     DELETE FROM $table
                     WHERE name = \$1;
                     """,
-                    [x]
+                    [x],
                 )
                 counter += 1
                 verbose ? ProgressMeter.next!(pb) : nothing
