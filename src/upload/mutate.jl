@@ -66,33 +66,49 @@ function add_col!(df::DataFrame; col::String, value::Union{Nothing,String})::Not
     nothing
 end
 
+
 """
-    parse_layouts!(df::DataFrame)::Nothing
+    parse_layouts!(df::DataFrame; is_trial::Bool=true)::Nothing
 
-Parse and validate layout information columns in a DataFrame.
+Parse and standardise trial layout columns in a DataFrame.
 
-This function processes the layout-related columns (`:replications`, `:blocks`, `:rows`, `:cols`)
-in a DataFrame, converting them to `Int64` vectors if they are not already in that format.
+This function processes the layout-related columns `:replications`, `:blocks`,
+`:rows`, and `:cols`, converting them to `Int64` vectors when necessary and
+reconstructing the `:layouts` column from the parsed values.
 
 # Arguments
-- `df::DataFrame`: A DataFrame containing trial layout information with columns for replications,
-  blocks, rows, and columns.
+- `df::DataFrame`: A DataFrame containing layout information.
+
+# Keyword Arguments
+- `is_trial::Bool=true`: If `true`, validates `df` using `validate_trials()`
+  before parsing. Set to `false` to skip validation.
 
 # Details
-The function attempts to parse each layout column by:
-1. Validating the entire DataFrame using `validate_trials()`
-2. For each layout column, extracting the numeric portion by splitting on `"_"`, `"-"`, and `"|"` 
-   characters and taking the last element
-3. Converting the extracted strings to `Int64` values
+For each of the layout columns `:replications`, `:blocks`, `:rows`, and `:cols`:
 
-If a column is already of type `Vector{Int64}`, it is skipped.
+1. If the column is already a `Vector{Int64}`, it is left unchanged.
+2. Otherwise, each value is converted to an integer by repeatedly splitting on
+   `"_"`, `"-"`, and `"|"` and taking the final element after each split.
+3. The resulting strings are parsed as `Int64`.
+
+After successful parsing, the `:layouts` column is regenerated using the format
+
+`"<replication>-<block>-<row>-<col>"`.
+
+Examples of supported input values include:
+
+- `"rep_1"` → `1`
+- `"block-2"` → `2`
+- `"column|10"` → `10`
 
 # Returns
-`Nothing` - Modifies the DataFrame in-place.
+`Nothing`.
+
+The input DataFrame is modified in-place.
 
 # Throws
-- `String`: If parsing of any layout column fails, throws an error message indicating which 
-  column could not be parsed.
+- `ErrorException`: If any of the layout columns cannot be parsed as integers.
+  The error message identifies the offending column.
 
 # Example
 
@@ -120,8 +136,8 @@ julia> df_2 == df_expected
 true
 ```
 """
-function parse_layouts!(df::DataFrame)::Nothing
-    validate_trials(df)
+function parse_layouts!(df::DataFrame; is_trial::Bool=true)::Nothing
+    is_trial ? validate_trials(df) : nothing
     for f in [:replications, :blocks, :rows, :cols]
         # f = :replications
         isa(df[!, f], Vector{Int64}) ? continue : nothing
