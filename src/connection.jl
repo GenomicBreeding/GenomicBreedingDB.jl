@@ -66,7 +66,8 @@ end
 Initialize the database by executing SQL statements from a schema file.
 
 This function connects to the database, reads SQL statements from the specified schema file,
-and executes them sequentially. Each statement in the file should be separated by semicolons.
+and executes them sequentially (except for functions, i.e. between dollar signs which gets
+executed as a single string unit). Each statement in the file should be separated by semicolons.
 If an error occurs during execution, the transaction is rolled back automatically.
 
 # Arguments
@@ -83,8 +84,25 @@ function dbinit(schema_path::String = "db/schema.sql")::Nothing
     conn = dbconnect()
     sql = read(schema_path, String)
     errors = []
+    psql_function = String[]
     for stmt in split(sql, ';')
+        # stmt = split(sql, ';')[1]
+        # stmt = split(sql, ';')[4]
         stmt = strip(stmt)
+        stmt = if .!isnothing(match(Regex("[\$]"), stmt)) && (length(psql_function) > 0)
+            # Function end
+            psql_function = push!(psql_function, stmt)
+            stmt = join(psql_function, "; ")
+            psql_function = String[]
+            stmt
+        elseif .!isnothing(match(Regex("[\$]"), stmt)) || (length(psql_function) > 0)
+            # Function start or body
+            psql_function = push!(psql_function, stmt)
+            continue
+        else
+            # Not a function
+            stmt
+        end
         isempty(stmt) && continue
         # println(stmt)
         try

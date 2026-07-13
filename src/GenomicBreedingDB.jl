@@ -11,6 +11,7 @@ using Random, Dates
 include("connection.jl")
 include("delete.jl")
 include("upload/checks.jl")
+include("upload/simulate.jl")
 include("upload/load.jl")
 include("upload/mutate.jl")
 include("upload/upload.jl")
@@ -20,7 +21,9 @@ include("download/download.jl")
 
 export dbconnect, dbinit
 export delete_names!
-export check_illegal_strings, simulate, load_trial_df, validate_trials, validate_date
+export check_illegal_strings
+export simulate_trial, simulate_environment
+export load_trial_df, validate_trials, validate_date
 export add_col!, parse_layouts!, add_measurement_dates!
 export insert_names!,
     update_table_field_by_name!,

@@ -35,7 +35,7 @@ Progress tracking is displayed if `verbose=true`.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
@@ -63,7 +63,7 @@ function insert_names!(
     verbose::Bool = false,
 )::Nothing
     # conn::LibPQ.Connection = dbconnect()
-    # df = CSV.read(simulate(), DataFrame)
+    # df = CSV.read(simulate_trial(), DataFrame)
     # table = "entries"
     # df_col = "entries"
     # verbose::Bool = true
@@ -166,7 +166,7 @@ Update a specific field in a database table by matching records based on a name 
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
@@ -202,7 +202,7 @@ function update_table_field_by_name!(
     verbose::Bool = false,
 )::Nothing
     # conn::LibPQ.Connection = dbconnect()
-    # df = CSV.read(simulate(), DataFrame); add_measurement_dates!(df, measurement_dates=measurement_dates)
+    # df = CSV.read(simulate_trial(), DataFrame); add_measurement_dates!(df, measurement_dates=measurement_dates)
     # table = "measurements"
     # df_name_col = "measurements"
     # df_source_col = "dates"
@@ -386,7 +386,7 @@ All inserts are executed inside a single database transaction:
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
@@ -408,7 +408,7 @@ function insert_layouts!(
     verbose::Bool = false,
 )::Nothing
     # conn::LibPQ.Connection = dbconnect()
-    # df = load_trial_df(simulate())
+    # df = load_trial_df(simulate_trial())
     # verbose::Bool = true
     parse_layouts!(df)
     ids = split.(unique(df.layouts), "-")
@@ -473,7 +473,6 @@ Insert entry relationship records into the database from a DataFrame.
     + `parent_is`
     + `maternal_parent_is`
     + `paternal_parent_is`
-    + `not_set_yet`
 
 # Behaviour
 - Validates that all required columns are present in the input DataFrame
@@ -491,7 +490,7 @@ Insert entry relationship records into the database from a DataFrame.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
@@ -529,7 +528,7 @@ function insert_entry_relationships!(
         missing_columns = setdiff(expected_columns, names(df))
         if "relationship_types" ∈ missing_columns
             error(
-                "We have missing columns: [\"$(join(missing_columns, "\", \""))\"]. (Hint: relationship_types: {\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\", \"not_set_yet\"})",
+                "We have missing columns: [\"$(join(missing_columns, "\", \""))\"]. (Hint: relationship_types: {\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\"})",
             )
         else
             error("We have missing columns: [\"$(join(missing_columns, "\", \""))\"]")
@@ -557,7 +556,6 @@ function insert_entry_relationships!(
                 "parent_is",
                 "maternal_parent_is",
                 "paternal_parent_is",
-                "not_set_yet",
             ]
                 error("Invalide relationship type: \"$rel_type\".")
             end
@@ -632,7 +630,7 @@ The function uses database transactions for data consistency, where all inserts 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> conn = dbconnect();
 
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
@@ -835,7 +833,7 @@ The function performs the following operations in sequence:
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname);
 
@@ -895,7 +893,7 @@ function load_trial_data!(
     verbose::Bool = false,
 )::Nothing
     # conn = dbconnect()
-    # fname = simulate()
+    # fname = simulate_trial()
     # missing_strings::Union{String, Char, Vector{String}, Vector{Char}} = ["missing", "NA", "na", "N/A", "n/a", ""]
     # species::String = "Lolium multiflorum"
     # experiment::String = "STR_trial-2026"
@@ -905,14 +903,14 @@ function load_trial_data!(
     # population_type::Union{Nothing, String} = "population"
     # relationship_type::Union{Nothing, String} = "parent_is"
     # verbose::Bool = true
-    if entry_type∉["cultivar", "population", "individual", "family", "not_set_yet"]
+    if entry_type∉["cultivar", "population", "individual", "family"]
         error(
-            "Invalid entry_type: \"$entry_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\", \"not_set_yet\"].",
+            "Invalid entry_type: \"$entry_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\"].",
         )
     end
-    if population_type∉["cultivar", "population", "individual", "family", "not_set_yet"]
+    if population_type∉["cultivar", "population", "individual", "family"]
         error(
-            "Invalid population_type: \"$population_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\", \"not_set_yet\"].",
+            "Invalid population_type: \"$population_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\"].",
         )
     end
     if relationship_type∉[
@@ -921,10 +919,9 @@ function load_trial_data!(
         "parent_is",
         "maternal_parent_is",
         "paternal_parent_is",
-        "not_set_yet",
     ]
         error(
-            "Invalid relationship_type: \"$relationship_type\". Choose from: [\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\", \"not_set_yet\"].",
+            "Invalid relationship_type: \"$relationship_type\". Choose from: [\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\"].",
         )
     end
     # Load the trial data which assumed by default to be in Trial struct delimited file format (see: https://genomicbreeding.github.io/GenomicBreedingIO.jl/stable/#GenomicBreedingIO.readdelimited-Tuple{Type{GenomicBreedingCore.Trials}})

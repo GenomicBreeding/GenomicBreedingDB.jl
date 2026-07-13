@@ -142,7 +142,7 @@ The following columns are exempt from character validation: `replications`, `blo
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 

@@ -24,7 +24,7 @@ Verifies and adds a column in a DataFrame filling it with a single specified str
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
@@ -38,8 +38,8 @@ julia> size(df)
 ```
 """
 function add_col!(df::DataFrame; col::String, value::Union{Nothing,String})::Nothing
-    # df = CSV.read(simulate(), DataFrame); col = "species"; value = nothing
-    # df = CSV.read(simulate(), DataFrame); col = "species"; value = "Lolium multiflorum"
+    # df = CSV.read(simulate_trial(), DataFrame); col = "species"; value = nothing
+    # df = CSV.read(simulate_trial(), DataFrame); col = "species"; value = "Lolium multiflorum"
     if col ∈ names(df)
         if !isnothing(value)
             @warn(
@@ -177,7 +177,7 @@ Throws an error if:
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname); measurements = String.(unique(df.measurements));
 
@@ -193,9 +193,9 @@ function add_measurement_dates!(
     df::DataFrame;
     measurement_dates::Union{Nothing,Dict{String,String}},
 )::Nothing
-    # df = CSV.read(simulate(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
-    # df = CSV.read(simulate(), DataFrame); df[!, "dates"] = String.(df.measurements); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
-    # df = CSV.read(simulate(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in unique(df.measurements)]
+    # df = CSV.read(simulate_trial(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
+    # df = CSV.read(simulate_trial(), DataFrame); df[!, "dates"] = String.(df.measurements); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
+    # df = CSV.read(simulate_trial(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in unique(df.measurements)]
     if "dates" ∈ names(df)
         if !isnothing(measurement_dates)
             @warn("Using the \"dates\" col in the dataframe.")
