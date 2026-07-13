@@ -30,7 +30,8 @@ julia> x_legals = String["geno_1", "2026-07-08", "ABC-def_123-2026", "camelCase"
 
 julia> x_illegals = String["geno.1", "2026/07/08", "ABC|def_123-2026;", "#camelCase%", "∈LEMENT"];
 
-julia> check_illegal_strings(x_legals)
+julia> isnothing(check_illegal_strings(x_legals))
+true
 
 julia> try check_illegal_strings(x_illegals); catch; true; end
 true

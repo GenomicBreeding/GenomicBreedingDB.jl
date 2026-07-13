@@ -151,7 +151,7 @@ Update a specific field in a database table by matching records based on a name 
 - Validates that the target table and field exist in the database.
 - Validates string columns using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names. The following characters are not allowed: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`. Non-ASCII characters are also rejected.
 - Automatically handles foreign key relationships when the destination field ends with "_id" by looking up IDs from the related table.
-- Updates the `updated_at` timestamp for each modified record.
+- Updates the `updated_at` timestamp for each modified record (Note: the PostgreSQL schema does this automatically for the metadata table, hence redundant here but I like to be explicit here).
 - Uses database transactions (BEGIN/COMMIT/ROLLBACK) to ensure atomicity.
 - Throws an error if the number of affected rows is unexpected (i.e. ero or more than 1) or if the table is empty.
 - Displays a progress meter if verbose mode is enabled.
@@ -176,7 +176,7 @@ julia> df.species .= string.("test_update_table-", Dates.time() |> x -> replace(
 
 julia> conn = dbconnect();
 
-julia> insert_names!(conn, df=df, table="entries", df_col="entries")
+julia> insert_names!(conn, df=df, table="entries", df_col="entries");
 
 julia> insert_names!(conn, df=df, table="species", df_col="species");
 
@@ -325,6 +325,7 @@ function update_table_field_by_name!(
                 """,
                 [df_tmp[i, df_source_col], df_tmp[i, df_name_col]],
             )
+            # Note that the schema also automatically updates the `updated_at` field in the meta data tables (excludes `phenotype_data` and `environment_data` tables)
             if LibPQ.num_affected_rows(res) != 1
                 error(
                     "Unexepcted number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"!",
@@ -502,9 +503,9 @@ julia> df[!, "relationship_types"] .= "member_of";
 
 julia> conn = dbconnect();
 
-julia> insert_names!(conn, df=df, table="entries", df_col="entries")
+julia> insert_names!(conn, df=df, table="entries", df_col="entries");
 
-julia> insert_names!(conn, df=df, table="entries", df_col="populations")
+julia> insert_names!(conn, df=df, table="entries", df_col="populations");
 
 julia> df_before = LibPQ.execute(conn, "SELECT * FROM entry_relationships") |> DataFrame;
 
