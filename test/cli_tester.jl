@@ -3,6 +3,6 @@ using JuliaFormatter
 Pkg.activate(".")
 Pkg.update()
 # Format
-format(".")
+format(".", margin = 120)
 # Test
 include("runtests.jl")

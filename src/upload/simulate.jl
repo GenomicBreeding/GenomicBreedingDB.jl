@@ -59,11 +59,7 @@ function simulate_trial(;
     # fname_output::String = "simulated_trial_data.tsv"; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing; sparsity=0.05
     # additional_params::Union{Nothing, Dict{String, String}} = Dict("species" => "Lolium multiflorum", "experiments" => "STR_trial-2026", "treatments" => "control")
     genomes = GenomicBreedingCore.simulategenomes(verbose = verbose)
-    (trials, _) = GenomicBreedingCore.simulatetrials(
-        genomes = genomes,
-        sparsity = sparsity,
-        verbose = verbose,
-    )
+    (trials, _) = GenomicBreedingCore.simulatetrials(genomes = genomes, sparsity = sparsity, verbose = verbose)
     if overwrite && isfile(fname_output)
         rm(fname_output)
     end
@@ -75,10 +71,8 @@ function simulate_trial(;
             try
                 check_illegal_strings([k, v])
             catch e
-                new_error = join([
-                    "Illegal string/s in the requested new column [name=$k, value=$v]!\n",
-                    sprint(showerror, e),
-                ])
+                new_error =
+                    join(["Illegal string/s in the requested new column [name=$k, value=$v]!\n", sprint(showerror, e)])
                 error(new_error)
             end
             df[!, k] .= v
@@ -177,11 +171,9 @@ function simulate_environment(
     verbose::Bool = false,
 )::String
     # fname_trial = simulate_trial(); fname_output::String = "simulated_environment_data.tsv"; overwrite::Bool = true; verbose::Bool = false; n_measurements_in_between_phenotypings::Int64 = 10; sparsity=0.05
-    df_trial = fname_trial |> 
-        x -> CSV.read(x, DataFrame) |> 
-        x -> rename(x, "#years" => "years")
+    df_trial = fname_trial |> x -> CSV.read(x, DataFrame) |> x -> rename(x, "#years" => "years")
     validate_trials(df_trial)
-    if "measurements" ∉ names(df_trial)
+    if "measurements"∉names(df_trial)
         error("Missing required measurement dates!")
     end
     measurements = sort([String("$x") for x in unique(df_trial.measurements)])
@@ -193,20 +185,17 @@ function simulate_environment(
             # x = measurements[1]
             d = Date(x, dateformat"yyyy-mm-dd")
             append!(
-                measurement_dates, 
-                [String("$x") for x in collect(d:Day(1):(d+Day(n_measurements_in_between_phenotypings)))]
+                measurement_dates,
+                [String("$x") for x in collect(d:Day(1):(d+Day(n_measurements_in_between_phenotypings)))],
             )
         end
     else
-        for i in 2:length(measurements)
+        for i = 2:length(measurements)
             # i = 2
             d_ini = Date(measurements[i-1], dateformat"yyyy-mm-dd")
             d_fin = Date(measurements[i], dateformat"yyyy-mm-dd")
             d_step = Day(ceil((d_fin - d_ini) / Day(n_measurements_in_between_phenotypings)))
-            append!(
-                measurement_dates, 
-                [String("$x") for x in collect(d_ini:d_step:d_fin)]
-            )
+            append!(measurement_dates, [String("$x") for x in collect(d_ini:d_step:d_fin)])
         end
     end
     measurement_dates = unique(measurement_dates)
@@ -233,7 +222,7 @@ function simulate_environment(
     existing_id_columns = vcat(["measurements"], existing_id_columns)
     # Instantiate the output dataframe using the unique id combinations
     df = DataFrame()
-    for j in 1:length(existing_id_columns)
+    for j = 1:length(existing_id_columns)
         # j = 1
         df[!, existing_id_columns[j]] = [String(x[j]) for x in ids_concat_split]
     end
@@ -249,7 +238,7 @@ function simulate_environment(
     pb = ProgressMeter.Progress(length(environment_variables), "Simulation environmental data...")
     for (k, v) in environment_variables
         # k = "rainfall_mm_per_day"; v = environment_variables[k]
-        y::Vector{Union{Missing, Float64}} = rand(v, nrow(df))
+        y::Vector{Union{Missing,Float64}} = rand(v, nrow(df))
         y = if n_missing == 0
             y
         else

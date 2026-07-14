@@ -86,10 +86,7 @@ function check_illegal_strings(
         if !isascii(xi)
             xi_chars = collect(xi)
             idx_non_ascii = findall([!isascii(c) for c in xi_chars])
-            push!(
-                errors,
-                "Non-ASCII character/s [$(join(xi_chars[idx_non_ascii], ", "))] in $xi.",
-            )
+            push!(errors, "Non-ASCII character/s [$(join(xi_chars[idx_non_ascii], ", "))] in $xi.")
         end
         illegal_matches = collect(xi) ∩ illegal_characters
         if length(illegal_matches) > 0
@@ -153,15 +150,10 @@ true
 """
 function validate_trials(df::DataFrame)::Nothing
     required_columns = sort(
-        filter(
-            x -> isnothing(match(Regex("phenotypes|traits"), x)),
-            String.(string.(collect(fieldnames(Trials)))),
-        ),
+        filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))),
     )
     if required_columns != sort(required_columns ∩ names(df))
-        error(
-            "Missing columns: [\"$(join(setdiff(required_columns, names(df)), "\", \""))\"].",
-        )
+        error("Missing columns: [\"$(join(setdiff(required_columns, names(df)), "\", \""))\"].")
     end
     for x in setdiff(required_columns, ["replications", "blocks", "rows", "cols"])
         # x = setdiff(required_columns, ["replications", "blocks", "rows", "cols"])[1]
@@ -169,8 +161,7 @@ function validate_trials(df::DataFrame)::Nothing
             try
                 check_illegal_strings(String.(unique(df[!, x])))
             catch e
-                new_error =
-                    join(["Illegal string in the \"$x\" column!\n", sprint(showerror, e)])
+                new_error = join(["Illegal string in the \"$x\" column!\n", sprint(showerror, e)])
                 error(new_error)
             end
         end
@@ -229,9 +220,7 @@ function validate_date(date::String)::Nothing
         ((length(date_split[3]) < 1) && (length(date_split[3]) > 2)) ||
         sum(isnothing.(tryparse.(Int64, date_split))) > 0
     )
-        error(
-            "Invalid date format: \"$date\". We expect \"yyyy-mm-dd\" format, where all values are integers.",
-        )
+        error("Invalid date format: \"$date\". We expect \"yyyy-mm-dd\" format, where all values are integers.")
     end
     nothing
 end

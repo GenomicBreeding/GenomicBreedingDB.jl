@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS traits (
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Environmental variables (e.g., temperature, rainfall, humidity, soil moisture, soil pH, soil nutrients)
-CREATE TABLE IF NOT EXISTS environmental_variables (
+CREATE TABLE IF NOT EXISTS environment_variables (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT UNIQUE NOT NULL,
     notes TEXT,
@@ -232,19 +232,19 @@ CREATE TABLE IF NOT EXISTS phenotype_data (
 -- CREATE TABLE phenotype_data_p9 PARTITION OF phenotype_data FOR VALUES WITH (MODULUS 10, REMAINDER 9);
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
--- Environmental measurements (all environmental data are numeric for simplicity, i.e. convert categorical environmental variables into numerics and just put notes on the environmental variables table)
--- layout_id is included here to allow for spatially resolved environmental data, e.g.:
+-- Environmental measurements (all environment data are numeric for simplicity, i.e. convert categorical environment variables into numerics and just put notes on the environment variables table)
+-- layout_id is included here to allow for spatially resolved environment data, e.g.:
 --      soil moisture at different plots within a field trial, 
---      where for entire site-level environmental data, the layout_id can be set to a default layout with a single plot (e.g., "1-1-1-1")
--- Similar to phenotype_data, we can do partitioning in the future, i.e. by experiment_id because as environmental data becomes large and partitioning by experiment_id will allow for more efficient queries and data management.
-CREATE TABLE IF NOT EXISTS environmental_data (
+--      where for entire site-level environment data, the layout_id can be set to a default layout with a single plot (e.g., "1-1-1-1")
+-- Similar to phenotype_data, we can do partitioning in the future, i.e. by experiment_id because as environment data becomes large and partitioning by experiment_id will allow for more efficient queries and data management.
+CREATE TABLE IF NOT EXISTS environment_data (
     id UUID PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
     experiment_id UUID NOT NULL REFERENCES experiments(id),
     site_id UUID NOT NULL REFERENCES sites(id),
     treatment_id UUID NOT NULL REFERENCES treatments(id),
     measurement_id UUID NOT NULL REFERENCES measurements(id),
     layout_id UUID NOT NULL REFERENCES layouts(id),
-    environmental_variable_id UUID NOT NULL REFERENCES environmental_variables(id),
+    environment_variable_id UUID NOT NULL REFERENCES environment_variables(id),
     value DOUBLE PRECISION,
     -- PRIMARY KEY (id, experiment_id), -- for partitioning
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -252,20 +252,20 @@ CREATE TABLE IF NOT EXISTS environmental_data (
     CHECK (
         value IS NULL OR value = value
     ),
-    CONSTRAINT unique_environmental_data
-        UNIQUE (experiment_id, site_id, treatment_id, layout_id, measurement_id, environmental_variable_id)
+    CONSTRAINT unique_environment_data
+        UNIQUE (experiment_id, site_id, treatment_id, layout_id, measurement_id, environment_variable_id)
 );
 -- PARTITION BY HASH (experiment_id);
--- CREATE TABLE environmental_data_p0 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 0);
--- CREATE TABLE environmental_data_p1 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 1);
--- CREATE TABLE environmental_data_p2 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 2);
--- CREATE TABLE environmental_data_p3 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 3);
--- CREATE TABLE environmental_data_p4 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 4);
--- CREATE TABLE environmental_data_p5 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 5);
--- CREATE TABLE environmental_data_p6 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 6);
--- CREATE TABLE environmental_data_p7 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 7);
--- CREATE TABLE environmental_data_p8 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 8);
--- CREATE TABLE environmental_data_p9 PARTITION OF environmental_data FOR VALUES WITH (MODULUS 10, REMAINDER 9);
+-- CREATE TABLE environment_data_p0 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 0);
+-- CREATE TABLE environment_data_p1 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 1);
+-- CREATE TABLE environment_data_p2 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 2);
+-- CREATE TABLE environment_data_p3 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 3);
+-- CREATE TABLE environment_data_p4 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 4);
+-- CREATE TABLE environment_data_p5 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 5);
+-- CREATE TABLE environment_data_p6 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 6);
+-- CREATE TABLE environment_data_p7 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 7);
+-- CREATE TABLE environment_data_p8 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 8);
+-- CREATE TABLE environment_data_p9 PARTITION OF environment_data FOR VALUES WITH (MODULUS 10, REMAINDER 9);
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------
 -- Reference genomes
@@ -391,9 +391,9 @@ CREATE TRIGGER trg_treatments_updated_at BEFORE UPDATE ON treatments FOR EACH RO
 CREATE TRIGGER trg_layouts_updated_at BEFORE UPDATE ON layouts FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_measurements_updated_at BEFORE UPDATE ON measurements FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_traits_updated_at BEFORE UPDATE ON traits FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_environmental_variables_updated_at BEFORE UPDATE ON environmental_variables FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_environment_variables_updated_at BEFORE UPDATE ON environment_variables FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- CREATE TRIGGER trg_phenotype_data_updated_at BEFORE UPDATE ON phenotype_data FOR EACH ROW EXECUTE FUNCTION set_updated_at(); -- commented-out for efficiency and will do manually in Julia when updating phenotype_data
--- CREATE TRIGGER trg_environmental_data_updated_at BEFORE UPDATE ON environmental_data FOR EACH ROW EXECUTE FUNCTION set_updated_at(); -- commented-out for efficiency and will do manually in Julia when updating phenotype_data
+-- CREATE TRIGGER trg_environment_data_updated_at BEFORE UPDATE ON environment_data FOR EACH ROW EXECUTE FUNCTION set_updated_at(); -- commented-out for efficiency and will do manually in Julia when updating phenotype_data
 CREATE TRIGGER trg_reference_genomes_updated_at BEFORE UPDATE ON reference_genomes FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_genotype_vcfs_updated_at BEFORE UPDATE ON genotype_vcfs FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_genomes_updated_at BEFORE UPDATE ON genomes FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -411,7 +411,7 @@ CREATE INDEX IF NOT EXISTS idx_treatments_name_trgm ON treatments USING gin (nam
 CREATE INDEX IF NOT EXISTS idx_layouts_name_trgm ON layouts USING gin (name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_measurements_name_trgm ON measurements USING gin (name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_traits_name_trgm ON traits USING gin (name gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_environmental_variables_name_trgm ON environmental_variables USING gin (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_environment_variables_name_trgm ON environment_variables USING gin (name gin_trgm_ops);
 -- Relationships and foreign keys
 CREATE INDEX IF NOT EXISTS idx_entry_rel_child  ON entry_relationships(child_id);
 CREATE INDEX IF NOT EXISTS idx_entry_rel_parent ON entry_relationships(parent_id);
@@ -429,13 +429,13 @@ CREATE INDEX IF NOT EXISTS idx_pheno_entry ON phenotype_data(entry_id);
 CREATE INDEX IF NOT EXISTS idx_pheno_entry_trait ON phenotype_data(entry_id, trait_id);
 CREATE INDEX IF NOT EXISTS idx_pheno_trait_measurement ON phenotype_data(trait_id, measurement_id);
 -- Environmental data foreign keys
-CREATE INDEX IF NOT EXISTS idx_env_experiment ON environmental_data(experiment_id);
-CREATE INDEX IF NOT EXISTS idx_env_site ON environmental_data(site_id);
-CREATE INDEX IF NOT EXISTS idx_env_treatment ON environmental_data(treatment_id);
-CREATE INDEX IF NOT EXISTS idx_env_layout ON environmental_data(layout_id);
-CREATE INDEX IF NOT EXISTS idx_env_measurement ON environmental_data(measurement_id);
-CREATE INDEX IF NOT EXISTS idx_env_variable ON environmental_data(environmental_variable_id);
-CREATE INDEX IF NOT EXISTS idx_env_variable_measurement ON environmental_data(environmental_variable_id, measurement_id);
+CREATE INDEX IF NOT EXISTS idx_env_experiment ON environment_data(experiment_id);
+CREATE INDEX IF NOT EXISTS idx_env_site ON environment_data(site_id);
+CREATE INDEX IF NOT EXISTS idx_env_treatment ON environment_data(treatment_id);
+CREATE INDEX IF NOT EXISTS idx_env_layout ON environment_data(layout_id);
+CREATE INDEX IF NOT EXISTS idx_env_measurement ON environment_data(measurement_id);
+CREATE INDEX IF NOT EXISTS idx_env_variable ON environment_data(environment_variable_id);
+CREATE INDEX IF NOT EXISTS idx_env_variable_measurement ON environment_data(environment_variable_id, measurement_id);
 -- Genomic data main tables
 CREATE INDEX IF NOT EXISTS idx_reference_genomes_name_trgm ON reference_genomes USING gin (name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_genotype_vcfs_name_trgm ON genotype_vcfs USING gin (name gin_trgm_ops);
@@ -459,7 +459,7 @@ CREATE INDEX IF NOT EXISTS idx_phenome_experiments_experiment ON phenome_experim
 CREATE INDEX IF NOT EXISTS idx_phenome_sites_site ON phenome_sites(site_id);
 CREATE INDEX IF NOT EXISTS idx_phenome_treatments_treatment ON phenome_treatments(treatment_id);
 CREATE INDEX IF NOT EXISTS idx_phenome_measurements_measurement ON phenome_measurements(measurement_id);
--- Additional indexes for phenotype_data and environmental_data tables to improve query performance
+-- Additional indexes for phenotype_data and environment_data tables to improve query performance
 CREATE INDEX idx_pheno_trait_site ON phenotype_data(trait_id, site_id);
 CREATE INDEX idx_pheno_trait_experiment ON phenotype_data(trait_id, experiment_id);
-CREATE INDEX idx_env_var_measurement ON environmental_data(environmental_variable_id, measurement_id);
+CREATE INDEX idx_env_var_measurement ON environment_data(environment_variable_id, measurement_id);

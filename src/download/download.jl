@@ -67,9 +67,7 @@ function checkparams(params)::Nothing
         end
     end
     if length(illegal_chars_found) > 0
-        error(
-            "Illegal characters found in the following parameters:\n$(params)\ni.e.: $(illegal_chars_found).",
-        )
+        error("Illegal characters found in the following parameters:\n$(params)\ni.e.: $(illegal_chars_found).")
     end
     # Return nothing
     return nothing
@@ -135,11 +133,7 @@ function querytable(
         catch
             throw(ArgumentError("The table $table does not exist."))
         end
-        colres = execute(
-            conn,
-            "SELECT column_name FROM information_schema.columns WHERE table_name = \$1",
-            [table],
-        )
+        colres = execute(conn, "SELECT column_name FROM information_schema.columns WHERE table_name = \$1", [table])
         valid_cols = Set(row[1] for row in colres)
         if !ismissing(fields)
             checkparams(fields)
@@ -246,26 +240,23 @@ function databasesummary()::DataFrame
             table, col, dtype = row
             # Base counts
             n = first(execute(conn, "SELECT COUNT(*) FROM $table"))[1]
-            n_missing =
-                first(execute(conn, "SELECT COUNT(*) FROM $table WHERE $col IS NULL"))[1]
+            n_missing = first(execute(conn, "SELECT COUNT(*) FROM $table WHERE $col IS NULL"))[1]
             minv = maxv = meanv = medianv = modev = missing
             if n > 0
                 # Numeric types
                 if dtype ∈ ("integer", "bigint", "numeric", "real", "double precision")
-                    stats = first(
-                        execute(
-                            conn,
-                            """
-                                SELECT
-                                    MIN($col),
-                                    MAX($col),
-                                    AVG($col),
-                                    percentile_cont(0.5) WITHIN GROUP (ORDER BY $col)
-                                FROM $table
-                                WHERE $col IS NOT NULL
-                            """,
-                        ),
-                    )
+                    stats = first(execute(
+                        conn,
+                        """
+                            SELECT
+                                MIN($col),
+                                MAX($col),
+                                AVG($col),
+                                percentile_cont(0.5) WITHIN GROUP (ORDER BY $col)
+                            FROM $table
+                            WHERE $col IS NOT NULL
+                        """,
+                    ))
                     minv, maxv, meanv, medianv = stats
                     # String types
                 elseif dtype ∈ ("uuid", "text", "character varying")
@@ -282,10 +273,7 @@ function databasesummary()::DataFrame
                     ))[1]
                 end
             end
-            push!(
-                results,
-                (table, col, dtype, n, n_missing, minv, maxv, meanv, medianv, modev),
-            )
+            push!(results, (table, col, dtype, n, n_missing, minv, maxv, meanv, medianv, modev))
         end
         return results
     catch e

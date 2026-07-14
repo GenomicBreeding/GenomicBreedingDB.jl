@@ -75,12 +75,10 @@ function insert_names!(
     try
         check_illegal_strings(String.(unique(df[!, df_col])))
     catch e
-        new_error =
-            join(["Illegal string in the \"$df_col\" column!\n", sprint(showerror, e)])
+        new_error = join(["Illegal string in the \"$df_col\" column!\n", sprint(showerror, e)])
         error(new_error)
     end
-    uploaded_names =
-        select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
+    uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
     existing_names = let
         df_tmp = try
             DataFrame(execute(conn, "SELECT name FROM $table;"))
@@ -96,10 +94,8 @@ function insert_names!(
         String.(string.(df_tmp[:, 1]))
     end
     counter = 0
-    pb = ProgressMeter.Progress(
-        length(uploaded_names),
-        "Inserting names listed in \"$df_col\" into \"$table\" table...",
-    )
+    pb =
+        ProgressMeter.Progress(length(uploaded_names), "Inserting names listed in \"$df_col\" into \"$table\" table...")
     execute(conn, "BEGIN")
     try
         for x in uploaded_names
@@ -221,53 +217,41 @@ function update_table_field_by_name!(
     try
         check_illegal_strings(String.(unique(df[!, df_name_col])))
     catch e
-        new_error =
-            join(["Illegal string in the \"$df_name_col\" column!\n", sprint(showerror, e)])
+        new_error = join(["Illegal string in the \"$df_name_col\" column!\n", sprint(showerror, e)])
         error(new_error)
     end
     if eltype(df[!, df_source_col]) <: AbstractString
         try
             check_illegal_strings(String.(unique(df[!, df_source_col])))
         catch e
-            new_error = join([
-                "Illegal string in the \"$df_source_col\" column!\n",
-                sprint(showerror, e),
-            ])
+            new_error = join(["Illegal string in the \"$df_source_col\" column!\n", sprint(showerror, e)])
             error(new_error)
         end
     end
-    table_exists =
-        nrow(DataFrame(execute(
-            conn,
-            """
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_name = \$1
-            """,
-            [table],
-        ))) > 0
+    table_exists = nrow(DataFrame(execute(
+        conn,
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = \$1
+        """,
+        [table],
+    ))) > 0
     if !table_exists
         error("The \"$table\" table does not exist in the database!")
     end
-    field_exists =
-        nrow(
-            DataFrame(
-                execute(
-                    conn,
-                    """
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = \$1
-                    AND column_name = \$2
-                    """,
-                    [table, table_destination_field],
-                ),
-            ),
-        ) > 0
+    field_exists = nrow(DataFrame(execute(
+        conn,
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = \$1
+        AND column_name = \$2
+        """,
+        [table, table_destination_field],
+    ))) > 0
     if !field_exists
-        error(
-            "The \"$table_destination_field\" field does not exist in the \"$table\" table!",
-        )
+        error("The \"$table_destination_field\" field does not exist in the \"$table\" table!")
     end
     # We extract the ids if we need to update the ids from some related table, i.e. if we have the pattern "*_id" for the `table_destination_field`
     df_tmp = if split(table_destination_field, "_")[end] == "id"
@@ -283,12 +267,7 @@ function update_table_field_by_name!(
         ids = String[]
         for x in String.(string.(df_tmp[!, df_source_col]))
             # x = df_tmp[!, df_source_col][1]
-            push!(
-                ids,
-                execute(conn, "SELECT id FROM $root_table WHERE name = \$1", [x]) |>
-                DataFrame |>
-                x -> first(x.id),
-            )
+            push!(ids, execute(conn, "SELECT id FROM $root_table WHERE name = \$1", [x]) |> DataFrame |> x -> first(x.id))
         end
         df_tmp[!, df_source_col] = ids
         df_tmp
@@ -302,10 +281,7 @@ function update_table_field_by_name!(
     )
     execute(conn, "BEGIN")
     try
-        bool =
-            execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |>
-            DataFrame |>
-            x -> x.exists[1]
+        bool = execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |> DataFrame |> x -> x.exists[1]
         if !bool
             error(
                 "The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.",
@@ -437,16 +413,11 @@ julia> n == m
 true
 ```
 """
-function insert_layouts!(
-    conn::LibPQ.Connection;
-    df::DataFrame,
-    is_trial::Bool = true,
-    verbose::Bool = false,
-)::Nothing
+function insert_layouts!(conn::LibPQ.Connection; df::DataFrame, is_trial::Bool = true, verbose::Bool = false)::Nothing
     # conn::LibPQ.Connection = dbconnect()
     # df = load_trial_df(simulate_trial())
     # verbose::Bool = true
-    parse_layouts!(df, is_trial=is_trial)
+    parse_layouts!(df, is_trial = is_trial)
     ids = split.(unique(df.layouts), "-")
     execute(conn, "BEGIN")
     counter = 0
@@ -478,9 +449,7 @@ function insert_layouts!(
         end
         if verbose
             ProgressMeter.finish!(pb)
-            println(
-                "Inserted $counter relationships between entries in the \"$table\" table.",
-            )
+            println("Inserted $counter relationships between entries in the \"$table\" table.")
         end
         execute(conn, "COMMIT")
     catch e
@@ -554,11 +523,7 @@ julia> nrow(df_before) < nrow(df_after)
 true
 ```
 """
-function insert_entry_relationships!(
-    conn::LibPQ.Connection;
-    df::DataFrame,
-    verbose::Bool = false,
-)::Nothing
+function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool = false)::Nothing
     expected_columns = ["entries", "populations", "relationship_types"]
     if sum([x∉names(df) for x in expected_columns]) > 0
         missing_columns = setdiff(expected_columns, names(df))
@@ -571,9 +536,7 @@ function insert_entry_relationships!(
         end
     end
     entry_population_relationship =
-        string.(df.entries, "|||", df.populations, "|||", df.relationship_types) |>
-        unique |>
-        x -> split.(x, "|||")
+        string.(df.entries, "|||", df.populations, "|||", df.relationship_types) |> unique |> x -> split.(x, "|||")
     counter = 0
     pb = ProgressMeter.Progress(
         length(entry_population_relationship),
@@ -586,23 +549,13 @@ function insert_entry_relationships!(
             child = entry_population_relationship[i][1]
             parent = entry_population_relationship[i][2]
             rel_type = entry_population_relationship[i][3]
-            if rel_type∉[
-                "member_of",
-                "clone_of",
-                "parent_is",
-                "maternal_parent_is",
-                "paternal_parent_is",
-            ]
+            if rel_type∉["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"]
                 error("Invalide relationship type: \"$rel_type\".")
             end
             child_id =
-                execute(conn, "SELECT id FROM entries WHERE name = \$1", [child]) |>
-                DataFrame |>
-                x -> first(x.id)
+                execute(conn, "SELECT id FROM entries WHERE name = \$1", [child]) |> DataFrame |> x -> first(x.id)
             parent_id =
-                execute(conn, "SELECT id FROM entries WHERE name = \$1", [parent]) |>
-                DataFrame |>
-                x -> first(x.id)
+                execute(conn, "SELECT id FROM entries WHERE name = \$1", [parent]) |> DataFrame |> x -> first(x.id)
             execute(
                 conn,
                 """
@@ -622,9 +575,7 @@ function insert_entry_relationships!(
         end
         if verbose
             ProgressMeter.finish!(pb)
-            println(
-                "Inserted $counter relationships between entries in the \"entry_relationships\" table.",
-            )
+            println("Inserted $counter relationships between entries in the \"entry_relationships\" table.")
         end
         execute(conn, "COMMIT")
     catch e
@@ -708,21 +659,8 @@ true
 julia> close(conn);
 ```
 """
-function insert_phenotype_data!(
-    conn::LibPQ.Connection;
-    df::DataFrame,
-    traits::Vector{String},
-    verbose::Bool = false,
-)
-    tables = [
-        "entries",
-        "experiments",
-        "sites",
-        "treatments",
-        "layouts",
-        "measurements",
-        "traits",
-    ]
+function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::Vector{String}, verbose::Bool = false)
+    tables = ["entries", "experiments", "sites", "treatments", "layouts", "measurements", "traits"]
     names_in_db::Dict{String,DataFrame} = Dict()
     errors = String[]
     for table in tables
@@ -748,14 +686,11 @@ function insert_phenotype_data!(
             # i = 7
             # println(i)
             entry_id = filter(x->x.name==df.entries[i], names_in_db["entries"]).id[1]
-            experiment_id =
-                filter(x->x.name==df.experiments[i], names_in_db["experiments"]).id[1]
+            experiment_id = filter(x->x.name==df.experiments[i], names_in_db["experiments"]).id[1]
             site_id = filter(x->x.name==df.sites[i], names_in_db["sites"]).id[1]
-            treatment_id =
-                filter(x->x.name==df.treatments[i], names_in_db["treatments"]).id[1]
+            treatment_id = filter(x->x.name==df.treatments[i], names_in_db["treatments"]).id[1]
             layout_id = filter(x->x.name==df.layouts[i], names_in_db["layouts"]).id[1]
-            measurement_id =
-                filter(x->x.name==df.measurements[i], names_in_db["measurements"]).id[1]
+            measurement_id = filter(x->x.name==df.measurements[i], names_in_db["measurements"]).id[1]
             for trait in traits
                 # trait = traits[2]
                 # println(trait)
@@ -788,16 +723,7 @@ function insert_phenotype_data!(
                         trait_id
                     ) DO NOTHING
                     """,
-                    [
-                        entry_id,
-                        experiment_id,
-                        site_id,
-                        treatment_id,
-                        layout_id,
-                        measurement_id,
-                        trait_id,
-                        y,
-                    ],
+                    [entry_id, experiment_id, site_id, treatment_id, layout_id, measurement_id, trait_id, y],
                 )
                 verbose ? ProgressMeter.next!(pb) : nothing
             end
@@ -949,13 +875,7 @@ function upload_trial_data!(
             "Invalid population_type: \"$population_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\"].",
         )
     end
-    if relationship_type∉[
-        "member_of",
-        "clone_of",
-        "parent_is",
-        "maternal_parent_is",
-        "paternal_parent_is",
-    ]
+    if relationship_type∉["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"]
         error(
             "Invalid relationship_type: \"$relationship_type\". Choose from: [\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\"].",
         )
@@ -977,40 +897,12 @@ function upload_trial_data!(
     insert_layouts!(conn, df = df)
     # Insert the names if they do not yet exist
     insert_names!(conn, df = df, table = "species", df_col = "species", verbose = verbose)
-    insert_names!(
-        conn,
-        df = df,
-        table = "experiments",
-        df_col = "experiments",
-        verbose = verbose,
-    )
-    insert_names!(
-        conn,
-        df = df,
-        table = "treatments",
-        df_col = "treatments",
-        verbose = verbose,
-    )
+    insert_names!(conn, df = df, table = "experiments", df_col = "experiments", verbose = verbose)
+    insert_names!(conn, df = df, table = "treatments", df_col = "treatments", verbose = verbose)
     insert_names!(conn, df = df, table = "sites", df_col = "sites", verbose = verbose)
-    insert_names!(
-        conn,
-        df = df,
-        table = "measurements",
-        df_col = "measurements",
-        verbose = verbose,
-    )
-    # insert_names!(conn, df=df, table="layouts", df_col="layouts", verbose=verbose)
+    insert_names!(conn, df = df, table = "measurements", df_col = "measurements", verbose = verbose)
     insert_names!(conn, df = df, table = "entries", df_col = "entries", verbose = verbose)
-    insert_names!(
-        conn,
-        df = df,
-        table = "entries",
-        df_col = "populations",
-        verbose = verbose,
-    )
-    # insert_names!(conn, df=df, table="entries", df_col="layouts", verbose=verbose)
-    # delete_names!(conn, df=df, table="entries", df_col="layouts", verbose=verbose)
-    # execute(conn, "SELECT * FROM entries") |> DataFrame
+    insert_names!(conn, df = df, table = "entries", df_col = "populations", verbose = verbose)
     # Update the measurement dates
     update_table_field_by_name!(
         conn,
@@ -1030,10 +922,6 @@ function upload_trial_data!(
         table_destination_field = "notes",
         verbose = verbose,
     )
-    # df_tmp = execute(conn, "SELECT * FROM measurements") |> DataFrame |> x -> select(x, [:name])
-    # delete_names!(conn, df=df_tmp, table="measurements", df_col="name", verbose=verbose)
-    # execute(conn, "SELECT * FROM measurements") |> DataFrame
-    # Update the entries with their corresponding types and species
     update_table_field_by_name!(
         conn,
         df = df,
@@ -1061,60 +949,372 @@ function upload_trial_data!(
         table_destination_field = "species_id",
         verbose = verbose,
     )
-    # execute(conn, "SELECT * FROM entries") |> DataFrame
-    # Insert the relationships between entries and populations found in the data
     insert_entry_relationships!(conn, df = df, verbose = verbose)
-    # execute(conn, "SELECT * FROM entry_relationships") |> DataFrame
-    # ids_parents = execute(conn, "SELECT * FROM entry_relationships") |> DataFrame |> x -> unique(x.parent_id)
-    # execute(conn, "SELECT * FROM entries WHERE id IN (\$1)", [join(ids_parents, ",")]) |> DataFrame
     # Extract the traits, i.e. numeric fields which are not layout or dates fields
     traits = extract_traits(df, verbose = verbose)
-    insert_names!(
-        conn,
-        df = DataFrame(traits = traits),
-        table = "traits",
-        df_col = "traits",
-        verbose = verbose,
-    )
-    # df_tmp = execute(conn, "SELECT name FROM traits") |> DataFrame |> x -> filter(xi -> isnothing(match(Regex("trait"), xi.name)), x)
-    # delete_names!(conn, df=df_tmp, table="traits", df_col="name")
-    # execute(conn, "SELECT * FROM traits") |> DataFrame
+    insert_names!(conn, df = DataFrame(traits = traits), table = "traits", df_col = "traits", verbose = verbose)
     # Finally, insert/update the phenotype data using the combinations of the ids each entry-experiment-site-treatment-layout-measurement combinations
     insert_phenotype_data!(conn, df = df, traits = traits, verbose = verbose)
-    # execute(conn, "SELECT * FROM phenotype_data") |> DataFrame
-    # execute(conn, "SELECT id, value FROM phenotype_data") |> DataFrame
     nothing
 end
 
 
+"""
+    insert_environment_data!(
+        conn::LibPQ.Connection;
+        df::DataFrame,
+        environment_variables::Vector{String},
+        verbose::Bool=false,
+    )::Nothing
 
-function upload_environmental_data!(
+Insert environmental measurements into the `environment_data` table.
+
+This function inserts environmental observations from a DataFrame into the
+database. Each environmental value is linked to an experiment, site,
+treatment, layout, measurement, and environmental variable using the
+corresponding identifiers stored in the database.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: An open PostgreSQL connection.
+- `df::DataFrame`: A DataFrame containing environmental measurements and
+  associated metadata.
+- `environment_variables::Vector{String}`: Names of environmental-variable
+  columns in `df` to import.
+
+# Keyword Arguments
+
+- `verbose::Bool=false`: If `true`, displays a progress bar while importing
+  data.
+
+# Details
+
+The function expects the following lookup tables to have already been
+initialised and populated:
+
+- `experiments`
+- `sites`
+- `treatments`
+- `layouts`
+- `measurements`
+- `environment_variables`
+
+For each row of `df`, the function:
+
+1. Looks up the corresponding identifiers for the experiment, site,
+   treatment, layout, and measurement.
+2. Iterates over each environmental variable listed in
+   `environment_variables`.
+3. Looks up the identifier of the environmental variable.
+4. Inserts the environmental value into the `environment_data` table.
+
+Missing values are converted to `NaN` before insertion.
+
+Duplicate records are ignored using the unique constraint on
+
+`(experiment_id, site_id, treatment_id, layout_id, measurement_id, environment_variable_id)`.
+
+# Transaction Behaviour
+
+All inserts are performed within a single database transaction.
+
+- On success, the transaction is committed.
+- On failure, the transaction is rolled back and the original exception is
+  rethrown.
+
+# Returns
+
+`Nothing`.
+
+# Throws
+
+- `ErrorException`: If one or more required lookup tables have not been
+  initialised.
+- Any exception generated during identifier lookup, query execution, or
+  transaction handling.
+
+# Example
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> fname_trial = simulate_trial(); fname_environment = simulate_environment(fname_trial);
+
+julia> df = load_environment_df(fname_environment);
+
+julia> add_col!(df, col = "replications", value = "1"); add_col!(df, col = "blocks", value = "1"); add_col!(df, col = "rows", value = "1"); add_col!(df, col = "cols", value = "1"); add_col!(df, col = "experiments", value = "exp-42"); add_col!(df, col = "treatments", value = "trt-42");
+
+julia> add_measurement_dates!(df);
+
+julia> insert_layouts!(conn, df = df, is_trial = false); insert_names!(conn, df = df, table = "experiments", df_col = "experiments"); insert_names!(conn, df = df, table = "treatments", df_col = "treatments"); insert_names!(conn, df = df, table = "sites", df_col = "sites"); insert_names!(conn, df = df, table = "measurements", df_col = "measurements");
+
+julia> environment_variables = extract_environment_variables(df);
+
+julia> insert_names!(conn, df = DataFrame(environment_variables = environment_variables), table = "environment_variables", df_col = "environment_variables");
+
+julia> insert_environment_data!(conn, df=df, environment_variables=environment_variables);
+
+julia> execute(conn, "SELECT id,value FROM environment_data") |> DataFrame |> nrow > 0
+true
+
+julia> close(conn); rm.([fname_trial, fname_environment]);
+
+```
+"""
+function insert_environment_data!(
+    conn::LibPQ.Connection;
+    df::DataFrame,
+    environment_variables::Vector{String},
+    verbose::Bool = false,
+)
+    # conn = dbconnect(); fname = simulate_trial() |> simulate_environment; missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]; experiment="some-exp"; treatment="some_trt"; df = load_environment_df(fname, missing_strings=missing_strings); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]]; verbose::Bool = true
+    # df = load_environment_df(fname, missing_strings = missing_strings)
+    # add_col!(df, col = "replications", value = "1")
+    # add_col!(df, col = "blocks", value = "1")
+    # add_col!(df, col = "rows", value = "1")
+    # add_col!(df, col = "cols", value = "1")
+    # add_col!(df, col = "experiments", value = experiment)
+    # add_col!(df, col = "treatments", value = treatment)
+    # add_measurement_dates!(df; measurement_dates = measurement_dates)
+    # insert_layouts!(conn, df = df, is_trial = false)
+    # insert_names!(conn, df = df, table = "experiments", df_col = "experiments", verbose = verbose)
+    # insert_names!(conn, df = df, table = "treatments", df_col = "treatments", verbose = verbose)
+    # insert_names!(conn, df = df, table = "sites", df_col = "sites", verbose = verbose)
+    # insert_names!(conn, df = df, table = "measurements", df_col = "measurements", verbose = verbose)
+    # environment_variables = extract_environment_variables(df, verbose = verbose)
+    # insert_names!(conn, df = DataFrame(environment_variables = environment_variables), table = "environment_variables", df_col = "environment_variables", verbose = verbose)
+    tables = ["experiments", "sites", "treatments", "layouts", "measurements", "environment_variables"]
+    names_in_db::Dict{String,DataFrame} = Dict()
+    errors = String[]
+    for table in tables
+        # table = tables[end]
+        names_df = if table != "environment_variables"
+            String.(unique(df[!, table]))
+        else
+            environment_variables
+        end
+        try
+            names_in_db[table] = extract_ids(conn, names = names_df, table = table)
+        catch
+            push!(errors, "Please initialise the \"$table\" table!")
+        end
+    end
+    if length(errors) > 0
+        error(join(string.("\n\t- ", errors)))
+    end
+    pb = ProgressMeter.Progress(nrow(df)*length(environment_variables), "Importing environment data...")
+    execute(conn, "BEGIN")
+    try
+        for i = 1:nrow(df)
+            # i = 1
+            # println(i)
+            experiment_id = filter(x->x.name==df.experiments[i], names_in_db["experiments"]).id[1]
+            site_id = filter(x->x.name==df.sites[i], names_in_db["sites"]).id[1]
+            treatment_id = filter(x->x.name==df.treatments[i], names_in_db["treatments"]).id[1]
+            layout_id = filter(x->x.name==df.layouts[i], names_in_db["layouts"]).id[1]
+            measurement_id = filter(x->x.name==df.measurements[i], names_in_db["measurements"]).id[1]
+            for environment_variable in environment_variables
+                # environment_variable = environment_variables[2]
+                # println(environment_variable)
+                environment_variable_id =
+                    filter(x->x.name==environment_variable, names_in_db["environment_variables"]).id[1]
+                y = !ismissing(df[i, environment_variable]) ? df[i, environment_variable] : NaN
+                # y = NaN
+                execute(
+                    conn,
+                    """
+                    INSERT INTO environment_data
+                    (
+                        experiment_id,
+                        site_id,
+                        treatment_id,
+                        layout_id,
+                        measurement_id,
+                        environment_variable_id,
+                        value
+                    )
+                    VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7)
+                    ON CONFLICT 
+                    (
+                        experiment_id,
+                        site_id,
+                        treatment_id,
+                        layout_id,
+                        measurement_id,
+                        environment_variable_id
+                    ) DO NOTHING
+                    """,
+                    [experiment_id, site_id, treatment_id, layout_id, measurement_id, environment_variable_id, y],
+                )
+                verbose ? ProgressMeter.next!(pb) : nothing
+            end
+        end
+        verbose ? ProgressMeter.finish!(pb) : nothing
+        execute(conn, "COMMIT")
+    catch e
+        execute(conn, "ROLLBACK")
+        rethrow(e)
+    end
+    # execute(conn, "SELECT id,value FROM environment_data") |> DataFrame
+    nothing
+end
+
+
+"""
+    upload_environment_data!(
+        conn::LibPQ.Connection;
+        fname::String,
+        missing_strings::Vector{String}=[
+            "missing",
+            "NA",
+            "na",
+            "N/A",
+            "n/a",
+            "",
+        ],
+        experiment::Union{Nothing,String}=nothing,
+        treatment::Union{Nothing,String}=nothing,
+        measurement_dates::Union{Nothing,Dict{String,String}}=nothing,
+        verbose::Bool=false,
+    )::Nothing
+
+Load environmental data from a file and upload it to the database.
+
+This function provides a high-level workflow for importing environmental data.
+It loads an environmental data file, standardises required metadata columns,
+identifies environmental variables, updates lookup tables as needed, and
+inserts the resulting observations into the `environment_data` table.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: An open PostgreSQL connection.
+- `fname::String`: Path to an environmental data file.
+
+# Keyword Arguments
+
+- `missing_strings::Vector{String}`: Strings that should be interpreted as
+  missing values when importing the file.
+- `experiment::Union{Nothing,String}=nothing`: Experiment name to assign to
+  all observations.
+- `treatment::Union{Nothing,String}=nothing`: Treatment name to assign to all
+  observations.
+- `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Dictionary
+  mapping measurement names to measurement dates. Passed directly to
+  `add_measurement_dates!()`.
+- `verbose::Bool=false`: If `true`, displays progress and summary information
+  during import.
+
+# Required Columns
+
+The input file must contain the following columns:
+
+- `measurements`
+- `sites`
+
+# Optional Columns
+
+The following layout columns are optional:
+
+- `replications`
+- `blocks`
+- `rows`
+- `cols`
+
+If any of these columns are missing, they are automatically added and assigned
+the value `"1"` for all rows.
+
+# Details
+
+The function performs the following steps:
+
+1. Loads the environmental data using `load_environment_df()`.
+2. Verifies that the required columns `measurements` and `sites` are present.
+3. Ensures the layout columns `replications`, `blocks`, `rows`, and `cols`
+   exist.
+4. Adds `experiments` and `treatments` columns using the supplied keyword
+   arguments.
+5. Adds measurement-date information using `add_measurement_dates!()`.
+6. Identifies environmental-variable columns using
+   `extract_environmental_variables()`.
+7. Inserts any missing records into the:
+   - `layouts`
+   - `experiments`
+   - `treatments`
+   - `sites`
+   - `measurements`
+   - `environment_variables`
+   
+   tables.
+8. Inserts environmental observations into the `environment_data` table using
+   `insert_environment_data!()`.
+
+Existing records are ignored where appropriate through the underlying insert
+functions.
+
+# Returns
+
+`Nothing`.
+
+# Throws
+
+- `ErrorException`: If `fname` does not exist.
+- `ErrorException`: If either the `measurements` or `sites` column is missing.
+- Any exception generated by file loading, environmental-variable extraction,
+  database insertion, or transaction handling in the underlying functions.
+
+# Example
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> fname_trial = simulate_trial(); fname_environment = simulate_environment(fname_trial);
+
+julia> upload_environment_data!(conn, fname=fname_environment, experiment="exp-1", treatment="trt-42");
+
+julia> execute(conn, "SELECT id,value FROM environment_data") |> DataFrame |> nrow > 0
+true
+
+julia> close(conn); rm.([fname_trial, fname_environment]);
+```
+"""
+function upload_environment_data!(
     conn::LibPQ.Connection;
     fname::String,
     missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""],
-    experiment::Union{Nothing, String} = nothing,
-    treatment::Union{Nothing, String} = nothing,
-    measurement_dates::Union{Nothing, Dict{String, String}} = nothing,
+    experiment::Union{Nothing,String} = nothing,
+    treatment::Union{Nothing,String} = nothing,
+    measurement_dates::Union{Nothing,Dict{String,String}} = nothing,
+    verbose::Bool = false,
 )::Nothing
-    # conn = dbconnect(); fname = simulate_trial() |> simulate_environment; missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]; experiment="some-exp"; treatment="some_trt"; measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]]
-    df = load_environmental_df(fname, missing_strings=missing_strings)
+    # conn = dbconnect(); fname = simulate_trial() |> simulate_environment; missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]; experiment="some-exp"; treatment="some_trt"; df = load_environment_df(fname, missing_strings=missing_strings); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]]; verbose::Bool = true
+    df = load_environment_df(fname, missing_strings = missing_strings)
     if length(names(df) ∩ ["measurements", "sites"]) != 2
-        error("The environmental data file: \"$fname\" is missing one or more of these columns: [\"measurements\", \"sites\"].")
+        error(
+            "The environment data file: \"$fname\" is missing one or more of these columns: [\"measurements\", \"sites\"].",
+        )
     end
     spatial_cols = names(df) ∩ ["replications", "blocks", "rows", "cols"]
-    "replications" ∉ spatial_cols ? add_col!(df, col="replications", value="1") : nothing
-    "blocks" ∉ spatial_cols ? add_col!(df, col="blocks", value="1") : nothing
-    "rows" ∉ spatial_cols ? add_col!(df, col="rows", value="1") : nothing
-    "cols" ∉ spatial_cols ? add_col!(df, col="cols", value="1") : nothing
-    !isnothing(experiment) ? add_col!(df, col="experiments", value=experiment) : nothing
-    !isnothing(treatment) ? add_col!(df, col="treatments", value=treatment) : nothing
+    "replications"∉spatial_cols ? add_col!(df, col = "replications", value = "1") : nothing
+    "blocks"∉spatial_cols ? add_col!(df, col = "blocks", value = "1") : nothing
+    "rows"∉spatial_cols ? add_col!(df, col = "rows", value = "1") : nothing
+    "cols"∉spatial_cols ? add_col!(df, col = "cols", value = "1") : nothing
+    add_col!(df, col = "experiments", value = experiment)
+    add_col!(df, col = "treatments", value = treatment)
     add_measurement_dates!(df; measurement_dates = measurement_dates)
+    environment_variables = extract_environment_variables(df, verbose = verbose)
     # Upload/update the database
-    insert_layouts!(conn, df = df, is_trial=false)
+    insert_layouts!(conn, df = df, is_trial = false)
     insert_names!(conn, df = df, table = "experiments", df_col = "experiments", verbose = verbose)
     insert_names!(conn, df = df, table = "treatments", df_col = "treatments", verbose = verbose)
     insert_names!(conn, df = df, table = "sites", df_col = "sites", verbose = verbose)
     insert_names!(conn, df = df, table = "measurements", df_col = "measurements", verbose = verbose)
-
+    insert_names!(
+        conn,
+        df = DataFrame(environment_variables = environment_variables),
+        table = "environment_variables",
+        df_col = "environment_variables",
+        verbose = verbose,
+    )
+    insert_environment_data!(conn, df = df, environment_variables = environment_variables)
     nothing
 end

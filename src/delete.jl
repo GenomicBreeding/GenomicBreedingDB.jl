@@ -15,8 +15,7 @@ function delete_names!(
             "The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
         )
     end
-    uploaded_names =
-        select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
+    uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
     existing_names = let
         df_tmp = try
             DataFrame(execute(conn, "SELECT name FROM $table;"))
@@ -28,10 +27,7 @@ function delete_names!(
         String.(string.(df_tmp[:, 1]))
     end
     counter = 0
-    pb = ProgressMeter.Progress(
-        length(uploaded_names),
-        "Deleting names listed in \"$df_col\" from \"$table\" table...",
-    )
+    pb = ProgressMeter.Progress(length(uploaded_names), "Deleting names listed in \"$df_col\" from \"$table\" table...")
     execute(conn, "BEGIN")
     try
         for x in uploaded_names

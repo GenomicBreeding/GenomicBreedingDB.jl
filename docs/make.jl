@@ -1,12 +1,7 @@
 using GenomicBreedingDB
 using Documenter
 
-DocMeta.setdocmeta!(
-    GenomicBreedingDB,
-    :DocTestSetup,
-    :(using GenomicBreedingDB);
-    recursive = true,
-)
+DocMeta.setdocmeta!(GenomicBreedingDB, :DocTestSetup, :(using GenomicBreedingDB); recursive = true)
 
 makedocs(;
     modules = [GenomicBreedingDB],

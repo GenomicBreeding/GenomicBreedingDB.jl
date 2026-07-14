@@ -17,7 +17,7 @@ Extract database IDs for a given list of names from a specified table.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate(fname_output="test.tsv");
+julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
@@ -35,11 +35,7 @@ julia> df_entries.name == sort(unique(df.entries))
 true
 ```
 """
-function extract_ids(
-    conn::LibPQ.Connection;
-    names::Vector{String},
-    table::String,
-)::DataFrame
+function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::String)::DataFrame
     ids = String[]
     for name in names
         # name = names[1]

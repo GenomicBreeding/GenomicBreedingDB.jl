@@ -116,9 +116,8 @@ function dbinit(schema_path::String = "db/schema.sql")::Nothing
         end
     end
     errors = [x.msg for x in errors]
-    if (length(errors) > 0) && (
-        sum(.!isnothing.(match.(Regex("entry_type|relationship_type"), errors))) < length(errors)
-    )
+    if (length(errors) > 0) &&
+       (sum(.!isnothing.(match.(Regex("entry_type|relationship_type"), errors))) < length(errors))
         println("At least one error occurred! Resetting the database!")
         close(conn)
         throw(join(errors, ""))

@@ -42,23 +42,17 @@ function add_col!(df::DataFrame; col::String, value::Union{Nothing,String})::Not
     # df = CSV.read(simulate_trial(), DataFrame); col = "species"; value = "Lolium multiflorum"
     if col ∈ names(df)
         if !isnothing(value)
-            @warn(
-                "Using \"$col\" col in the dataframe instead of the supplied \"$col = $value\"."
-            )
+            @warn("Using \"$col\" col in the dataframe instead of the supplied \"$col = $value\".")
         end
     else
         if isnothing(value)
-            error(
-                "Please define the \"$col\" of the entries in the dataframe as no \"$col\" col was detected.",
-            )
+            error("Please define the value to be inserted into the \"$col\" column of the dataframe.")
         end
         try
             check_illegal_strings([col, value])
         catch e
-            new_error = join([
-                "Illegal string/s in new column name [$col] and/or its value [$value]!\n",
-                sprint(showerror, e),
-            ])
+            new_error =
+                join(["Illegal string/s in new column name [$col] and/or its value [$value]!\n", sprint(showerror, e)])
             error(new_error)
         end
         df[!, col] .= value
@@ -136,7 +130,7 @@ julia> df_2 == df_expected
 true
 ```
 """
-function parse_layouts!(df::DataFrame; is_trial::Bool=true)::Nothing
+function parse_layouts!(df::DataFrame; is_trial::Bool = true)::Nothing
     is_trial ? validate_trials(df) : nothing
     for f in [:replications, :blocks, :rows, :cols]
         # f = :replications
@@ -146,9 +140,7 @@ function parse_layouts!(df::DataFrame; is_trial::Bool=true)::Nothing
             x ->
                 [split(xi, "_")[end] for xi in x] |>
                 x ->
-                    [split(xi, "-")[end] for xi in x] |>
-                    x ->
-                        [split(xi, "|")[end] for xi in x] |> x -> [parse(Int64, xi) for xi in x]
+                    [split(xi, "-")[end] for xi in x] |> x -> [split(xi, "|")[end] for xi in x] |> x -> [parse(Int64, xi) for xi in x]
         catch
             error("Cannot parse $(f)!")
         end
@@ -199,16 +191,20 @@ julia> df = load_trial_df(fname); rm(fname); measurements = String.(unique(df.me
 
 julia> measurement_dates::Dict{String,String} = Dict(); [measurement_dates[x] = x for x in measurements];
 
-julia> add_measurement_dates!(df, measurement_dates=measurement_dates);
+julia> df_1 = deepcopy(df); df_2 = deepcopy(df);
 
-julia> isa(df.dates, Vector{DateTime})
+julia> add_measurement_dates!(df_1);
+
+julia> add_measurement_dates!(df_2, measurement_dates=measurement_dates);
+
+julia> isa(df_1.dates, Vector{DateTime})
+true
+
+julia> df_1.dates == df_2.dates
 true
 ```
 """
-function add_measurement_dates!(
-    df::DataFrame;
-    measurement_dates::Union{Nothing,Dict{String,String}},
-)::Nothing
+function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,Dict{String,String}} = nothing)::Nothing
     # df = CSV.read(simulate_trial(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
     # df = CSV.read(simulate_trial(), DataFrame); df[!, "dates"] = String.(df.measurements); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
     # df = CSV.read(simulate_trial(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in unique(df.measurements)]
@@ -223,32 +219,46 @@ function add_measurement_dates!(
             )
         end
     else
-        if isnothing(measurement_dates)
+        if "measurements"∉names(df)
             error(
-                "Please supply the measurement dates either as \"dates\" in the dataframe or as a dictionary mapping the \"measurements\" with \"dates\". Format of dates: 'yyyy-mm-dd'.",
+                "SInce there is no \"dates\" column in the dataframe we expect a \"measurements\" column instead which we can parse into dates of use the \"measurement_dates\" parameter to map into their respective dates.",
             )
-        end
-        if !(eltype(df[!, :measurements]) <: AbstractString)
-            df.measurements = [String("$x") for x in df.measurements]
-        end
-        measurements = sort(String.(unique(df.measurements)))
-        measurements_input = sort(String.(keys(measurement_dates)))
-        if measurements != sort(measurements ∩ measurements_input)
-            error(
-                "Please define all the dates for all the measurements. We have the following measurements: [$(join(measurements, ", "))] but only the following were defined in the input: [$(join(measurements_input, ", "))]",
-            )
-        end
-        df[!, "dates"] .= Dates.now()
-        for (k, v) in measurement_dates
-            # k = string.(keys(measurement_dates))[1]; v = measurement_dates[k]
-            # v = "10062026"
-            # v = "2025/03/dd"
-            validate_date(v)
-            idx = findall(df.measurements .== k)
-            # println("k=$k; v=$v; length(idx)=$(length(idx))")
-            length(idx) == 0 ? error("Measurement \"$k\" not found in the dataframe!") :
-            nothing
-            df.dates[idx] .= Date(v, dateformat"yyyy-mm-dd")
+        else
+            if !(eltype(df[!, :measurements]) <: AbstractString)
+                df.measurements = [String("$x") for x in df.measurements]
+            end
+            if isnothing(measurement_dates)
+                # Parse df.measurements into dates
+                measurements = sort(String.(unique(df.measurements)))
+                df[!, "dates"] .= Dates.now()
+                for m in measurements
+                    # m = measurements[1]
+                    validate_date(m)
+                    idx = findall(df.measurements .== m)
+                    length(idx) == 0 ? error("Measurement \"$m\" not found in the dataframe!") : nothing
+                    df.dates[idx] .= Date(m, dateformat"yyyy-mm-dd")
+                end
+            else
+                # Use the measurement_dates parameter to map the measurements with their respective dates
+                measurements = sort(String.(unique(df.measurements)))
+                measurements_input = sort(String.(keys(measurement_dates)))
+                if measurements != sort(measurements ∩ measurements_input)
+                    error(
+                        "Please define all the dates for all the measurements. We have the following measurements: [$(join(measurements, ", "))] but only the following were defined in the input: [$(join(measurements_input, ", "))]",
+                    )
+                end
+                df[!, "dates"] .= Dates.now()
+                for (k, v) in measurement_dates
+                    # k = string.(keys(measurement_dates))[1]; v = measurement_dates[k]
+                    # v = "10062026"
+                    # v = "2025/03/dd"
+                    validate_date(v)
+                    idx = findall(df.measurements .== k)
+                    # println("k=$k; v=$v; length(idx)=$(length(idx))")
+                    length(idx) == 0 ? error("Measurement \"$k\" not found in the dataframe!") : nothing
+                    df.dates[idx] .= Date(v, dateformat"yyyy-mm-dd")
+                end
+            end
         end
     end
     nothing
