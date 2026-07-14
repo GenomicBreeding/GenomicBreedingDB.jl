@@ -10,27 +10,26 @@ using Random, Dates
 # Load functions
 include("connection.jl")
 include("delete.jl")
-include("upload/checks.jl")
+include("checks.jl")
 include("upload/simulate.jl")
 include("upload/load.jl")
 include("upload/mutate.jl")
+include("upload/upload_insert.jl")
+include("upload/upload_update.jl")
 include("upload/upload.jl")
 include("download/extract_ids.jl")
 include("download/download.jl")
 
 export dbconnect, dbinit
 export delete_names!
-export check_illegal_strings
+export check_illegal_strings, validate_trials, validate_date
 export simulate_trial, simulate_environment
-export load_trial_df, extract_traits, extract_environment_variables, load_environment_df
-export validate_trials, validate_date
+export load_trial_df, extract_traits, load_environment_df, extract_environment_variables
 export add_col!, parse_layouts!, add_measurement_dates!
-export insert_names!, update_table_field_by_name!, insert_layouts!, insert_entry_relationships!
-export insert_phenotype_data!, upload_trial_data!
-export insert_environment_data!, upload_environment_data!
+export insert_names!, insert_layouts!, insert_entry_relationships!, insert_phenotype_data!, insert_environment_data!
+export update_table_field_by_name!
+export upload_trial_data!, upload_environment_data!
 export extract_ids
 
-# export cleaunptraitnames, uploadtrialsorphenomes, updatedescription
-# export checkparams, querytable #, extractmainfieldstablesandcols, addfilters!, querytrialsandphenomes, queryanalyses, df_to_io
 
 end
