@@ -112,6 +112,42 @@ function check_illegal_strings(
     nothing
 end
 
+function check(conn::LibPQ.Connection, table::String)::Nothing
+    # conn = dbconnect(); table = "rgsg"
+    check_illegal_strings([table])
+    bool = execute(conn, "SELECT to_regclass('public.$table') IS NOT NULL AS table_exists") |> 
+        DataFrame |> 
+        x -> x.table_exists[1]
+    if !bool
+        error("The \"$table\" table does not exist in the database!")
+    end
+    nothing
+end
+
+function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
+    # conn = dbconnect(); table = "phenotype_data"; field = "site_id"; # field = "site"
+    check_illegal_strings([table])
+    check_illegal_strings([field])
+    bool = execute(
+        conn, 
+        """
+        SELECT EXISTS (
+            SELECT 1 
+            FROM pg_attribute 
+            WHERE attrelid = 'public.$table'::regclass 
+            AND attname = '$field'
+            AND NOT attisdropped
+        );
+        """
+    ) |> 
+        DataFrame |> 
+        x -> x.exists[1]
+    if !bool
+        error("The \"$field\" field does not exist in the\"$table\" table!")
+    end
+    nothing
+end
+
 """
     validate_trials(df::DataFrame)::Nothing
 

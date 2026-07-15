@@ -1,66 +1,38 @@
-function list_tables(conn::LibPQ.Connection)::DataFrame
-    # conn = dbconnect()
-    execute(
-        conn, 
-        """
-        SELECT 
-            relname AS table_name, 
-            n_live_tup AS estimated_row_count
-        FROM 
-            pg_stat_user_tables
-        """
-    ) |> DataFrame |> sort
-end
+# function list_tables(conn::LibPQ.Connection)::DataFrame
+#     # conn = dbconnect()
+#     execute(
+#         conn, 
+#         """
+#         SELECT 
+#             relname AS table_name, 
+#             n_live_tup AS estimated_row_count
+#         FROM 
+#             pg_stat_user_tables
+#         """
+#     ) |> DataFrame |> sort
+# end
 
-function exists(conn::LibPQ.Connection, table::String)::Bool
-    # conn = dbconnect(); table = "rgsg"
-    check_illegal_strings([table])
-    execute(conn, "SELECT to_regclass('public.$table') IS NOT NULL AS table_exists") |> 
-        DataFrame |> 
-        x -> x.table_exists[1]
-end
+# function extract_table(conn::LibPQ.Connection, table::String)::DataFrame
+#     # conn = dbconnect(); table = "entries"
+#     check(conn, table)
+#     execute(conn, "SELECT * FROM $table") |>
+#         DataFrame
+# end
 
-function exists(conn::LibPQ.Connection, table::String, field::String)::Bool
-    # conn = dbconnect(); table = "phenotype_data"; field = "site_id"; # field = "site"
-    check_illegal_strings([table])
-    check_illegal_strings([field])
-    execute(
-        conn, 
-        """
-        SELECT EXISTS (
-            SELECT 1 
-            FROM pg_attribute 
-            WHERE attrelid = 'public.$table'::regclass 
-            AND attname = '$field'
-            AND NOT attisdropped
-        );
-        """
-    ) |> 
-        DataFrame |> 
-        x -> x.exists[1]
-end
-
-function extract_table(conn::LibPQ.Connection, table::String)::DataFrame
-    # conn = dbconnect(); table = "entries"
-    !exists(conn, table) ? error("The \"$table\" does not exist!") : nothing
-    execute(conn, "SELECT * FROM $table") |>
-        DataFrame
-end
-
-function meta_table_name_to_field_name(x::String, to_id::Bool = false)::String
-    # to_id = true
-    # x = "entries"; # x = "environment_variables"; # x = "experiments"; # x = "genomes"; # x = "genotype_vcfs"; # x = "layouts"; 
-    # # x = "measurements"; # x = "phenomes"; # x = "reference_genomes"; # x = "sites"; # x = "speciess"; # x = "traits"; # x = "treatments"; 
-    # # x = "child"; # x = "parent"
-    xs = collect(x)
-    x[end] != 's' ? error("We expect a plural table name, e.g. \"entries\", \"traits\", \"sites\", or \"experiments\".") : nothing
-    if x == "entries"
-        to_id ? "entry_id" : "entry"
-    else
-        y = join(xs[1:(end-1)])
-        to_id ? "$(y)_id" : y
-    end
-end
+# function meta_table_name_to_field_name(x::String, to_id::Bool = false)::String
+#     # to_id = true
+#     # x = "entries"; # x = "environment_variables"; # x = "experiments"; # x = "genomes"; # x = "genotype_vcfs"; # x = "layouts"; 
+#     # # x = "measurements"; # x = "phenomes"; # x = "reference_genomes"; # x = "sites"; # x = "speciess"; # x = "traits"; # x = "treatments"; 
+#     # # x = "child"; # x = "parent"
+#     xs = collect(x)
+#     x[end] != 's' ? error("We expect a plural table name, e.g. \"entries\", \"traits\", \"sites\", or \"experiments\".") : nothing
+#     if x == "entries"
+#         to_id ? "entry_id" : "entry"
+#     else
+#         y = join(xs[1:(end-1)])
+#         to_id ? "$(y)_id" : y
+#     end
+# end
 
 """
     Filter
@@ -204,9 +176,7 @@ struct Filter
         # table = "entries"; field = "name"; filter_in = String["entry_100"]; # table = "phenotype_data"; field = "entries"; filter_in = String["entry_100"]; # table = "phenotype_data"; field = "site"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "site_id"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "WQRERWE"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "site"; filter_like = "site"; # table = "phenotype_data"; field = "site"; # table = "phenotype_data"; field = "entry"; filter_in = String["entry_010", "entry_020"]; # table = "phenotype_data"; field = "entry"; filter_in = String["entry_010"]; # table = "phenotype_data"; field = "entry";
         # execute(conn, "SELECT id,value FROM phenotype_data") |> DataFrame
         # table = "phenotype_data"; field = "value"; filter_in = Float64[10.515928568077884]; # table = "phenotype_data"; field = "value"; filter_between = (10, 12); # table = "phenotype_data"; field = "value"; filter_equal_to = 10.515928568077884; # table = "phenotype_data"; field = "value"; filter_less_than = 10; # table = "phenotype_data"; field = "value"; filter_greater_than = 100
-        if !exists(conn, table)
-            error("The \"$table\" does not exist in the database!")
-        end
+        check(conn, table)
         sum([
             !isnothing(filter_like), 
             !isnothing(filter_in), 
@@ -215,9 +185,9 @@ struct Filter
             !isnothing(filter_less_than), 
             !isnothing(filter_greater_than),
         ]) != 1 ? error("We expect one and only one `filter_*` argument!") : nothing
-        field = if exists(conn, table, field)
+        field = try check(conn, table, field)
             field
-        else
+        catch
             if field == "entries"
                 "entry_id"
             else
@@ -229,9 +199,7 @@ struct Filter
                 end
             end
         end
-        if !exists(conn, table, field)
-            error("The \"$field\" field does not exist in the \"$table\" table!")
-        end
+        check(conn, table, field)
         filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
             filter_in, filter_like
         else
@@ -258,39 +226,41 @@ end
 function query_table(
     conn::LibPQ.Connection;
     table::String,
-    output_fields::Vector{String} = ["*"],
     filters::Vector{Filter},
+    output_fields::Vector{String} = ["*"],
+    exclude_fields::Vector{String} = ["id", "created_at", "updated_at"],
     verbose::Bool = false,
 )::DataFrame
     # conn = dbconnect()
     # table = "phenotype_data"
-    # output_fields = String["*"]
     # filters = [
-    #     Filter(conn, table="phenotype_data", field="entry", filter_like="_100"),
+    #     Filter(conn, table="phenotype_data", field="entry", filter_like="_01"),
     #     Filter(conn, table="phenotype_data", field="site", filter_in=["site_1", "site_2"]),
     #     Filter(conn, table="phenotype_data", field="value", filter_between=(10, 20)),
     # ]
+    # output_fields = String["*"]
+    # exclude_fields = ["id", "created_at", "updated_at"]
     # verbose = true
     if output_fields == String["*"]
         check_illegal_strings([table])
     else
         check_illegal_strings(vcat([table], output_fields))
     end
-    sql = String["SELECT $(join(output_fields, ',')) FROM $table WHERE"]
+    sql = String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"]
     par = String[]
-    # TODO: progress meter...
+    pb = ProgressMeter.Progress(length(filters), desc="Defining the query statement...")
     for f in filters
         # f = filters[1]
         n = length(par)
         if !isnothing(f.like)
-            push!(sql, "$(f.field) LIKE $(f.like) AND")
+            push!(sql, "AND $(f.field) ILIKE $(f.like)")
             append!(par, String(f.like))
         elseif !isnothing(f.in)
             s = "($(join(string.("\$", (n+1):(n+length(f.in))), ',')))"
-            push!(sql, "$(f.field) IN $s AND")
+            push!(sql, "AND $(f.field) IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
             append!(par, string.(f.in))
         elseif !isnothing(f.between)
-            push!(sql, "$(f.field) BETWEEN \$$(n+1) AND \$$(n+2) AND")
+            push!(sql, "AND $(f.field) BETWEEN \$$(n+1) AND \$$(n+2)")
             append!(par, string.([f.between[1],f. between[2]]))
         elseif !isnothing(f.equal_to)
             push!(sql, "$(f.field) = \$$(n+1)")
@@ -304,26 +274,28 @@ function query_table(
         else
             error("No filtering defined in $f.")
         end
+        verbose ? ProgressMeter.next!(pb) : nothing
     end
-    sql[end] = replace(sql[end], Regex(" AND\$") => "")
+    if verbose
+        ProgressMeter.finish!(pb)
+        println("Querying...")
+    end
     sql = join(sql, " ")
-    
     df = execute(conn, sql, par) |> DataFrame
-
-    # TODO: when we have *_id in the output fields we extract the metatable for the exact names
+    select!(df, Not(exclude_fields))
+    pb = ProgressMeter.Progress(ncol(df), desc="Converting *_id fields into names...")
     for f in names(df)
-        # f = names(df)[2]
-        f == "id" ? continue : nothing
+        # f = names(df)[6]
+        # f == "id" ? continue : nothing
         isnothing(match(Regex("_id\$"), f)) ? continue : nothing
-
         f = replace(f, Regex("_id\$") => "")
         metatable = f == "entry" ? "entries" : "$(f)s"
-
-        
-
+        values = df[!, "$(f)_id"]
+        df_tmp = execute(conn, "SELECT id,name FROM $metatable WHERE id = ANY(\$1)", [string.(unique(values))]) |> DataFrame
+        df[!, "$(f)_id"] = [df_tmp.name[findfirst(df_tmp.id .== x)] for x in values]
+        rename!(df, "$(f)_id" => f)
+        verbose ? ProgressMeter.next!(pb) : nothing
     end
-
-
-
-    DataFrame()
+    verbose ? ProgressMeter.finish!(pb) : nothing
+    df
 end

@@ -1,13 +1,3 @@
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-
-
 -- PostgreSQL Schema for GenomicBreedingDB.jl
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -17,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Notes
--- All references to id columns are UUIDs and named with the "_id" suffix (e.g. species_id, entries_id, trait_id), which are generated using the gen_random_uuid() function from the pgcrypto extension. 
+-- All references to id columns are UUIDs and named with the "_id" suffix (e.g. species_id, entries_id, trait_id), which are generated using the uuidv7() function from the pgcrypto extension. 
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Entry type
@@ -56,7 +46,7 @@ $$ LANGUAGE plpgsql;
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Species
 CREATE TABLE IF NOT EXISTS species (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     ploidy INT NOT NULL DEFAULT 0,
     notes TEXT,
@@ -71,7 +61,7 @@ CREATE TABLE IF NOT EXISTS species (
 --      - Entry names are unique across all species, i.e. no two entries can have the same name even if they are different species)
 --      - Includes cultivars, populations, individuals, and families
 CREATE TABLE IF NOT EXISTS entries (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     species_id UUID REFERENCES species(id) ON DELETE RESTRICT,
     entry_type entry_type NOT NULL DEFAULT 'not_set_yet',
@@ -87,7 +77,7 @@ CREATE TABLE IF NOT EXISTS entries (
 --         - 'entry_1.1' clone_of 'entry_1'
 --         - 'entry_3' parent_is 'entry_1' AND 'entry_3' parent_is 'entry_2'
 CREATE TABLE IF NOT EXISTS entry_relationships (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     child_id UUID NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
     parent_id UUID NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
     rel_type relationship_type NOT NULL DEFAULT 'not_set_yet',
@@ -107,7 +97,7 @@ CREATE TABLE IF NOT EXISTS entry_relationships (
 --      - plant growth chamber experiments
 --      - animal stall experiments
 CREATE TABLE IF NOT EXISTS experiments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     start_date DATE NOT NULL DEFAULT now(),
     end_date DATE,
@@ -121,7 +111,7 @@ CREATE TABLE IF NOT EXISTS experiments (
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Sites (e.g., Hamilton, Tatura, Mildura)
 CREATE TABLE IF NOT EXISTS sites (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -131,7 +121,7 @@ CREATE TABLE IF NOT EXISTS sites (
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Treatments (e.g., none, control, eNpower, drought)
 CREATE TABLE IF NOT EXISTS treatments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -143,7 +133,7 @@ CREATE TABLE IF NOT EXISTS treatments (
 -- In Julia, the layout is set as the concatenation of replication, block, row, and col, e.g. "1-1-1-1" for replication 1, block 1, row 1, col 1,
 --      which should prevent duplicate plot identifiers across different experiments, sites, and treatments, and also allow for more flexible and robust layout definitions.
 CREATE TABLE IF NOT EXISTS layouts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     replication INT NOT NULL,
     block INT NOT NULL,
@@ -165,7 +155,7 @@ CREATE TABLE IF NOT EXISTS layouts (
 --          + early spring season if an intermediate (non-harvest) measurement,
 --          + assuming the threshold is 15 days into the first month of the season.
 CREATE TABLE IF NOT EXISTS measurements (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     measure_date DATE NOT NULL DEFAULT now(),
     notes TEXT,
@@ -179,7 +169,7 @@ CREATE TABLE IF NOT EXISTS measurements (
 --      I believe it is better to just put the units in the name of the traits just so that the units are in-your-face explicit, and
 --      we can simply add more info in the notes field for each trait if needed.
 CREATE TABLE IF NOT EXISTS traits (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -189,7 +179,7 @@ CREATE TABLE IF NOT EXISTS traits (
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Environmental variables (e.g., temperature, rainfall, humidity, soil moisture, soil pH, soil nutrients)
 CREATE TABLE IF NOT EXISTS environment_variables (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -201,7 +191,7 @@ CREATE TABLE IF NOT EXISTS environment_variables (
 -- Here, we can partition the phenotype_data table by experiment_id in the future as phenotype data becomes very large and partitioning by experiment_id will allow for more efficient queries and data management.
 --      I think 10 partitions is a good starting point, but we can always add more partitions later if needed.
 CREATE TABLE IF NOT EXISTS phenotype_data (
-    id UUID PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY NOT NULL DEFAULT uuidv7(),
     experiment_id UUID NOT NULL REFERENCES experiments(id),
     site_id UUID NOT NULL REFERENCES sites(id),
     treatment_id UUID NOT NULL REFERENCES treatments(id),
@@ -214,7 +204,10 @@ CREATE TABLE IF NOT EXISTS phenotype_data (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (
-        value IS NULL OR value = value
+        value IS NULL OR (
+            value != 'Infinity'::float8 AND
+            value != '-Infinity'::float8
+        )
     ),
     CONSTRAINT unique_phenotype_data
         UNIQUE (experiment_id, site_id, treatment_id, layout_id, measurement_id, entry_id, trait_id)
@@ -238,7 +231,7 @@ CREATE TABLE IF NOT EXISTS phenotype_data (
 --      where for entire site-level environment data, the layout_id can be set to a default layout with a single plot (e.g., "1-1-1-1")
 -- Similar to phenotype_data, we can do partitioning in the future, i.e. by experiment_id because as environment data becomes large and partitioning by experiment_id will allow for more efficient queries and data management.
 CREATE TABLE IF NOT EXISTS environment_data (
-    id UUID PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY NOT NULL DEFAULT uuidv7(),
     experiment_id UUID NOT NULL REFERENCES experiments(id),
     site_id UUID NOT NULL REFERENCES sites(id),
     treatment_id UUID NOT NULL REFERENCES treatments(id),
@@ -250,7 +243,10 @@ CREATE TABLE IF NOT EXISTS environment_data (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (
-        value IS NULL OR value = value
+        value IS NULL OR (
+            value != 'Infinity'::float8 AND
+            value != '-Infinity'::float8
+        )
     ),
     CONSTRAINT unique_environment_data
         UNIQUE (experiment_id, site_id, treatment_id, layout_id, measurement_id, environment_variable_id)
@@ -270,7 +266,7 @@ CREATE TABLE IF NOT EXISTS environment_data (
 ----------------------------------------------------------------------------------------------------------------------------------------------------
 -- Reference genomes
 CREATE TABLE IF NOT EXISTS reference_genomes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     file_path TEXT UNIQUE NOT NULL,
     notes TEXT,
@@ -281,7 +277,7 @@ CREATE TABLE IF NOT EXISTS reference_genomes (
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- VCF files
 CREATE TABLE IF NOT EXISTS genotype_vcfs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     file_path TEXT UNIQUE NOT NULL,
     reference_genome_id UUID NOT NULL REFERENCES reference_genomes(id),
@@ -293,7 +289,7 @@ CREATE TABLE IF NOT EXISTS genotype_vcfs (
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Genomes files (Genomes struct save as JLD2)
 CREATE TABLE IF NOT EXISTS genomes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     file_path TEXT UNIQUE NOT NULL,
     genotype_vcf_id UUID NOT NULL REFERENCES genotype_vcfs(id),
@@ -305,7 +301,7 @@ CREATE TABLE IF NOT EXISTS genomes (
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Phenomes files (Phenomes struct save as JLD2)
 CREATE TABLE IF NOT EXISTS phenomes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     file_path TEXT UNIQUE NOT NULL,
     notes TEXT,
@@ -316,7 +312,7 @@ CREATE TABLE IF NOT EXISTS phenomes (
 ------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Fit files (Fit struct save as JLD2, i.e. genomic prediction model structs)
 CREATE TABLE IF NOT EXISTS fits (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     file_path TEXT UNIQUE NOT NULL,
     notes TEXT,
