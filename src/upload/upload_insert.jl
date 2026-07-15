@@ -67,6 +67,8 @@ function insert_names!(
     # table = "entries"
     # df_col = "entries"
     # verbose::Bool = true
+    check(conn, table)
+    check(conn, table, "name")
     if df_col∉names(df)
         error(
             "The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
@@ -79,20 +81,9 @@ function insert_names!(
         error(new_error)
     end
     uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
-    existing_names = let
-        df_tmp = try
-            DataFrame(execute(conn, "SELECT name FROM $table;"))
-        catch
-            error(
-                join(
-                    "Missing \"$table\" table in the database!\n",
-                    "(Note that the existence of the 'name' field is checked every time a connection to the database is made via `dbconnect()`,\n",
-                    "i.e. for the following tables: 'species', 'entries', 'experiments', 'sites', 'treatments', 'traits', 'measurements', 'reference_genomes', 'genotype_vcfs', 'genomes', 'phenomes', 'fits')",
-                ),
-            )
-        end
-        String.(string.(df_tmp[:, 1]))
-    end
+    existing_names = execute(conn, "SELECT name FROM $table") |>
+        DataFrame |>
+        x -> String.(string.(x[:, 1]))
     counter = 0
     pb =
         ProgressMeter.Progress(length(uploaded_names), "Inserting names listed in \"$df_col\" into \"$table\" table...")
@@ -219,6 +210,7 @@ function insert_layouts!(conn::LibPQ.Connection; df::DataFrame, is_trial::Bool =
     # conn::LibPQ.Connection = dbconnect()
     # df = load_trial_df(simulate_trial())
     # verbose::Bool = true
+    check(conn, "layouts")
     parse_layouts!(df, is_trial = is_trial)
     ids = split.(unique(df.layouts), "-")
     execute(conn, "BEGIN")
@@ -326,6 +318,7 @@ true
 ```
 """
 function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool = false)::Nothing
+    check(conn, "entry_relationships")
     expected_columns = ["entries", "populations", "relationship_types"]
     if sum([x∉names(df) for x in expected_columns]) > 0
         missing_columns = setdiff(expected_columns, names(df))
@@ -462,6 +455,7 @@ julia> close(conn);
 ```
 """
 function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::Vector{String}, verbose::Bool = false)
+    check(conn, "phenotype_data")
     tables = ["entries", "experiments", "sites", "treatments", "layouts", "measurements", "traits"]
     names_in_db::Dict{String,DataFrame} = Dict()
     errors = String[]
@@ -664,6 +658,7 @@ function insert_environment_data!(
     # insert_names!(conn, df = df, table = "measurements", df_col = "measurements", verbose = verbose)
     # environment_variables = extract_environment_variables(df, verbose = verbose)
     # insert_names!(conn, df = DataFrame(environment_variables = environment_variables), table = "environment_variables", df_col = "environment_variables", verbose = verbose)
+    check(conn, "environment_data")
     tables = ["experiments", "sites", "treatments", "layouts", "measurements", "environment_variables"]
     names_in_db::Dict{String,DataFrame} = Dict()
     errors = String[]

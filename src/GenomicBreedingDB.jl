@@ -22,7 +22,7 @@ include("download/download.jl")
 
 export dbconnect, dbinit
 export delete_names!
-export check_illegal_strings, validate_trials, validate_date
+export check_illegal_strings, check, validate_trials, validate_date
 export simulate_trial, simulate_environment
 export load_trial_df, extract_traits, load_environment_df, extract_environment_variables
 export add_col!, parse_layouts!, add_measurement_dates!

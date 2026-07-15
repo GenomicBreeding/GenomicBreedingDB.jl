@@ -12,8 +12,9 @@ Extract database IDs for a given list of names from a specified table.
 - `names::Vector{String}`: Vector of names or search patterns to look up in the table.
 - `table::String`: The name of the table to query.
 - `is_like::Bool=false`: If `false`, perform exact matching using `=`.
-  If `true`, perform pattern matching using SQL `LIKE`. In this case,
+  If `true`, perform case-insensitive pattern matching using SQL `ILIKE`. In this case,
   entries in `names` contain SQL wildcard characters, i.e. "%\$(name)%".
+  Additionally underscores in `names` are escaped so that they are not translated as wildcards.
 
 # Returns
 - `DataFrame`: A DataFrame with two columns:
@@ -25,8 +26,8 @@ Extract database IDs for a given list of names from a specified table.
 - `BoundsError`: If a supplied name or pattern does not match any record in the table.
 
 # Notes
-- When `is_like=false`, each element of `names` is expected to match exactly one record.
-- When `is_like=true`, the first matching `id` returned by the database is used for each pattern.
+- When `is_like=false`, zero or one exact match for each item in `names` is expected.
+- When `is_like=true`, zero or more matches for each case-insensitive pattern in `names` is expected.
 
 # Example
 
@@ -50,20 +51,19 @@ true
 ```
 """
 function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::String, is_like::Bool = false)::DataFrame
-    # conn = dbconnect(); names = String["entry_01", "entry_04"]; table = "entries"; is_like = true
-    df = DataFrame(id=String[], name=String[])
-    for name in names
-        # name = names[1]
-        res = try
-            if !is_like
-                execute(conn, "SELECT id,name FROM $table WHERE name = \$1", [name])
-            else
-                execute(conn, "SELECT id,name FROM $table WHERE name LIKE \$1", ["%$(name)%"])
-            end
-        catch
-            error("The table \"$table\" and/or \"name\" field does not exist.")
+    # conn = dbconnect(); names = String["entry_001", "entry_004"]; table = "entries"; is_like = true
+    check(conn, table)
+    check(conn, table, "name")
+    df = if !is_like
+        DataFrame(execute(conn, "SELECT id,name FROM $table WHERE name = ANY(\$1)", [names]))
+    else
+        df = DataFrame(id=String[], name=String[])
+        for name in names
+            # name = names[1]
+            df_tmp = DataFrame(execute(conn, "SELECT id,name FROM $table WHERE name ILIKE \$1", ["%$(replace(name, "_" => "\\_"))%"]))
+            df = vcat(df, df_tmp)
         end
-        df = vcat(df, DataFrame(res))
+        df
     end
     filter!(x -> !ismissing(x.id), df)
     df.id .= String.(df.id)
@@ -77,16 +77,9 @@ end
 # TODO
 function extract_names(conn::LibPQ.Connection; ids::Vector{String}, table::String)::DataFrame
     # conn = dbconnect(); table = "entries"; ids = extract_ids(conn, names=String["entry_001", "entry_100"], table=table).id;
-    df = DataFrame(id=String[], name=String[])
-    for id in ids
-        # id = ids[1]
-        res = try
-            execute(conn, "SELECT id,name FROM $table WHERE id = \$1", [id])
-        catch
-            error("The table \"$table\" and/or \"name\" field does not exist.")
-        end
-        df = vcat(df, DataFrame(res))
-    end
+    check(conn, table)
+    check(conn, table, "name")
+    df = DataFrame(execute(conn, "SELECT id,name FROM $table WHERE id = ANY(\$1)", [ids]))
     filter!(x -> !ismissing(x.id), df)
     df.id .= String.(df.id)
     df.name .= String.(df.name)
