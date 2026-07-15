@@ -17,7 +17,7 @@ include("upload/mutate.jl")
 include("upload/upload_insert.jl")
 include("upload/upload_update.jl")
 include("upload/upload.jl")
-include("download/extract_ids.jl")
+include("download/extract_ids_names.jl")
 include("download/download.jl")
 
 export dbconnect, dbinit
@@ -29,7 +29,7 @@ export add_col!, parse_layouts!, add_measurement_dates!
 export insert_names!, insert_layouts!, insert_entry_relationships!, insert_phenotype_data!, insert_environment_data!
 export update_table_field_by_name!
 export upload_trial_data!, upload_environment_data!
-export extract_ids
+export extract_ids, extract_names
 
 
 end
