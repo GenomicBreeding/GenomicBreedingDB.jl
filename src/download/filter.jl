@@ -206,6 +206,54 @@ struct Filter
     end
 end
 
+
+"""
+    Base.hash(x::Filter, h::UInt)::UInt
+
+Compute a hash value for a `Filter` object.
+
+This method extends Julia's hashing mechanism for `Filter` objects,
+allowing them to be used in hash-based collections such as `Set` and
+`Dict`. The hash is computed by sequentially combining the hash values
+of all fields in the `Filter` object.
+
+# Arguments
+
+- `x::Filter`: Filter object to hash.
+- `h::UInt`: Initial hash seed.
+
+# Returns
+
+- `UInt`: Hash value for the `Filter` object.
+
+# Notes
+
+- The hash is computed using all fields returned by `fieldnames(typeof(x))`.
+- Defined for the correctness of `unique()` on a `Vector{Filter}`.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> f = Filter(conn, table="entries", field="name", filter_like="_010");
+
+julia> isa(hash(f), UInt)
+true
+
+julia> close(conn);
+```
+"""
+function Base.hash(x::Filter, h::UInt)::UInt
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        h = hash(getfield(x, field), h)
+    end
+    h
+end
+
+
+
 """
     Base.:(==)(x::Filter, y::Filter)::Bool
 
@@ -233,7 +281,6 @@ comparison terminates as soon as a mismatch is found.
   the equality comparison.
 - This implementation performs a field-by-field comparison rather than
   relying on hash values.
-- Primarily for the correctness of `unique()` on a `Vector{Filter}`.
 
 # Examples
 

@@ -7,8 +7,8 @@ Update a specific field in a database table by matching records based on a name 
 - `conn::LibPQ.Connection`: Active database connection.
 - `df::DataFrame`: Source DataFrame containing the data to update.
 - `table::String`: Name of the target table in the database.
-- `df_name_col::String`: Name of the column in `df` used to match records in the database table via the `name` field.
-- `df_source_col::String`: Name of the column in `df` containing the values to update.
+- `df_name_col::String`: Name of the column in `df` whose values are matched against the `name` field of the target database table.
+- `df_source_col::String`: Name of the column in `df` containing the values used to update `table_destination_field`. This may be the same as `df_name_col`.
 - `table_destination_field::String`: Name of the field in the database table to update. If the field name ends with "_id", the function will resolve foreign key references from the corresponding related table.
 - `verbose::Bool`: If `true`, displays a progress bar during the update operation. Defaults to `false`.
 
@@ -16,9 +16,12 @@ Update a specific field in a database table by matching records based on a name 
 - `Nothing`
 
 # Behaviour
-- Validates that both source columns exist in the provided DataFrame.
+- Validates that `df_name_col` and `df_source_col` exist in the provided DataFrame.
+- Supports `df_name_col == df_source_col`, allowing the same column to be used both for row matching and as the source of update values.
 - Validates that the target table and field exist in the database.
-- Validates string columns using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names. The following characters are not allowed: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`. Non-ASCII characters are also rejected.
+- Validates string columns using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names. The following characters are not allowed: `;`, `|`, `,`, `.`, `/`, `\\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`. Non-ASCII characters are also rejected.
+- Supports `df_name_col == df_source_col`, allowing the same column to be used both for row matching and as the source of update values.
+- Removes duplicate update operations by working on unique combinations of matching and source values.
 - Automatically handles foreign key relationships when the destination field ends with "_id" by looking up IDs from the related table.
 - Updates the `updated_at` timestamp for each modified record (Note: the PostgreSQL schema does this automatically for the metadata table, hence redundant here but I like to be explicit here).
 - Uses database transactions (BEGIN/COMMIT/ROLLBACK) to ensure atomicity.
@@ -55,10 +58,22 @@ julia> update_table_field_by_name!(conn, df=df, table="entries", df_name_col="en
 
 julia> df_after = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
 
-julia> close(conn);
-
 julia> sum(.!ismissing.(unique(df_before.species_id))) < sum(.!ismissing.(unique(df_after.species_id)))
 true
+
+julia> update_table_field_by_name!(conn, df=df, table="entries", df_name_col="entries", df_source_col="entries", table_destination_field="name");
+
+julia> df_before = deepcopy(df_after); df_after = LibPQ.execute(conn, "SELECT * FROM entries") |> DataFrame;
+
+julia> sum(.!ismissing.(unique(df_before.name))) == sum(.!ismissing.(unique(df_after.name)))
+true
+
+julia> idx_before = findall(df_before.name .== df.entries[1]); idx_after = findall(df_after.name .== df.entries[1]);
+
+julia> unique(df_before.updated_at[idx_before]) < unique(df_after.updated_at[idx_after]) # also shows that the update_at automatically updates
+true
+
+julia> close(conn);
 ```
 """
 function update_table_field_by_name!(
@@ -104,31 +119,6 @@ function update_table_field_by_name!(
             error(new_error)
         end
     end
-    table_exists = nrow(DataFrame(execute(
-        conn,
-        """
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = \$1
-        """,
-        [table],
-    ))) > 0
-    if !table_exists
-        error("The \"$table\" table does not exist in the database!")
-    end
-    field_exists = nrow(DataFrame(execute(
-        conn,
-        """
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = \$1
-        AND column_name = \$2
-        """,
-        [table, table_destination_field],
-    ))) > 0
-    if !field_exists
-        error("The \"$table_destination_field\" field does not exist in the \"$table\" table!")
-    end
     # We extract the ids if we need to update the ids from some related table, i.e. if we have the pattern "*_id" for the `table_destination_field`
     df_tmp = if split(table_destination_field, "_")[end] == "id"
         df_tmp = unique(select(df, [df_name_col, df_source_col]))
@@ -148,7 +138,7 @@ function update_table_field_by_name!(
         df_tmp[!, df_source_col] = ids
         df_tmp
     else
-        unique(select(df, [df_name_col, df_source_col]))
+        unique(select(df, unique([df_name_col, df_source_col])))
     end
     counter = 0
     pb = ProgressMeter.Progress(

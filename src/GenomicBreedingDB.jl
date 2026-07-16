@@ -29,7 +29,7 @@ export upload_trial_data!, upload_environment_data!
 include("download/extract_ids_names.jl")
 export extract_ids, extract_names
 include("download/filter.jl")
-export Filter, ==
+export Filter, hash, ==
 include("download/download.jl")
 export query_table
 include("download/transform.jl")
