@@ -22,7 +22,7 @@ include("download/download.jl")
 
 export dbconnect, dbinit
 export delete_names!
-export check_illegal_strings, check, validate_trials, validate_date
+export check_illegal_strings, check, validate_trials, validate_date, list_tables, extract_table
 export simulate_trial, simulate_environment
 export load_trial_df, extract_traits, load_environment_df, extract_environment_variables
 export add_col!, parse_layouts!, add_measurement_dates!
@@ -30,6 +30,7 @@ export insert_names!, insert_layouts!, insert_entry_relationships!, insert_pheno
 export update_table_field_by_name!
 export upload_trial_data!, upload_environment_data!
 export extract_ids, extract_names
+export Filter, query_table
 
 
 end

@@ -1,39 +1,3 @@
-# function list_tables(conn::LibPQ.Connection)::DataFrame
-#     # conn = dbconnect()
-#     execute(
-#         conn, 
-#         """
-#         SELECT 
-#             relname AS table_name, 
-#             n_live_tup AS estimated_row_count
-#         FROM 
-#             pg_stat_user_tables
-#         """
-#     ) |> DataFrame |> sort
-# end
-
-# function extract_table(conn::LibPQ.Connection, table::String)::DataFrame
-#     # conn = dbconnect(); table = "entries"
-#     check(conn, table)
-#     execute(conn, "SELECT * FROM $table") |>
-#         DataFrame
-# end
-
-# function meta_table_name_to_field_name(x::String, to_id::Bool = false)::String
-#     # to_id = true
-#     # x = "entries"; # x = "environment_variables"; # x = "experiments"; # x = "genomes"; # x = "genotype_vcfs"; # x = "layouts"; 
-#     # # x = "measurements"; # x = "phenomes"; # x = "reference_genomes"; # x = "sites"; # x = "speciess"; # x = "traits"; # x = "treatments"; 
-#     # # x = "child"; # x = "parent"
-#     xs = collect(x)
-#     x[end] != 's' ? error("We expect a plural table name, e.g. \"entries\", \"traits\", \"sites\", or \"experiments\".") : nothing
-#     if x == "entries"
-#         to_id ? "entry_id" : "entry"
-#     else
-#         y = join(xs[1:(end-1)])
-#         to_id ? "$(y)_id" : y
-#     end
-# end
-
 """
     Filter
 
@@ -84,7 +48,6 @@ The constructor verifies that:
     resolve them to IDs.
 
 # Arguments
-
 - `conn::LibPQ.Connection`: Active database connection.
 - `table::String`: Target table name.
 - `field::String`: Target field name.
@@ -94,6 +57,14 @@ The constructor verifies that:
 - `filter_equal_to::Union{Nothing,Int,AbstractFloat}`: Match records equal to a specific value.
 - `filter_less_than::Union{Nothing,Int,AbstractFloat}`: Match records with values less than the specified value.
 - `filter_greater_than::Union{Nothing,Int,AbstractFloat}`: Match records with values greater than the specified value.
+
+# Details
+- `filter_like` (one string no need for wildcards): Case-insensitive pattern matching (`ILIKE`).
+- `filter_in` (one or more strings or numbers): Membership in a set of values (`IN`).
+- `filter_between` (two numbers): Inclusive range filtering (`BETWEEN`).
+- `filter_equal_to` (one number): Equality to a single value (`=`).
+- `filter_less_than` (one number): Less-than comparison (`<`).
+- `filter_greater_than` (one number): Greater-than comparison (`>`).
 
 # Notes
 
@@ -154,22 +125,22 @@ true
 struct Filter
     table::String
     field::String
-    like::Union{Nothing, String}
-    in::Union{Nothing, Vector{String}, Vector{Int}, Vector{AbstractFloat}}
-    between::Union{Nothing, Tuple{Int, Int}, Tuple{AbstractFloat, AbstractFloat}}
-    equal_to::Union{Nothing, Int, AbstractFloat}
-    less_than::Union{Nothing, Int, AbstractFloat}
-    greater_than::Union{Nothing, Int, AbstractFloat}
+    like::Union{Nothing,String}
+    in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}
+    between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}
+    equal_to::Union{Nothing,Int,AbstractFloat}
+    less_than::Union{Nothing,Int,AbstractFloat}
+    greater_than::Union{Nothing,Int,AbstractFloat}
     function Filter(
         conn::LibPQ.Connection;
         table::String,
         field::String,
-        filter_like::Union{Nothing, String} = nothing,
-        filter_in::Union{Nothing, Vector{String}, Vector{Int}, Vector{AbstractFloat}} = nothing,
-        filter_between::Union{Nothing, Tuple{Int, Int}, Tuple{AbstractFloat, AbstractFloat}} = nothing,
-        filter_equal_to::Union{Nothing, Int, AbstractFloat} = nothing,
-        filter_less_than::Union{Nothing, Int, AbstractFloat} = nothing,
-        filter_greater_than::Union{Nothing, Int, AbstractFloat} = nothing,
+        filter_like::Union{Nothing,String} = nothing,
+        filter_in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}} = nothing,
+        filter_between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}} = nothing,
+        filter_equal_to::Union{Nothing,Int,AbstractFloat} = nothing,
+        filter_less_than::Union{Nothing,Int,AbstractFloat} = nothing,
+        filter_greater_than::Union{Nothing,Int,AbstractFloat} = nothing,
     )
         # conn = dbconnect();
         # filter_like=nothing; filter_in=nothing; filter_between=nothing; filter_equal_to=nothing; filter_less_than=nothing; filter_greater_than=nothing;
@@ -178,14 +149,15 @@ struct Filter
         # table = "phenotype_data"; field = "value"; filter_in = Float64[10.515928568077884]; # table = "phenotype_data"; field = "value"; filter_between = (10, 12); # table = "phenotype_data"; field = "value"; filter_equal_to = 10.515928568077884; # table = "phenotype_data"; field = "value"; filter_less_than = 10; # table = "phenotype_data"; field = "value"; filter_greater_than = 100
         check(conn, table)
         sum([
-            !isnothing(filter_like), 
-            !isnothing(filter_in), 
-            !isnothing(filter_between), 
-            !isnothing(filter_equal_to), 
-            !isnothing(filter_less_than), 
+            !isnothing(filter_like),
+            !isnothing(filter_in),
+            !isnothing(filter_between),
+            !isnothing(filter_equal_to),
+            !isnothing(filter_less_than),
             !isnothing(filter_greater_than),
         ]) != 1 ? error("We expect one and only one `filter_*` argument!") : nothing
-        field = try check(conn, table, field)
+        field = try
+            check(conn, table, field)
             field
         catch
             if field == "entries"
@@ -204,8 +176,10 @@ struct Filter
             filter_in, filter_like
         else
             metatable = field == "entry_id" ? "entries" : replace(field, "_id" => "s")
-            filter_in = isnothing(filter_in) ? nothing : extract_ids(conn, names=filter_in, table=metatable).id
-            filter_like = isnothing(filter_like) ? nothing : extract_ids(conn, names=[filter_like], table=metatable, is_like=true).id
+            filter_in = isnothing(filter_in) ? nothing : extract_ids(conn, names = filter_in, table = metatable).id
+            filter_like =
+                isnothing(filter_like) ? nothing :
+                extract_ids(conn, names = [filter_like], table = metatable, is_like = true).id
             if !isnothing(filter_like)
                 # Here we set the `filter_like` into `filter_in` because we already assigned the query matches from above an no longer need to do fuzzy search
                 (filter_like, nothing)
@@ -219,10 +193,126 @@ struct Filter
         # !isnothing(filter_equal_to) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field = \$1", [filter_equal_to]) |> DataFrame : nothing
         # !isnothing(filter_less_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field < \$1", [filter_less_than]) |> DataFrame : nothing
         # !isnothing(filter_greater_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field > \$1", [filter_greater_than]) |> DataFrame : nothing
-        new(table, field, filter_like, filter_in, filter_between, filter_equal_to, filter_less_than, filter_greater_than)
+        new(
+            table,
+            field,
+            filter_like,
+            filter_in,
+            filter_between,
+            filter_equal_to,
+            filter_less_than,
+            filter_greater_than,
+        )
     end
 end
 
+"""
+    query_table(
+        conn::LibPQ.Connection;
+        table::String,
+        filters::Vector{Filter},
+        output_fields::Vector{String} = ["*"],
+        exclude_fields::Vector{String} = ["id", "created_at", "updated_at"],
+        verbose::Bool = false,
+    )::DataFrame
+
+Query a database table using one or more filtering criteria.
+
+The function dynamically constructs and executes a SQL query based on a
+collection of `Filter` objects. Results can be restricted to selected
+fields, and specified fields may be excluded from the final output.
+
+After retrieving the query results, columns ending in `_id` are
+automatically converted from database identifiers to their corresponding
+names by querying the appropriate lookup table. Converted columns are
+renamed by removing the `_id` suffix.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table to query.
+- `filters::Vector{Filter}`: Collection of filtering criteria.
+- `output_fields::Vector{String}=["*"]`: Fields to include in the query.
+  Use `["*"]` to select all fields.
+- `exclude_fields::Vector{String}=["id", "created_at", "updated_at"]`:
+  Fields to remove from the returned `DataFrame`.
+- `verbose::Bool=false`: If `true`, display progress bars and status
+  messages during query construction and post-processing.
+
+# Supported Filters
+
+Each `Filter` object must define exactly one filtering condition:
+
+- `filter_like` (one string no need for wildcards): Case-insensitive pattern matching (`ILIKE`).
+- `filter_in` (one or more strings or numbers): Membership in a set of values (`IN`).
+- `filter_between` (two numbers): Inclusive range filtering (`BETWEEN`).
+- `filter_equal_to` (one number): Equality to a single value (`=`).
+- `filter_less_than` (one number): Less-than comparison (`<`).
+- `filter_greater_than` (one number): Greater-than comparison (`>`).
+
+Multiple filters are combined using logical `AND`.
+
+# Identifier Resolution
+
+Columns whose names end in `_id` are automatically converted into
+human-readable names where possible. For example:
+
+- `entry_id` → `entry`
+- `site_id` → `site`
+- `program_id` → `program`
+
+This is achieved by querying the corresponding lookup table and
+replacing identifier values with the associated `name` values.
+
+# Returns
+
+- `DataFrame`: Query results after application of field exclusions and
+  automatic identifier-to-name conversion.
+
+# Throws
+
+- An exception if `table` or any element of `output_fields` contains
+  illegal characters.
+- An exception if a `Filter` object does not define a filtering
+  condition.
+- Any exception raised by PostgreSQL while executing the generated query.
+
+# Notes
+
+- All supplied filters are combined using logical `AND`.
+- Queries are parameterised to reduce the risk of SQL injection.
+- Automatic `_id` conversion may require additional database queries and
+  can increase execution time for large result sets.
+- Fields listed in `exclude_fields` are removed after the query result
+  has been retrieved.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> table = "phenotype_data";
+
+julia> filters = Filter[];
+
+julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="_01"));
+
+julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1", "site_2"]));
+
+julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(10, 20)));
+
+julia> df = query_table(conn, table=table, filters=filters);
+
+julia> prod(.!isnothing.(match.(Regex("_01"), df.entry))) == 1
+true
+
+julia> prod(.!isnothing.(match.(Regex("site_1|site_2"), df.site))) == 1
+true
+
+julia> prod((df.value .>= 10) .&& (df.value .<= 20))
+true
+```
+"""
 function query_table(
     conn::LibPQ.Connection;
     table::String,
@@ -248,7 +338,7 @@ function query_table(
     end
     sql = String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"]
     par = String[]
-    pb = ProgressMeter.Progress(length(filters), desc="Defining the query statement...")
+    pb = ProgressMeter.Progress(length(filters), desc = "Defining the query statement...")
     for f in filters
         # f = filters[1]
         n = length(par)
@@ -261,7 +351,7 @@ function query_table(
             append!(par, string.(f.in))
         elseif !isnothing(f.between)
             push!(sql, "AND $(f.field) BETWEEN \$$(n+1) AND \$$(n+2)")
-            append!(par, string.([f.between[1],f. between[2]]))
+            append!(par, string.([f.between[1], f.between[2]]))
         elseif !isnothing(f.equal_to)
             push!(sql, "$(f.field) = \$$(n+1)")
             append!(par, String(f.equal_to))
@@ -283,7 +373,7 @@ function query_table(
     sql = join(sql, " ")
     df = execute(conn, sql, par) |> DataFrame
     select!(df, Not(exclude_fields))
-    pb = ProgressMeter.Progress(ncol(df), desc="Converting *_id fields into names...")
+    pb = ProgressMeter.Progress(ncol(df), desc = "Converting *_id fields into names...")
     for f in names(df)
         # f = names(df)[6]
         # f == "id" ? continue : nothing
@@ -291,7 +381,8 @@ function query_table(
         f = replace(f, Regex("_id\$") => "")
         metatable = f == "entry" ? "entries" : "$(f)s"
         values = df[!, "$(f)_id"]
-        df_tmp = execute(conn, "SELECT id,name FROM $metatable WHERE id = ANY(\$1)", [string.(unique(values))]) |> DataFrame
+        df_tmp =
+            execute(conn, "SELECT id,name FROM $metatable WHERE id = ANY(\$1)", [string.(unique(values))]) |> DataFrame
         df[!, "$(f)_id"] = [df_tmp.name[findfirst(df_tmp.id .== x)] for x in values]
         rename!(df, "$(f)_id" => f)
         verbose ? ProgressMeter.next!(pb) : nothing

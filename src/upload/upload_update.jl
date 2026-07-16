@@ -78,8 +78,8 @@ function update_table_field_by_name!(
     # table_destination_field = "measure_date"
     # verbose::Bool = true
     check(conn, table)
-    check(conn, "name")
-    check(conn, table_destination_field)
+    check(conn, table, "name")
+    check(conn, table, table_destination_field)
     if df_name_col∉names(df)
         error(
             "The \"$df_name_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",

@@ -81,9 +81,7 @@ function insert_names!(
         error(new_error)
     end
     uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
-    existing_names = execute(conn, "SELECT name FROM $table") |>
-        DataFrame |>
-        x -> String.(string.(x[:, 1]))
+    existing_names = execute(conn, "SELECT name FROM $table") |> DataFrame |> x -> String.(string.(x[:, 1]))
     counter = 0
     pb =
         ProgressMeter.Progress(length(uploaded_names), "Inserting names listed in \"$df_col\" into \"$table\" table...")

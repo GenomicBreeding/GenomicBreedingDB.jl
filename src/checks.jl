@@ -1,27 +1,47 @@
+
 """
-    check_illegal_strings(x::Vector{String}; additional_illegal_strings::Union{Nothing, Vector{String}}=nothing)::Nothing
+    check_illegal_strings(
+        x::Vector{String};
+        additional_illegal_strings::Union{Nothing,Vector{String}} = nothing,
+    )::Nothing
 
-Validates that a vector of strings contains only allowed characters for database identifiers and names.
+Validate that strings contain only characters permitted by the GenomicBreedingDB
+naming conventions.
 
-This function performs opinionated validation to ensure consistent naming conventions for identifiers
-and text fields uploaded to database tables (excluding notes fields).
+This function performs opinionated validation of identifiers and text values that
+will be stored in database fields. It is primarily intended for validating names,
+codes, identifiers, and other structured text values used throughout the database.
+Free-text fields such as notes should typically not be validated with this function.
 
 # Arguments
-- `x::Vector{String}`: Vector of strings to check for illegal characters and non-ASCII content
-- `additional_illegal_strings::Union{Nothing, Vector{String}}`: Optional additional strings to treat as illegal
+- `x::Vector{String}`: Strings to validate.
+- `additional_illegal_strings::Union{Nothing,Vector{String}}=nothing`:
+  Optional collection of additional patterns that should be treated as illegal.
+  Each supplied string is interpreted as a regular expression and matched against
+  every element of `x`.
 
-# Throws
-- `String`: Error message listing all validation failures (non-ASCII characters or illegal characters found)
+# Validation Rules
+Each string must satisfy all of the following:
 
-# Illegal Characters
-- The following characters are not allowed:
-`;`, `|`, `,`, `.`, `/`, `\\`, `\"`, `\'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, 
-`(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`
-- Any non-ASCII characters are rejected.
-- Users can supply additional strings considered illegal
+- Contain only ASCII characters.
+- Not contain any of the following characters:
+
+  `;`, `|`, `,`, `.`, `/`, `\\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`,
+  `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`,
+  `:`, `<`, `>`, `?`
+
+- Not match any pattern supplied through
+  `additional_illegal_strings`.
 
 # Returns
-- `nothing` if all validation checks pass
+- `nothing` if all validations succeed.
+
+# Throws
+- An exception if `x` is empty.
+- An exception if any string contains non-ASCII characters.
+- An exception if any string contains prohibited characters.
+- An exception if any string matches a pattern in
+  `additional_illegal_strings`.
 
 # Examples
 
@@ -112,11 +132,45 @@ function check_illegal_strings(
     nothing
 end
 
+"""
+    check(conn::LibPQ.Connection, table::String)::Nothing
+
+Verify that a table exists in the connected PostgreSQL database.
+
+The supplied table name is first validated using `check_illegal_strings()`
+before querying the PostgreSQL system catalog.
+
+# Arguments
+- `conn::LibPQ.Connection`: Active PostgreSQL connection.
+- `table::String`: Name of the table to check.
+
+# Returns
+- `nothing` if the table exists.
+
+# Throws
+- An exception if `table` contains illegal characters.
+- An exception if the table does not exist.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> try isnothing(check(conn, "entries")); catch; false; end
+true
+
+julia> try isnothing(check(conn, "this_table_does_not_exist")); catch; false; end
+false
+
+julia> close(conn);
+```
+"""
 function check(conn::LibPQ.Connection, table::String)::Nothing
     # conn = dbconnect(); table = "rgsg"
     check_illegal_strings([table])
-    bool = execute(conn, "SELECT to_regclass('public.$table') IS NOT NULL AS table_exists") |> 
-        DataFrame |> 
+    bool =
+        execute(conn, "SELECT to_regclass('public.$table') IS NOT NULL AS table_exists") |>
+        DataFrame |>
         x -> x.table_exists[1]
     if !bool
         error("The \"$table\" table does not exist in the database!")
@@ -124,12 +178,45 @@ function check(conn::LibPQ.Connection, table::String)::Nothing
     nothing
 end
 
+"""
+    check(conn::LibPQ.Connection, table::String, field::String)::Nothing
+
+Verify that a field exists within a database table. 
+
+Both the table name and field name are validated using `check_illegal_strings()` before querying the PostgreSQL system catalog.
+
+# Arguments
+- `conn::LibPQ.Connection`: Active PostgreSQL connection.
+- `table::String`: Name of the table.
+- `field::String`: Name of the field to check. 
+
+# Returns
+- `nothing` if the field exists within the specified table. 
+
+# Throws 
+- An exception if `table` or `field` contain illegal characters. 
+- An exception if the field does not exist in the specified table. 
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> try isnothing(check(conn, "entries", "name")); catch; false; end
+true
+
+julia> try isnothing(check(conn, "entries", "this_field_does_not_exist")); catch; false; end
+false
+
+julia> close(conn);
+```
+"""
 function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
     # conn = dbconnect(); table = "phenotype_data"; field = "site_id"; # field = "site"
     check_illegal_strings([table])
     check_illegal_strings([field])
     bool = execute(
-        conn, 
+        conn,
         """
         SELECT EXISTS (
             SELECT 1 
@@ -138,10 +225,8 @@ function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
             AND attname = '$field'
             AND NOT attisdropped
         );
-        """
-    ) |> 
-        DataFrame |> 
-        x -> x.exists[1]
+        """,
+    ) |> DataFrame |> x -> x.exists[1]
     if !bool
         error("The \"$field\" field does not exist in the\"$table\" table!")
     end
@@ -169,9 +254,18 @@ if any required columns are missing or contain illegal characters.
 - `String`: An error message if any string column contains illegal characters or non-ASCII content.
 
 # Details
-String columns are validated to ensure they contain only allowed characters for database 
-identifiers and names (see `check_illegal_strings()` for details on allowed characters).
-The following columns are exempt from character validation: `replications`, `blocks`, `rows`, and `cols`.
+1. All required columns derived from `fieldnames(Trials)` are present.
+2. String-valued columns contain only permitted characters.
+3. String-valued columns contain only ASCII characters. 
+4. Most required columns are expected to contain string values.
+The following columns are exceptions and may be stored as either string or numeric types:
+   - `years`
+   - `measurements`
+   - `replications`
+   - `blocks`
+   - `rows`
+   - `cols`
+Any other required column with a non-string type is considered invalid.
 
 # Example
 
@@ -188,11 +282,13 @@ function validate_trials(df::DataFrame)::Nothing
     required_columns = sort(
         filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))),
     )
-    if required_columns != sort(required_columns ∩ names(df))
-        error("Missing columns: [\"$(join(setdiff(required_columns, names(df)), "\", \""))\"].")
+    missing_columns = filter(x -> x∉names(df), required_columns)
+    if length(missing_columns) > 0
+        error("Missing columns: [\"$(join(missing_columns, "\", \""))\"].")
     end
-    for x in setdiff(required_columns, ["replications", "blocks", "rows", "cols"])
-        # x = setdiff(required_columns, ["replications", "blocks", "rows", "cols"])[1]
+    numeric_columns = String[]
+    for x in required_columns
+        # x = required_columns[end]
         if eltype(df[!, x]) <: AbstractString
             try
                 check_illegal_strings(String.(unique(df[!, x])))
@@ -200,7 +296,14 @@ function validate_trials(df::DataFrame)::Nothing
                 new_error = join(["Illegal string in the \"$x\" column!\n", sprint(showerror, e)])
                 error(new_error)
             end
+        else
+            push!(numeric_columns, x)
         end
+    end
+    unexpected_numeric_columns =
+        filter(x -> x∉["years", "measurements", "replications", "blocks", "rows", "cols"], numeric_columns)
+    if length(unexpected_numeric_columns) > 0
+        error("Unexpected numeric column/s: [\"$(join(unexpected_numeric_columns, "\", \""))\"]")
     end
     nothing
 end
@@ -259,4 +362,92 @@ function validate_date(date::String)::Nothing
         error("Invalid date format: \"$date\". We expect \"yyyy-mm-dd\" format, where all values are integers.")
     end
     nothing
+end
+
+
+"""
+    list_tables(conn::LibPQ.Connection)::DataFrame
+
+List all user tables in the connected PostgreSQL database.
+
+The function queries PostgreSQL system statistics and returns the names
+of all user tables together with their estimated row counts.
+
+# Argument
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+
+# Returns
+- `DataFrame`: A DataFrame containing:
+  - `table_name::String`: Database table name.
+  - `estimated_row_count::Integer`: PostgreSQL estimate of the
+    number of rows in the table.
+
+# Notes
+- Row counts are obtained from PostgreSQL statistics
+  (`pg_stat_user_tables`) and are therefore estimates rather than
+  exact counts.
+- Only user tables are returned.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> list_tables(conn) |> nrow > 0
+true
+
+julia> close(conn);
+```
+"""
+function list_tables(conn::LibPQ.Connection)::DataFrame
+    # conn = dbconnect()
+    execute(
+        conn,
+        """
+        SELECT 
+            relname AS table_name, 
+            n_live_tup AS estimated_row_count
+        FROM 
+            pg_stat_user_tables
+        """,
+    ) |> DataFrame |> sort
+end
+
+"""
+    extract_table( conn::LibPQ.Connection, table::String, )::DataFrame
+
+Extract all records from a database table.
+
+Validates that the specified table exists using `check()` and then retrieves all rows and columns from the table.
+
+# Arguments
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table to extract.
+
+# Returns
+- `DataFrame`: A DataFrame containing all rows and columns from `table`.
+
+# Throws
+- An exception if `table` contains illegal characters.
+- An exception if `table` does not exist in the database.
+
+# Notes
+
+For large tables, this function may require substantial memory because the entire table is loaded into a single `DataFrame`.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> extract_table(conn, "entries") |> nrow > 0
+true
+
+julia> close(conn);
+```
+"""
+function extract_table(conn::LibPQ.Connection, table::String)::DataFrame
+    # conn = dbconnect(); table = "entries"
+    check(conn, table)
+    execute(conn, "SELECT * FROM $table") |> DataFrame
 end

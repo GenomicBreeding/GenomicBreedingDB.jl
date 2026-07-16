@@ -82,7 +82,7 @@ For each of the layout columns `:replications`, `:blocks`, `:rows`, and `:cols`:
 
 1. If the column is already a `Vector{Int64}`, it is left unchanged.
 2. Otherwise, each value is converted to an integer by repeatedly splitting on
-   `"_"`, `"-"`, and `"|"` and taking the final element after each split.
+   `"_"`, and `"-"` and taking the final element after each split.
 3. The resulting strings are parsed as `Int64`.
 
 After successful parsing, the `:layouts` column is regenerated using the format
@@ -93,7 +93,6 @@ Examples of supported input values include:
 
 - `"rep_1"` → `1`
 - `"block-2"` → `2`
-- `"column|10"` → `10`
 
 # Returns
 `Nothing`.
@@ -120,7 +119,7 @@ julia> parse_layouts!(df_1)
 julia> df_1 == df_expected
 true
 
-julia> df_input = hcat(df_ids, DataFrame(replications=["rep_1", "rep_2", "3"], blocks=["b_1", "1", "block-2"], rows=[1, 2, 3], cols=["column|10", "COL-11", "column_12"]));
+julia> df_input = hcat(df_ids, DataFrame(replications=["rep_1", "rep_2", "3"], blocks=["b_1", "1", "block-2"], rows=[1, 2, 3], cols=["column-10", "COL-11", "column_12"]));
 
 julia> df_2 = copy(df_input);
 
@@ -138,9 +137,7 @@ function parse_layouts!(df::DataFrame; is_trial::Bool = true)::Nothing
         df[!, f] = try
             df[!, f] |>
             x ->
-                [split(xi, "_")[end] for xi in x] |>
-                x ->
-                    [split(xi, "-")[end] for xi in x] |> x -> [split(xi, "|")[end] for xi in x] |> x -> [parse(Int64, xi) for xi in x]
+                [split(xi, "_")[end] for xi in x] |> x -> [split(xi, "-")[end] for xi in x] |> x -> [parse(Int64, xi) for xi in x]
         catch
             error("Cannot parse $(f)!")
         end
