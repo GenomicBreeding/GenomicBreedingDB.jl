@@ -4,33 +4,35 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://GenomicBreeding.github.io/GenomicBreedingDB.jl/dev/)
 [![Build Status](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-The database schema is a **species-agnostic, entry-centric breeding database** designed to integrate pedigree, phenotype, genotype, and genomic prediction information within a single relational framework.
-we separate **data management** from **scientific computation**:
-- PostgreSQL manages metadata, relationships, and querying.
-- Julia manages large genotype matrices, phenotype matrices, and prediction models.
+The database schema is a **species-agnostic**, **entry-centric** breeding database designed to integrate pedigree, phenotype, genotype, and genomic prediction information within a single relational framework.
 
-This architecture provides:
-- scalability for large genomic datasets,
-- flexibility for complex breeding pedigrees,
-- compatibility with genomic prediction workflows,
-- strong reproducibility and dataset tracking,
-- applicability across diverse breeding systems and species.
+The architecture deliberately separates **data storage and management** from **computational analysis**:
+- **PostgreSQL** serves as the authoritative repository for metadata and entity relationships while supporting basic data retrieval. Complex joins are largely delegated to the analytical layer to keep SQL queries simpler and more maintainable.
+- **Julia** and [**GenomicBreeding**](https://github.com/GenomicBreeding) serves as the computational engine, performing complex joins and data transformations, managing large genomic and phenotypic matrices, and executing genomic prediction and statistical analyses.
+
+This separation enables:
+- efficient scaling to large genomic datasets,
+- support for complex pedigree structures,
+- integration with genomic prediction pipelines,
+- improved reproducibility, and
+- broad applicability across species and breeding programs.
 
 ## Database schema
 
 ### Core Design Principles
 
-- **Entries are the central biological entity**, representing cultivars, populations, individuals, and families.
-- **Pedigrees are represented as a graph**, allowing flexible relationships such as parentage, cloning, and population membership.
-- **Phenomic data are storage via star-schema design**, linking entries to experiments, sites, treatments, layouts, measurement events, and traits.
-- **Large genomic datasets and fitted models are stored externally** as Julia/JLD2 objects, while PostgreSQL stores metadata, provenance, and relationships.
-- **The schema is applicable to both plant and animal breeding programs**, avoiding species-specific assumptions.
+- Entries are the central biological entity, representing cultivars, populations, individuals, and families.
+- Pedigrees are represented as a graph, allowing flexible relationships such as parentage, cloning, and population membership.
+- Phenomic data are stored via star-schema design, linking entries to experiments, sites, treatments, layouts, measurement events, and traits.
+- Environmental data are similarly stored via star-schema design, linking environmental variables to experiments, sites, treatments, layouts, and measurement events.
+- Large genomic datasets and fitted models are stored externally as Julia/JLD2 objects, while PostgreSQL stores metadata, and relationships.
+- The schema is applicable to both plant and animal breeding programs, avoiding species-specific assumptions.
 
 ### Assumptions
 
 - Entry names are globally unique across all species.
-- Phenotype data are represented as numeric values, with categorical traits encoded numerically when required.
-- Biological validation rules (e.g. pedigree consistency) are primarily enforced in the Julia application layer rather than the database.
+- Phenotype data are represented as numeric values, with categorical traits encoded numerically.
+- Biological validation rules (e.g. pedigree consistency) are primarily enforced in the database (i.e. an entry cannot be its own parent).
 - Trait units are embedded within trait names (e.g. `yield_t_ha`, `height_cm`) instead of being managed through a separate units system.
 - Pedigree structures may be incomplete, complex, or non-traditional, and stored as flexible relationships rather than fixed maternal/paternal columns.
 
@@ -38,14 +40,14 @@ This architecture provides:
 
 #### Biological Entities
 - Species
-- Entries (cultivars, populations, individuals, families)
-- Pedigree and membership relationships
+- Entries (`cultivar`, `population`, `individual`, `family`)
+- Pedigree and membership relationships (`member_of`, `clone_of`, `parent_is`, `maternal_parent_is`, `paternal_parent_is`)
 
 #### Experimental Metadata
 - Experiments
 - Sites
 - Treatments
-- Field or facility layouts
+- Layouts (field or facility layout)
 - Measurement events
 
 #### Phenotypes
