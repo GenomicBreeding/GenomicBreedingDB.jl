@@ -252,8 +252,6 @@ function Base.hash(x::Filter, h::UInt)::UInt
     h
 end
 
-
-
 """
     Base.:(==)(x::Filter, y::Filter)::Bool
 

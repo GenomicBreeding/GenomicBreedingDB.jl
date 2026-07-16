@@ -376,3 +376,18 @@ function upload_environment_data!(
     insert_environment_data!(conn, df = df, environment_variables = environment_variables)
     nothing
 end
+
+# TODO:
+# 1.) Upload reference genomes
+# 2.) Upload VCFs
+# 3.) Upload Genomes
+# 4.) Upload Phenomes
+# 5.) Upload Fits
+# 6.) Generate the relationship tables:
+#   - genome_entries
+#   - phenome_entries
+#   - phenome_experiments
+#   - phenome_sites
+#   - phenome_treatments
+#   - phenome_measurements
+#   - phenome_traits
