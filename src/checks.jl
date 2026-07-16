@@ -366,6 +366,115 @@ end
 
 
 """
+    validate_data_table(df::DataFrame)::Nothing
+
+Validate that a data table conforms to the schema expected by
+`query_table()` outputs and downstream analysis functions.
+
+The function verifies that the supplied `DataFrame` contains the
+required identifier and measurement fields expected for experimental
+data. Fields ending in `_id` are treated equivalently to their
+identifier-resolved counterparts by removing the `_id` suffix prior to
+validation.
+
+A valid table must contain all required fields except that exactly one
+of `trait` or `environmental_variable` may be absent. This accommodates
+both phenotype tables (which contain `trait`) and environmental tables
+(which contain `environmental_variable`).
+
+# Arguments
+
+- `df::DataFrame`: Data table to validate.
+
+# Validation Performed
+
+1. Column names are normalised by removing any `_id` suffixes.
+2. The following fields are expected:
+
+   - `experiment`
+   - `site`
+   - `treatment`
+   - `layout`
+   - `measurement`
+   - `entry`
+   - `trait`
+   - `environmental_variable`
+   - `value`
+
+3. All required fields must be present, except that one of the
+   following may be missing:
+
+   - `trait`
+   - `environmental_variable`
+
+# Returns
+
+- `nothing` if validation succeeds.
+
+# Throws
+
+- An exception if required fields are missing.
+- An exception if both `trait` and `environmental_variable` are missing.
+- An exception if any required field other than `trait` or
+  `environmental_variable` is missing.
+
+# Notes
+
+The function is designed to validate both phenotype and environmental
+data tables:
+
+- Phenotype tables typically contain a `trait` field.
+- Environmental tables typically contain an
+  `environmental_variable` field.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> df_okay_phe = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], trait=[], value=[]);
+
+julia> df_okay_env = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], environmental_variable=[], value=[]);
+
+julia> df_nope = DataFrame(experiment=[], site=[]);
+
+julia> try isnothing(validate_data_table(df_okay_phe)); catch; false; end
+true
+
+julia> try isnothing(validate_data_table(df_okay_env)); catch; false; end
+true
+
+julia> try isnothing(validate_data_table(df_nope)); catch; false; end
+false
+```
+"""
+function validate_data_table(df::DataFrame)::Nothing
+    # conn = dbconnect()
+    # df = extract_table(conn, "phenotype_data")
+    expected_fields = [
+        "experiment",
+        "site",
+        "treatment",
+        "layout",
+        "measurement",
+        "entry",
+        "trait",
+        "environmental_variable",
+        "value",
+    ]
+    fields = replace.(names(df), Regex("_id\$") => "")
+    missing_fields = filter(x -> x ∉ fields, expected_fields)
+    okay = (
+        (length(missing_fields) == 0) || (
+            (length(missing_fields) == 1) && (missing_fields[1] == "trait") ||
+            (missing_fields[1] == "environmental_variable")
+        )
+    )
+    if !okay
+        error("Unexpected field/s:\n\t- $(join(missing_fields, "\n\t- "))")
+    end
+    nothing
+end
+
+"""
     list_tables(conn::LibPQ.Connection)::DataFrame
 
 List all user tables in the connected PostgreSQL database.
