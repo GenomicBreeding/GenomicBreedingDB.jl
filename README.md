@@ -131,7 +131,7 @@ DB_HOST="localhost"
 EOF
 ```
 
-### 4. Initiliase the tables
+### 4. Initialise the tables
 
 #### Start the database
 
@@ -144,10 +144,14 @@ pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt start
 
 #### Initialise the tables
 
+1. Open julia and load GenomicBreedingDB.jl:
+
 ```shell
 cd GenomicBreedingDB.jl/
 julia --project=. --threads=2,1 --load test/interactive_prelude.jl
 ```
+
+2. Initialise tables using the `./db/schema.sql`:
 
 ```julia
 dbinit()
