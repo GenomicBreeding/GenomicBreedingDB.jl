@@ -431,6 +431,10 @@ julia> upload_reference_genome!(conn, fname=fname, name=name, notes=notes);
 
 julia> execute(conn, "SELECT * FROM reference_genomes") |> DataFrame |> x -> sum(x.name .== name) == 1
 true
+
+julia> rm(fname);
+
+julia> close(conn);
 ```
 """
 function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
