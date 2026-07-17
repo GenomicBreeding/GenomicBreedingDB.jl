@@ -429,7 +429,7 @@ julia> name = replace(fname, ".fa" => ""); notes = "simulated reference genome";
 
 julia> upload_reference_genome!(conn, fname=fname, name=name, notes=notes);
 
-julia> execute(conn, "SELECT * FROM reference_genomes") |> DataFrame |> x -> sum(x.name .== name)
+julia> execute(conn, "SELECT * FROM reference_genomes") |> DataFrame |> x -> sum(x.name .== name) == 1
 true
 ```
 """
@@ -456,7 +456,7 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
 end
 
 # TODO:
-# 1.) Upload reference genomes
+# ~1.) Upload reference genomes~
 # 2.) Upload VCFs
 # 3.) Upload Genomes
 # 4.) Upload Phenomes
