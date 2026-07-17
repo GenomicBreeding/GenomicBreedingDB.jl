@@ -1,7 +1,6 @@
 """
     query_table(
         conn::LibPQ.Connection;
-        table::String,
         filters::Vector{Filter},
         output_fields::Vector{String} = ["*"],
         exclude_fields::Vector{String} = ["id", "created_at", "updated_at"],
@@ -22,8 +21,9 @@ renamed by removing the `_id` suffix.
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `table::String`: Name of the table to query.
 - `filters::Vector{Filter}`: Collection of filtering criteria.
+  All filters must reference the same database table, which is used as
+  the query source table.
 - `output_fields::Vector{String}=["*"]`: Fields to include in the query.
   Use `["*"]` to select all fields.
 - `exclude_fields::Vector{String}=["id", "created_at", "updated_at"]`:
@@ -63,17 +63,21 @@ replacing identifier values with the associated `name` values.
 
 # Throws
 
-- An exception if `table` or any element of `output_fields` contains
-  illegal characters.
+- An exception if the supplied filters reference different table names.
+- An exception if the table name defined in the supplied filters, or any
+  element of `output_fields`, contains illegal characters.
 - An exception if a `Filter` object does not define a filtering
   condition.
 - Any exception raised by PostgreSQL while executing the generated query.
 
 # Notes
 
+- All supplied filters must reference the same table. The query table is
+  inferred from `filters`, and providing filters from multiple tables
+  results in an error.
 - Duplicate filters are automatically removed before query
   construction. Consequently, supplying the same `Filter` more than
-  once has no effect on the query results:
+  once has no effect on the query results.
 - Supplied filters are combined using logical `AND`.
 - Queries are parameterised to reduce the risk of SQL injection.
 - Automatic `_id` conversion may require additional database queries and
@@ -96,7 +100,7 @@ julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1
 
 julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(10, 20)));
 
-julia> df = query_table(conn, table=table, filters=filters);
+julia> df = query_table(conn, filters=filters);
 
 julia> prod(.!isnothing.(match.(Regex("_01"), df.entry))) == 1
 true
@@ -117,7 +121,7 @@ julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1
 
 julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(10, 20)));
 
-julia> df = query_table(conn, table=table, filters=filters);
+julia> df = query_table(conn, filters=filters);
 
 julia> prod(.!isnothing.(match.(Regex("site_1|site_2"), df.site))) == 1
 true
@@ -125,7 +129,7 @@ true
 julia> prod((df.value .>= 10) .&& (df.value .<= 20))
 true
 
-julia> df == query_table(conn, table=table, filters=unique(filters))
+julia> df == query_table(conn, filters=unique(filters))
 true
 
 julia> close(conn);
@@ -133,14 +137,12 @@ julia> close(conn);
 """
 function query_table(
     conn::LibPQ.Connection;
-    table::String,
     filters::Vector{Filter},
     output_fields::Vector{String} = ["*"],
     exclude_fields::Vector{String} = ["id", "created_at", "updated_at"],
     verbose::Bool = false,
 )::DataFrame
     # conn = dbconnect()
-    # table = "phenotype_data"
     # filters = [
     #     Filter(conn, table="phenotype_data", field="entry", filter_like="_01"),
     #     Filter(conn, table="phenotype_data", field="value", filter_between=(10, 20)),
@@ -150,54 +152,10 @@ function query_table(
     # output_fields = String["*"]
     # exclude_fields = ["id", "created_at", "updated_at"]
     # verbose = true
-    if output_fields == String["*"]
-        check_illegal_strings([table])
-    else
-        check_illegal_strings(vcat([table], output_fields))
-    end
-    filters_counts = countmap(filters)
-    filters = if length(filters_counts) == length(filters)
-        filters
-    else
-        verbose ?
-        warn("Duplicate filters found: \n\t- $(join(filter(x -> x[2] > 1, filters_counts), "; \n\t- "))") : nothing
-        unique(filters)
-    end
-    sql = String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"]
-    par = String[]
-    pb = ProgressMeter.Progress(length(filters), desc = "Defining the query statement...")
-    for f in filters
-        # f = filters[1]
-        n = length(par)
-        if !isnothing(f.like)
-            push!(sql, "AND $(f.field) ILIKE $(f.like)")
-            append!(par, String(f.like))
-        elseif !isnothing(f.in)
-            s = "($(join(string.("\$", (n+1):(n+length(f.in))), ',')))"
-            push!(sql, "AND $(f.field) IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
-            append!(par, string.(f.in))
-        elseif !isnothing(f.between)
-            push!(sql, "AND $(f.field) BETWEEN \$$(n+1) AND \$$(n+2)")
-            append!(par, string.([f.between[1], f.between[2]]))
-        elseif !isnothing(f.equal_to)
-            push!(sql, "$(f.field) = \$$(n+1)")
-            append!(par, String(f.equal_to))
-        elseif !isnothing(f.less_than)
-            push!(sql, "$(f.field) < \$$(n+1)")
-            append!(par, String(f.less_than))
-        elseif !isnothing(f.greater_than)
-            push!(sql, "$(f.field) > \$$(n+1)")
-            append!(par, String(f.greater_than))
-        else
-            error("No filtering defined in $f.")
-        end
-        verbose ? ProgressMeter.next!(pb) : nothing
-    end
-    if verbose
-        ProgressMeter.finish!(pb)
-        println("Querying...")
-    end
-    sql = join(sql, " ")
+    validate_filters(filters)
+    table = filters[1].table
+    filter_cat, par = concat_filters(filters, verbose = verbose)
+    sql = join(vcat(String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"], filter_cat), " ")
     df = execute(conn, sql, par) |> DataFrame
     select!(df, Not(exclude_fields))
     pb = ProgressMeter.Progress(ncol(df), desc = "Converting *_id fields into names...")

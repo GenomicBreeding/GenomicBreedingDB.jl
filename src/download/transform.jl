@@ -91,7 +91,7 @@ julia> push!(filters, Filter(conn, table=table, field="trait", filter_in=["trait
 
 julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(220, 250)));
 
-julia> df = query_table(conn, table=table, filters=filters);
+julia> df = query_table(conn, filters=filters);
 
 julia> df_unstacked = unstack_data_table(df);
 

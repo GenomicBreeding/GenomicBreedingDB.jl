@@ -1,4 +1,117 @@
 """
+    update_table!(
+        conn::LibPQ.Connection;
+        filters::Vector{Filter},
+        destination_field::String,
+        value::Union{String,AbstractFloat,Int},
+        verbose::Bool=false,
+    )::Nothing
+
+Update a single field in a database table for records matching a set of
+filtering criteria.
+
+The function constructs and executes a parameterised SQL `UPDATE`
+statement using the supplied filters. All filters must reference the
+same database table. The specified `destination_field` is updated to the
+supplied `value` for records satisfying all filter conditions.
+
+For safety, the function expects exactly one row to be modified. An
+exception is raised if zero rows or multiple rows are affected.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `filters::Vector{Filter}`: Collection of filtering criteria used to
+  identify the record to update. All filters must reference the same
+  table.
+- `destination_field::String`: Field to update.
+- `value::Union{String,AbstractFloat,Int}`: New value to assign
+  to `destination_field`.
+- `verbose::Bool=false`: If `true`, display progress information while
+  constructing the filtering clause.
+
+# Returns
+
+- `nothing` if the update succeeds and exactly one row is modified.
+
+# Throws
+
+- An exception if the filters reference multiple tables.
+- An exception if any `Filter` does not define a filtering condition.
+- An exception if the update affects a number of rows other than one.
+- Any exception raised by PostgreSQL during query execution.
+
+# Notes
+
+- All supplied filters are combined using logical `AND`.
+- The SQL statement is parameterised to reduce the risk of SQL
+  injection.
+- This function is intended for updating a single database record.
+  Updates affecting multiple rows are treated as errors.
+- Filter processing is delegated to `validate_filters()` and
+  `concat_filters()`.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname = simulate_trial(fname_output="test.tsv");
+
+julia> df = load_trial_df(fname); rm(fname);
+
+julia> date_string = replace(string(time()), "." => "_");
+
+julia> df.species .= string("Homo sapiens-", date_string);
+
+julia> conn = dbconnect();
+
+julia> insert_names!(conn, df=df, table="species", df_col="species");
+
+julia> df_before_1 = LibPQ.execute(conn, "SELECT * FROM species WHERE name ILIKE '%Homo sapiens%'") |> DataFrame;
+
+julia> df_before_2 = LibPQ.execute(conn, "SELECT * FROM species WHERE name ILIKE '%Homo habilis%'") |> DataFrame;
+
+julia> filters = [Filter(conn, table="species", field="name", filter_in=[string("Homo sapiens-", date_string)])];
+
+julia> update_table!(conn, filters=filters, destination_field="name", value=string("Homo habilis-", date_string));
+
+julia> df_after_1 = LibPQ.execute(conn, "SELECT * FROM species WHERE name ILIKE '%Homo sapiens%'") |> DataFrame;
+
+julia> df_after_2 = LibPQ.execute(conn, "SELECT * FROM species WHERE name ILIKE '%Homo habilis%'") |> DataFrame;
+
+julia> (nrow(df_before_1) > nrow(df_after_1)) && (nrow(df_before_2) < nrow(df_after_2))
+true
+
+julia> close(conn);
+```
+"""
+function update_table!(
+    conn::LibPQ.Connection;
+    filters::Vector{Filter},
+    destination_field::String,
+    value::Union{String,AbstractFloat,Int},
+    verbose::Bool = false,
+)::Nothing
+    # conn = dbconnect()
+    # filters = [Filter(conn, table="reference_genomes", field="name", filter_in=["Milnesium tardigradum"])]
+    # destination_field = "name"
+    # value::Union{String, AbstractFloat, Int} = "some_new_name"
+    # verbose = true
+    validate_filters(filters)
+    table = filters[1].table
+    filter_cat, par = concat_filters(filters, verbose = verbose)
+    sql = join(vcat(String["UPDATE $table SET $(destination_field) = \$$(length(par)+1) WHERE 1=1"], filter_cat), " ")
+    res = execute(conn, sql, vcat(par, value))
+    if LibPQ.num_affected_rows(res) != 1
+        error(
+            "Unexpected number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"! The table may be empty or the filters yielded no matches!",
+        )
+    end
+    # execute(conn, "SELECT * FROM $table") |> DataFrame
+    # query_table(conn, filters=filters)
+    nothing
+end
+
+"""
     update_table_field_by_name!(conn::LibPQ.Connection; df::DataFrame, table::String, df_name_col::String, df_source_col::String, table_destination_field::String, verbose::Bool = false)::Nothing
 
 Update a specific field in a database table by matching records based on a name column in a DataFrame.
@@ -42,9 +155,9 @@ julia> fname = simulate_trial(fname_output="test.tsv");
 
 julia> df = load_trial_df(fname); rm(fname);
 
-julia> df.entries = string.("test_update_table-", Dates.time() |> x -> replace(string(x), "." => "_"), "-", df.entries);
+julia> df.entries = string.("test_update_table-", time() |> x -> replace(string(x), "." => "_"), "-", df.entries);
 
-julia> df.species .= string.("test_update_table-", Dates.time() |> x -> replace(string(x), "." => "_"), "-Elysia chlorotica");
+julia> df.species .= string.("test_update_table-", time() |> x -> replace(string(x), "." => "_"), "-Elysia chlorotica");
 
 julia> conn = dbconnect();
 
@@ -95,30 +208,8 @@ function update_table_field_by_name!(
     check(conn, table)
     check(conn, table, "name")
     check(conn, table, table_destination_field)
-    if df_name_col∉names(df)
-        error(
-            "The \"$df_name_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
-        )
-    end
-    if df_source_col∉names(df)
-        error(
-            "The \"$df_source_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
-        )
-    end
-    try
-        check_illegal_strings(String.(unique(df[!, df_name_col])))
-    catch e
-        new_error = join(["Illegal string in the \"$df_name_col\" column!\n", sprint(showerror, e)])
-        error(new_error)
-    end
-    if eltype(df[!, df_source_col]) <: AbstractString
-        try
-            check_illegal_strings(String.(unique(df[!, df_source_col])))
-        catch e
-            new_error = join(["Illegal string in the \"$df_source_col\" column!\n", sprint(showerror, e)])
-            error(new_error)
-        end
-    end
+    check(df, df_name_col)
+    check(df, df_source_col)
     # We extract the ids if we need to update the ids from some related table, i.e. if we have the pattern "*_id" for the `table_destination_field`
     df_tmp = if split(table_destination_field, "_")[end] == "id"
         df_tmp = unique(select(df, [df_name_col, df_source_col]))
@@ -152,27 +243,21 @@ function update_table_field_by_name!(
             error(
                 "The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.",
             )
-        end
+        end # Making this explicit here, although this error is covered in update_table!(...), because I like it to be explicit here in this specific-use-case function...
         for i = 1:nrow(df_tmp)
             # i = 1
-            res = execute(
-                conn,
-                """
-                UPDATE $table
-                SET
-                    $table_destination_field = \$1,
-                    updated_at = now()
-                WHERE name = \$2
-                ;
-                """,
-                [df_tmp[i, df_source_col], df_tmp[i, df_name_col]],
-            )
-            # Note that the schema also automatically updates the `updated_at` field in the meta data tables (excludes `phenotype_data` and `environment_data` tables)
-            if LibPQ.num_affected_rows(res) != 1
-                error(
-                    "Unexepcted number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"!",
-                )
+            value = if isa(df_tmp[i, df_source_col], Date) || isa(df_tmp[i, df_source_col], DateTime)
+                String(string(df_tmp[i, df_source_col]))
+            else
+                df_tmp[i, df_source_col]
             end
+            update_table!(
+                conn,
+                filters = [Filter(conn, table = table, field = "name", filter_in = String[df_tmp[i, df_name_col]])],
+                destination_field = table_destination_field,
+                value = value,
+                verbose = verbose,
+            )
             counter += 1
             verbose ? ProgressMeter.next!(pb) : nothing
         end

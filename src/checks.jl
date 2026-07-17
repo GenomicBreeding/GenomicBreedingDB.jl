@@ -133,6 +133,78 @@ function check_illegal_strings(
 end
 
 """
+    check(df::DataFrame, col::String)::Nothing
+
+Validate that a DataFrame contains a specified column and that any
+string values within that column satisfy the naming conventions enforced
+by `check_illegal_strings()`.
+
+The function first verifies that the requested column exists in the
+DataFrame. If the column contains string values, all unique values are
+validated to ensure they contain only permitted ASCII characters and do
+not contain prohibited characters or patterns.
+
+# Arguments
+
+- `df::DataFrame`: DataFrame containing the column to validate.
+- `col::String`: Name of the column to check.
+
+# Validation Performed
+
+1. Confirm that `col` exists in `df`.
+2. If the column is string-valued:
+   - Validate all unique values using `check_illegal_strings()`.
+   - Verify that values contain only permitted characters.
+   - Verify that values contain only ASCII characters.
+
+# Returns
+
+- `nothing` if validation succeeds.
+
+# Throws
+
+- An exception if `col` does not exist in `df`.
+- An exception if a string value contains illegal characters.
+- An exception if a string value contains non-ASCII characters.
+
+# Notes
+
+- Only string-valued columns are checked for illegal characters.
+- Validation is performed on unique values only to reduce redundant
+  checks and improve performance.
+- Any validation error from `check_illegal_strings()` is rethrown with
+  additional context identifying the offending column.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> df = DataFrame(aye=["abc", "def", "ghi"], nay=["hello world ^_^", "wildcard*", "slash/slash"]);
+
+julia> try isnothing(check(df, "aye")); catch; false; end
+true
+
+julia> try isnothing(check(df, "nay")); catch; false; end
+false
+```
+"""
+function check(df::DataFrame, col::String)
+    if col∉names(df)
+        error(
+            "The \"$col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
+        )
+    end
+    if eltype(df[!, col]) <: AbstractString
+        try
+            check_illegal_strings(String.(unique(df[!, col])))
+        catch e
+            new_error = join(["Illegal string in the \"$col\" column!\n", sprint(showerror, e)])
+            error(new_error)
+        end
+    end
+    nothing
+end
+
+"""
     check(conn::LibPQ.Connection, table::String)::Nothing
 
 Verify that a table exists in the connected PostgreSQL database.
@@ -470,6 +542,76 @@ function validate_data_table(df::DataFrame)::Nothing
     )
     if !okay
         error("Unexpected field/s:\n\t- $(join(missing_fields, "\n\t- "))")
+    end
+    nothing
+end
+
+"""
+    validate_filters(filters::Vector{Filter})::Nothing
+
+Validate a collection of `Filter` objects.
+
+The function verifies that all supplied filters reference the same
+database table. This is required by functions such as `query_table()`,
+which construct a single SQL query against a single table.
+
+# Arguments
+
+- `filters::Vector{Filter}`: Collection of filters to validate.
+
+# Validation Performed
+
+1. Extract the table name associated with each filter.
+2. Confirm that exactly one unique table is represented across all
+   filters.
+
+# Returns
+
+- `nothing` if validation succeeds.
+
+# Throws
+
+- An exception if the filters reference more than one table.
+
+# Notes
+
+A query can only target a single database table. Consequently, filter
+collections such as:
+
+```julia
+[
+    Filter(conn, table="phenotype_data", ...),
+    Filter(conn, table="environment_data", ...)
+]
+```
+are invalid and will raise an error.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> filters = Filter[];
+
+julia> push!(filters, Filter(conn, table="phenotype_data", field="trait", filter_like="trait_"));
+
+julia> push!(filters, Filter(conn, table="phenotype_data", field="value", filter_between=(10, 20)));
+
+julia> push!(filters, Filter(conn, table="environment_data", field="value", filter_less_than=50));
+
+julia> try isnothing(validate_filters(filters)); catch; false; end
+false
+
+julia> pop!(filters);
+
+julia> try isnothing(validate_filters(filters)); catch; false; end
+true
+```
+"""
+function validate_filters(filters::Vector{Filter})::Nothing
+    tables = unique([f.table for f in filters])
+    if length(tables) > 1
+        error("We expect one and only one table in the filters! See:\n\t- $(join(filters, "\n\t- "))")
     end
     nothing
 end
