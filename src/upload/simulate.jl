@@ -1,0 +1,485 @@
+"""
+    simulate_trial(; fname_output::String = "simulated_trial_data.tsv", 
+             additional_params::Union{Nothing, Dict{String, String}} = nothing,
+             sparsity::Float64 = 0.05,
+             overwrite::Bool = true,
+             verbose::Bool = false)::String
+
+Simulate genomic breeding trial data and write it to a file.
+(Note Trials struct details: https://genomicbreeding.github.io/GenomicBreedingCore.jl/stable/#GenomicBreedingCore.Trials)
+
+This function generates simulated genomes and trial data (with or without missing data), optionally enriching the output
+with additional parameters before writing to disk.
+
+# Arguments
+- `fname_output::String`: Path to the output file where simulated trial data will be written. 
+  Defaults to `"simulated_trial_data.tsv"`.
+- `additional_params::Union{Nothing, Dict{String, String}}`: Optional dictionary of additional 
+  columns to append to the trial data (e.g., species, experiment ID, treatment). Each key-value 
+  pair will be added as a column with the value repeated for all rows. Keys and values are validated
+  using `check_illegal_strings()` to ensure they contain only allowed characters. Defaults to `nothing`.
+- `sparsity::Float64`: Fraction of missing values in the simulated trial data. Defaults to `0.05`.
+- `overwrite::Bool`: If `true`, removes the output file if it already exists before writing. 
+  Defaults to `true`.
+- `verbose::Bool`: If `true`, enables verbose output during simulation. Defaults to `false`.
+
+# Returns
+- `String`: The path to the output file (`fname_output`).
+
+# Throws
+- `String`: If `additional_params` contains illegal characters or non-ASCII content in column names or values.
+
+# Example
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_no_missing = simulate_trial(fname_output="test_no_missing.tsv", sparsity=0.0);
+
+julia> fname_with_missing = simulate_trial(fname_output="test_with_missing.tsv", sparsity=0.1);
+
+julia> df_no_missing = CSV.read(fname_no_missing, DataFrame, missingstring="NA");
+
+julia> df_with_missing = CSV.read(fname_with_missing, DataFrame, missingstring="NA");
+
+julia> rm.([fname_no_missing, fname_with_missing]);
+
+julia> sum(Matrix(ismissing.(df_no_missing))) == 0
+true
+
+julia> mean(Matrix(ismissing.(df_with_missing))) > 0.0
+true
+```
+"""
+function simulate_trial(;
+    fname_output::String = "simulated_trial_data.tsv",
+    n::Int64 = 1_000,
+    t::Int64 = 3,
+    additional_params::Union{Nothing,Dict{String,String}} = nothing,
+    sparsity::Float64 = 0.05,
+    overwrite::Bool = true,
+    verbose::Bool = false,
+)::String
+    # fname_output::String = "simulated_trial_data.tsv"; n = 1_000; t = 3; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing; sparsity=0.05
+    # additional_params::Union{Nothing, Dict{String, String}} = Dict("species" => "Lolium multiflorum", "experiments" => "STR_trial-2026", "treatments" => "control")
+    trials = Trials(n = n, t = t)
+    trials.years = string.(sample(2026:2030, n))
+    trials.seasons = sample(["Autumn", "Winter", "Spring", "Summer"], n)
+    trials.measurements = sample(string.(collect(Date("2026-01-01"):Date("2030-12-31"))), n, replace = false)
+    trials.sites = sample(string.("site_", 1:5), n)
+    trials.replications = sample(string.("replication_", 1:3), n)
+    trials.blocks = sample(string.("block_", 1:3), n)
+    trials.rows = sample(string.("row_", 1:100), n)
+    trials.cols = sample(string.("col_", 1:100), n)
+    trials.entries = sample(string.("entry_", 1:100), n)
+    trials.populations = sample(string.("population_", 1:10), n)
+    trials.traits = string.("trait_", 1:t)
+    trials.phenotypes = [1, 100, 1_000]' .* rand(n, t)
+    for j = 1:t
+        sparsity = sparsity < 0.0 ? 0.0 : sparsity > 1.0 ? 1.0 : sparsity
+        trials.phenotypes[sample(1:n, Int(round(n*sparsity)), replace = false), j] .= missing
+    end
+    if overwrite && isfile(fname_output)
+        rm(fname_output)
+    end
+    if isnothing(additional_params)
+        GenomicBreedingIO.writedelimited(trials, fname = fname_output)
+    else
+        df = tabularise(trials)
+        for (k, v) in additional_params
+            try
+                check_illegal_strings([k, v])
+            catch e
+                new_error =
+                    join(["Illegal string/s in the requested new column [name=$k, value=$v]!\n", sprint(showerror, e)])
+                error(new_error)
+            end
+            df[!, k] .= v
+        end
+        CSV.write(fname_output, df; delim = '\t')
+    end
+    fname_output
+end
+
+"""
+    simulate_environment(
+        fname_trial::String;
+        fname_output::String = "simulated_environment_data.tsv",
+        n_measurements_in_between_phenotypings::Int64 = 10,
+        sparsity::Float64 = 0.05,
+        overwrite::Bool = true,
+        verbose::Bool = false,
+    )::String
+
+Simulate environmental measurements for a trial design.
+
+Reads a trial file generated by `simulate_trial()` (or an equivalent
+tabular trial specification), extracts all unique combinations of trial
+identifiers and phenotyping dates, generates environmental measurement dates
+between phenotyping events, and simulates simple environmental covariates for
+each date-location combination.
+
+The output contains one row per unique combination of measurement date and
+trial identifiers (`sites`, `experiments`, and/or `treatments` if present in
+the input). The following environmental variables are simulated:
+
+- `rainfall_mm_per_day`
+- `solar_radiation_MJ_per_m2_per_day`
+- `minimum_temperature_C_per_day`
+- `maximum_temperature_C_per_day`
+- `humidity_perc_per_day`
+
+Values are sampled uniformly from predefined ranges and are intended only for
+testing and demonstration purposes.
+
+# Arguments
+
+- `fname_trial::String`: Path to a trial design file containing a
+  `measurements` column with one or more phenotyping dates (`yyyy-mm-dd`).
+
+# Keywords
+
+- `fname_output::String="simulated_environment_data.tsv"`:
+  Output filename.
+- `n_measurements_in_between_phenotypings::Int64=10`:
+  Number of environmental measurement intervals generated between consecutive
+  phenotyping dates. When only a single phenotyping date is provided,
+  measurements are generated daily for this many days after the phenotyping
+  date.
+- `sparsity::Float64=0.05`:
+  Reserved for future use.
+- `overwrite::Bool=true`:
+  Overwrite an existing output file if present.
+- `verbose::Bool=false`:
+  Reserved for verbose logging.
+
+# Returns
+
+- `String`: Path to the generated environmental data file.
+
+# Notes
+
+- Environmental measurements are simulated independently and do not represent
+  realistic correlations among weather variables.
+- The generated dataset is intended for software testing, examples, and
+  workflow development rather than scientific analysis.
+
+# Example
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_trial = simulate_trial();
+
+julia> fname_env = simulate_environment(fname_trial);
+
+julia> df_trial = CSV.read(fname_trial, DataFrame);
+
+julia> df_env = CSV.read(fname_env, DataFrame);
+
+julia> sort(unique(df_env.measurements) ∩ unique(df_trial.measurements)) == sort(unique(df_trial.measurements))
+true
+
+julia> rm.([fname_trial, fname_env]);
+```
+"""
+function simulate_environment(
+    fname_trial::String;
+    fname_output::String = "simulated_environment_data.tsv",
+    n_measurements_in_between_phenotypings::Int64 = 10,
+    sparsity::Float64 = 0.05,
+    overwrite::Bool = true,
+    verbose::Bool = false,
+)::String
+    # fname_trial = simulate_trial(); fname_output::String = "simulated_environment_data.tsv"; overwrite::Bool = true; verbose::Bool = false; n_measurements_in_between_phenotypings::Int64 = 10; sparsity=0.05
+    df_trial = fname_trial |> x -> CSV.read(x, DataFrame) |> x -> rename(x, "#years" => "years")
+    validate_trials(df_trial)
+    if "measurements"∉names(df_trial)
+        error("Missing required measurement dates!")
+    end
+    measurements = sort([String("$x") for x in unique(df_trial.measurements)])
+    validate_date.(measurements)
+    # Define multiple measurement days
+    measurement_dates = String[]
+    if length(measurements) == 1
+        for x in measurements
+            # x = measurements[1]
+            d = Date(x, dateformat"yyyy-mm-dd")
+            append!(
+                measurement_dates,
+                [String("$x") for x in collect(d:Day(1):(d+Day(n_measurements_in_between_phenotypings)))],
+            )
+        end
+    else
+        for i = 2:length(measurements)
+            # i = 2
+            d_ini = Date(measurements[i-1], dateformat"yyyy-mm-dd")
+            d_fin = Date(measurements[i], dateformat"yyyy-mm-dd")
+            d_step = Day(ceil((d_fin - d_ini) / Day(n_measurements_in_between_phenotypings)))
+            append!(measurement_dates, [String("$x") for x in collect(d_ini:d_step:d_fin)])
+        end
+    end
+    measurement_dates = unique(measurement_dates)
+    # Find all unique combinatons of the id columns except measurements from the input trial dataframe
+    existing_id_columns = names(df_trial) ∩ ["sites", "experiments", "treatments"] # except measurements
+    ids_concat_tmp = String[]
+    for id in existing_id_columns
+        # id = existing_id_columns[1]
+        ids_concat_tmp = if length(ids_concat_tmp) == 0
+            String.(df_trial[!, id])
+        else
+            String.(string.(ids_concat_tmp, "|||", df_trial[!, id]))
+        end
+    end
+    ids_concat_tmp = unique(ids_concat_tmp)
+    # Include the measurement dates
+    ids_concat = String[]
+    for m in measurement_dates
+        # m = measurement_dates[1]
+        append!(ids_concat, string.(m, "|||", ids_concat_tmp))
+    end
+    ids_concat = unique(ids_concat)
+    ids_concat_split = split.(ids_concat, "|||")
+    existing_id_columns = vcat(["measurements"], existing_id_columns)
+    # Instantiate the output dataframe using the unique id combinations
+    df = DataFrame()
+    for j = 1:length(existing_id_columns)
+        # j = 1
+        df[!, existing_id_columns[j]] = [String(x[j]) for x in ids_concat_split]
+    end
+    # Simulate roughly environment data
+    environment_variables = Dict(
+        "rainfall_mm_per_day" => collect(0.0:123.0),
+        "solar_radiation_MJ_per_m2_per_day" => collect(3.0:28.0),
+        "minimum_temperature_C_per_day" => collect(-2.0:32.0),
+        "maximum_temperature_C_per_day" => collect(6.0:47.0),
+        "humidity_perc_per_day" => collect(15.0:100.0),
+    )
+    n_missing = Int64(round(sparsity * nrow(df)))
+    pb = ProgressMeter.Progress(length(environment_variables), "Simulation environmental data...")
+    for (k, v) in environment_variables
+        # k = "rainfall_mm_per_day"; v = environment_variables[k]
+        y::Vector{Union{Missing,Float64}} = rand(v, nrow(df))
+        y = if n_missing == 0
+            y
+        else
+            idx_missing = rand(1:nrow(df), n_missing)
+            y[idx_missing] .= missing
+            y
+        end
+        df[!, k] = y
+        if verbose
+            ProgressMeter.next!(pb)
+        end
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
+    end
+    # Save
+    if overwrite && isfile(fname_output)
+        rm(fname_output)
+    end
+    CSV.write(fname_output, df; delim = '\t')
+    fname_output
+end
+
+"""
+    simulate_reference_genome(;
+        fname_output::String="simulated_reference_genome.fa",
+        n_bases::Int64=10_000,
+        n_chromosomes::Int64=7,
+        max_characters_per_line::Int64=80,
+        overwrite::Bool=true,
+    )::String
+
+Simulate a reference genome and write it to a FASTA file.
+
+The simulated genome consists of `n_chromosomes` chromosomes whose
+combined length equals `n_bases`. Nucleotide sequences are generated by
+randomly sampling from the bases `A`, `T`, `C`, and `G`. Chromosome
+boundaries are assigned randomly while ensuring that the total genome
+length matches the requested number of bases.
+
+Sequences are written in FASTA format, with chromosome names of the form
+`chrom1`, `chrom2`, ..., `chromN`.
+
+# Arguments
+
+- `fname_output::String="simulated_reference_genome.fa"`:
+  Output FASTA file.
+- `n_bases::Int64=10_000`:
+  Total number of bases across all chromosomes.
+- `n_chromosomes::Int64=7`:
+  Number of chromosomes to simulate.
+- `max_characters_per_line::Int64=80`:
+  Maximum number of sequence characters written per FASTA line.
+- `overwrite::Bool=true`:
+  If `true`, overwrite an existing output file.
+
+# Returns
+
+- `String`: Path to the generated FASTA file.
+
+# Throws
+
+- An exception if `fname_output` already exists and
+  `overwrite=false`.
+
+# FASTA Structure
+
+The output file contains one FASTA record per chromosome:
+
+```text
+>chrom1
+CAGCCGTAGAGTGAACCCCTCGGAAACTCCCTTAGCTGGTACTGCGCTTGCTCGTGCTTAGAGATAGATACCGATCTCCTA
+AGTGCGACCAGGTAGACCTTCGATGTGCGTCTTCCTCGCGAATATTCCGAGGGTCAGTCGCCCATACCCATTGACTCATTG
+...
+>chrom2
+TCACAAACATCTACCTTTCAGAATCCAGTATAGGCCGAGATAAGCTAACTTAGATATGCACAGGGTAGTACAGGTTCTATT
+GCAGGTTGACATGGTCGTACAGTCACGCAAAGCTTTGGGTTCATCAGGTGCAATTTTCTACTGAGTGTGGGAGTGTGCAAC
+...
+```
+
+Each sequence is wrapped so that no line exceeds max_characters_per_line characters.
+
+# Notes
+Chromosome lengths are determined randomly.
+The total number of generated bases equals n_bases.
+Bases are sampled uniformly from A, T, C, and G.
+Intended primarily for testing, demonstration, and benchmarking workflows that require a reference genome.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_reference_genome = simulate_reference_genome(n_chromosomes=10);
+
+julia> io = open(fname_reference_genome, "r");
+
+julia> [!isnothing(match(Regex("^>"), line)) for line in eachline(io)] |> sum
+10
+
+julia> rm(fname_reference_genome);
+
+julia> close(io);
+```
+"""
+function simulate_reference_genome(;
+    fname_output::String = "simulated_reference_genome.fa",
+    n_bases::Int64 = 100_000,
+    n_chromosomes::Int64 = 7,
+    max_characters_per_line::Int64 = 80,
+    overwrite::Bool = true,
+)::String
+    # fname_output::String = "simulated_reference_genome.fa"; n_bases::Int64 = 1_000_000; n_chromosomes::Int64 = 7; max_characters_per_line::Int64 = 80; overwrite::Bool = true;
+    if isfile(fname_output) && !overwrite
+        error("The \"$fname_output\" file exists and overwrite is set to false!")
+    end
+    if isfile(fname_output) && overwrite
+        rm(fname_output)
+    end
+    idx_fin = vcat(sort(sample(1:(n_bases-1), n_chromosomes-1, replace = false)), n_bases)
+    idx_ini = vcat([1], idx_fin[1:(end-1)] .+ 1)
+    open(fname_output, "w") do io
+        # io = open(fname_output, "w")
+        for i = 1:n_chromosomes
+            # i = 1
+            n = idx_fin[i] - (idx_ini[i]-1)
+            seq = sample(['A', 'T', 'C', 'G'], n)
+            counter = 0
+            println(io, ">chrom$i")
+            for s in seq
+                # s = seq[1]
+                if counter < max_characters_per_line
+                    counter += 1
+                    write(io, s)
+                else
+                    counter = 0
+                    write(io, "\n$s")
+                end
+            end
+            write(io, '\n')
+        end
+        # close(io)
+    end
+    fname_output
+end
+
+function simulate_vcf(
+    fname_reference_genome::String;
+    fname_output::String = "simulated_genotype_data.vcf",
+    n_genotypes::Int64 = 100,
+    n_variants::Int64 = 10_000,
+    overwrite::Bool = true,
+)::String
+    # fname_reference_genome::String = simulate_reference_genome(); fname_output::String = "simulated_genotype_data.vcf"; n_genotypes::Int64 = 100; n_variants::Int64 = 10_000; overwrite::Bool = true
+    if isfile(fname_output) && !overwrite
+        error("The \"$fname_output\" file exists and overwrite is set to false!")
+    end
+    if isfile(fname_output) && overwrite
+        rm(fname_output)
+    end
+    if !isfile(fname_reference_genome)
+        error("The reference genome file \"$fname_reference_genome\" does not exist!")
+    end
+    
+    genome_size = open(fname_reference_genome, "r") do io
+        genome_size = 0
+        for line in eachline(io)
+            if isnothing(match(Regex("^>"), line))
+                genome_size += length(line)
+            end
+        end
+        genome_size
+    end
+
+
+    io = open(fname_reference_genome, "r")
+    chr = String[]
+    pos = Int64[]
+    ref = Char[]
+    alt = Char[]
+    line = readline(io)
+    while isnothing(match(Regex("^>"), line))
+        _ = readline(io)
+    end
+    current_chr = replace(line, ">" => "")
+    current_pos = 0
+    for _ in 1:n_variants
+        # _ = 1
+        line = readline(io)
+        if !isnothing(match(Regex("^>"), line))
+            current_chr = replace(line, ">" => "")
+            current_pos = 0
+            continue
+        end
+        n = length(line)
+        for i in 1:n
+            if length(chr) == n_variants
+                break
+            end
+            if rand() < (1.01 * n_variants) / genome_size
+                push!(chr, current_chr)
+                push!(pos, current_pos+i)
+                push!(ref, line[i])
+                push!(alt, sample(filter(x -> x != line[i], ['A', 'T', 'C', 'G'])))
+            end
+        end
+        current_pos += n
+        if length(chr) == n_variants
+            break
+        end
+    end
+    close(io)
+    df_vcf = DataFrame(
+        CHROM=chr,
+        POS=pos,
+        ID='.',
+        REF=ref,
+        ALT=alt,
+        QUAL='.',
+        FILTER='.',
+        INFO='.',
+    )
+    rename!(df_vcf, "CHROM" => "#CHROM")
+    for j in 1:n_genotypes
+        df_vcf[!, "entry_$(lpad(j, length(string(n_genotypes)), '0'))"] = sample(["0/0", "1/0", "1/1"], n_variants)
+    end
+    CSV.write(fname_output, df_vcf, delim="\t")
+    fname_output
+end
