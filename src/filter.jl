@@ -103,6 +103,7 @@ wildcards (`%`) explicitly.
 - `ErrorException` if the table does not exist.
 - `ErrorException` if the field cannot be resolved.
 - `ErrorException` if zero or multiple filtering criteria are supplied.
+- `ErrorException` if querying on an id field and no matched were found.
 
 # Examples
 
@@ -210,10 +211,25 @@ struct Filter
             filter_in, filter_like
         else
             metatable = field == "entry_id" ? "entries" : replace(field, "_id" => "s")
-            filter_in = isnothing(filter_in) ? nothing : extract_ids(conn, names = filter_in, table = metatable).id
-            filter_like =
-                isnothing(filter_like) ? nothing :
-                extract_ids(conn, names = [filter_like], table = metatable, is_like = true).id
+            filter_in = if isnothing(filter_in)
+                nothing
+            else
+                tmp = extract_ids(conn, names = filter_in, table = metatable).id
+                if length(tmp) == 0
+                    error("No matches for \"$(join(filter_in, "\", \""))\" in \"$metatable\" table!")
+                end
+                tmp
+            end
+            filter_like = if isnothing(filter_like)
+                nothing
+            else
+                tmp = extract_ids(conn, names = [filter_like], table = metatable, is_like = true).id
+                if length(tmp) == 0
+                    error("No matches for \"%$filter_like%\" in \"$metatable\" table!")
+                end
+                tmp
+            end
+
             if !isnothing(filter_like)
                 # Here we set the `filter_like` into `filter_in` because we already assigned the query matches from above an no longer need to do fuzzy search
                 (filter_like, nothing)
@@ -332,9 +348,9 @@ julia> table = "phenotype_data";
 
 julia> filters = Filter[];
 
-julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="_01"));
+julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="1"));
 
-julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="_01"));
+julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="1"));
 
 julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1", "site_2"]));
 

@@ -94,7 +94,7 @@ julia> table = "phenotype_data";
 
 julia> filters = Filter[];
 
-julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="_01"));
+julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="1"));
 
 julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1", "site_2"]));
 
@@ -102,7 +102,7 @@ julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(1
 
 julia> df = query_table(conn, filters=filters);
 
-julia> prod(.!isnothing.(match.(Regex("_01"), df.entry))) == 1
+julia> prod(.!isnothing.(match.(Regex("1"), df.entry))) == 1
 true
 
 julia> prod(.!isnothing.(match.(Regex("site_1|site_2"), df.site))) == 1

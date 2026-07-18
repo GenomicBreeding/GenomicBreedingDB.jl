@@ -29,12 +29,12 @@ julia> fname = simulate_trial(fname_output="test.tsv");
 julia> df = load_trial_df(fname); rm(fname);
 
 julia> size(df)
-(12800, 14)
+(1000, 14)
 
 julia> add_col!(df, col="some_new_column", value="Dolorem ipsum")
 
 julia> size(df)
-(12800, 15)
+(1000, 15)
 ```
 """
 function add_col!(df::DataFrame; col::String, value::Union{Nothing,String})::Nothing

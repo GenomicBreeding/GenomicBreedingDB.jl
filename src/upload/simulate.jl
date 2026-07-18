@@ -60,22 +60,22 @@ function simulate_trial(;
 )::String
     # fname_output::String = "simulated_trial_data.tsv"; n = 1_000; t = 3; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing; sparsity=0.05
     # additional_params::Union{Nothing, Dict{String, String}} = Dict("species" => "Lolium multiflorum", "experiments" => "STR_trial-2026", "treatments" => "control")
-    trials = Trials(n=n, t=t)
+    trials = Trials(n = n, t = t)
     trials.years = string.(sample(2026:2030, n))
     trials.seasons = sample(["Autumn", "Winter", "Spring", "Summer"], n)
-    trials.measurements = string.(trials.years, "-", trials.seasons, "-", sample(["A", "B", "C"], n))
-    trials.sites = sample(string.("sites_",1:5), n)
-    trials.replications = sample(string.("replications_",1:3), n)
-    trials.blocks = sample(string.("blocks_",1:3), n)
-    trials.rows = sample(string.("rows_",1:100), n)
-    trials.cols = sample(string.("cols_",1:100), n)
-    trials.entries = sample(string.("entries_",1:100), n)
-    trials.populations = sample(string.("populations_",1:10), n)
-    trials.traits = string.("traits_",1:t)
+    trials.measurements = sample(string.(collect(Date("2026-01-01"):Date("2030-12-31"))), n, replace = false)
+    trials.sites = sample(string.("site_", 1:5), n)
+    trials.replications = sample(string.("replication_", 1:3), n)
+    trials.blocks = sample(string.("block_", 1:3), n)
+    trials.rows = sample(string.("row_", 1:100), n)
+    trials.cols = sample(string.("col_", 1:100), n)
+    trials.entries = sample(string.("entry_", 1:100), n)
+    trials.populations = sample(string.("population_", 1:10), n)
+    trials.traits = string.("trait_", 1:t)
     trials.phenotypes = [1, 100, 1_000]' .* rand(n, t)
-    for j in 1:t
+    for j = 1:t
         sparsity = sparsity < 0.0 ? 0.0 : sparsity > 1.0 ? 1.0 : sparsity
-        trials.phenotypes[sample(1:n, Int(round(n*sparsity)), replace=false), j] .= missing
+        trials.phenotypes[sample(1:n, Int(round(n*sparsity)), replace = false), j] .= missing
     end
     if overwrite && isfile(fname_output)
         rm(fname_output)
@@ -279,7 +279,6 @@ function simulate_environment(
     fname_output
 end
 
-
 """
     simulate_reference_genome(;
         fname_output::String="simulated_reference_genome.fa",
@@ -397,4 +396,25 @@ function simulate_reference_genome(;
         # close(io)
     end
     fname_output
+end
+
+function simulate_vcf(
+    fname_reference_genome::String;
+    fname_output::String = "simulated_genotype_data.vcf",
+    n_records::Int64 = 100,
+    n_variants::Int64 = 10_000,
+    overwrite::Bool = true,
+)::String
+    # fname_reference_genome::String = simulate_reference_genome(); fname_output::String = "simulated_genotype_data.vcf"; n_records::Int64 = 100; n_variants::Int64 = 10_000; overwrite::Bool = true
+    if isfile(fname_output) && !overwrite
+        error("The \"$fname_output\" file exists and overwrite is set to false!")
+    end
+    if isfile(fname_output) && overwrite
+        rm(fname_output)
+    end
+    if !isfile(fname_reference_genome)
+        error("The reference genome file \"$fname_reference_genome\" does not exist!")
+    end
+    # TODO...
+    fname_out
 end

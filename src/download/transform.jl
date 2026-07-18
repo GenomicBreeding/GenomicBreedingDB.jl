@@ -83,13 +83,13 @@ julia> table = "phenotype_data";
 
 julia> filters = Filter[];
 
-julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="_01"));
+julia> push!(filters, Filter(conn, table=table, field="entry", filter_like="1"));
 
 julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1", "site_2"]));
 
 julia> push!(filters, Filter(conn, table=table, field="trait", filter_in=["trait_2", "trait_3"]));
 
-julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(220, 250)));
+julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(10, 1_000)));
 
 julia> df = query_table(conn, filters=filters);
 

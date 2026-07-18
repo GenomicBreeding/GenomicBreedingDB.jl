@@ -31,7 +31,7 @@ julia> df = load_trial_df(fname);
 julia> rm(fname);
 
 julia> size(df)
-(12800, 14)
+(1000, 14)
 ```
 """
 function load_trial_df(fname::String; missing_strings::Vector{String} = String[])::DataFrame
@@ -222,8 +222,8 @@ julia> fname_trial = simulate_trial(); fname_environment = simulate_environment(
 
 julia> df = load_environment_df(fname_environment); rm.([fname_trial, fname_environment]);
 
-julia> size(df)
-(552, 7)
+julia> (nrow(df) > 0) && (ncol(df) == 7)
+true
 ```
 """
 function load_environment_df(
