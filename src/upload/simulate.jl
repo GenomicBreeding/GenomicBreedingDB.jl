@@ -52,7 +52,7 @@ true
 function simulate_trial(;
     fname_output::String = "simulated_trial_data.tsv",
     n::Int64 = 1_000,
-    t:Int64 = 3,
+    t::Int64 = 3,
     additional_params::Union{Nothing,Dict{String,String}} = nothing,
     sparsity::Float64 = 0.05,
     overwrite::Bool = true,
