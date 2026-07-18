@@ -354,12 +354,14 @@ julia> io = open(fname_reference_genome, "r");
 julia> [!isnothing(match(Regex("^>"), line)) for line in eachline(io)] |> sum
 10
 
+julia> rm(fname_reference_genome);
+
 julia> close(io);
 ```
 """
 function simulate_reference_genome(;
     fname_output::String = "simulated_reference_genome.fa",
-    n_bases::Int64 = 10_000,
+    n_bases::Int64 = 100_000,
     n_chromosomes::Int64 = 7,
     max_characters_per_line::Int64 = 80,
     overwrite::Bool = true,
@@ -401,11 +403,11 @@ end
 function simulate_vcf(
     fname_reference_genome::String;
     fname_output::String = "simulated_genotype_data.vcf",
-    n_records::Int64 = 100,
+    n_genotypes::Int64 = 100,
     n_variants::Int64 = 10_000,
     overwrite::Bool = true,
 )::String
-    # fname_reference_genome::String = simulate_reference_genome(); fname_output::String = "simulated_genotype_data.vcf"; n_records::Int64 = 100; n_variants::Int64 = 10_000; overwrite::Bool = true
+    # fname_reference_genome::String = simulate_reference_genome(); fname_output::String = "simulated_genotype_data.vcf"; n_genotypes::Int64 = 100; n_variants::Int64 = 10_000; overwrite::Bool = true
     if isfile(fname_output) && !overwrite
         error("The \"$fname_output\" file exists and overwrite is set to false!")
     end
@@ -415,6 +417,69 @@ function simulate_vcf(
     if !isfile(fname_reference_genome)
         error("The reference genome file \"$fname_reference_genome\" does not exist!")
     end
-    # TODO...
-    fname_out
+    
+    genome_size = open(fname_reference_genome, "r") do io
+        genome_size = 0
+        for line in eachline(io)
+            if isnothing(match(Regex("^>"), line))
+                genome_size += length(line)
+            end
+        end
+        genome_size
+    end
+
+
+    io = open(fname_reference_genome, "r")
+    chr = String[]
+    pos = Int64[]
+    ref = Char[]
+    alt = Char[]
+    line = readline(io)
+    while isnothing(match(Regex("^>"), line))
+        _ = readline(io)
+    end
+    current_chr = replace(line, ">" => "")
+    current_pos = 0
+    for _ in 1:n_variants
+        # _ = 1
+        line = readline(io)
+        if !isnothing(match(Regex("^>"), line))
+            current_chr = replace(line, ">" => "")
+            current_pos = 0
+            continue
+        end
+        n = length(line)
+        for i in 1:n
+            if length(chr) == n_variants
+                break
+            end
+            if rand() < (1.01 * n_variants) / genome_size
+                push!(chr, current_chr)
+                push!(pos, current_pos+i)
+                push!(ref, line[i])
+                push!(alt, sample(filter(x -> x != line[i], ['A', 'T', 'C', 'G'])))
+            end
+        end
+        current_pos += n
+        if length(chr) == n_variants
+            break
+        end
+    end
+    close(io)
+    df_vcf = DataFrame(
+        CHROM=chr,
+        POS=pos,
+        ID='.',
+        REF=ref,
+        ALT=alt,
+        QUAL='.',
+        FILTER='.',
+        INFO='.',
+    )
+    rename!(df_vcf, "CHROM" => "#CHROM")
+    for j in 1:n_genotypes
+        df_vcf[!, "entry_$(lpad(j, length(string(n_genotypes)), '0'))"] = sample(["0/0", "1/0", "1/1"], n_variants)
+    end
+    CSV.write(fname_output, df_vcf, delim="\t")
+    fname_output
 end
