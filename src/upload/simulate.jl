@@ -417,7 +417,7 @@ function simulate_vcf(
     if !isfile(fname_reference_genome)
         error("The reference genome file \"$fname_reference_genome\" does not exist!")
     end
-    
+
     genome_size = open(fname_reference_genome, "r") do io
         genome_size = 0
         for line in eachline(io)
@@ -440,7 +440,7 @@ function simulate_vcf(
     end
     current_chr = replace(line, ">" => "")
     current_pos = 0
-    for _ in 1:n_variants
+    for _ = 1:n_variants
         # _ = 1
         line = readline(io)
         if !isnothing(match(Regex("^>"), line))
@@ -449,7 +449,7 @@ function simulate_vcf(
             continue
         end
         n = length(line)
-        for i in 1:n
+        for i = 1:n
             if length(chr) == n_variants
                 break
             end
@@ -466,20 +466,11 @@ function simulate_vcf(
         end
     end
     close(io)
-    df_vcf = DataFrame(
-        CHROM=chr,
-        POS=pos,
-        ID='.',
-        REF=ref,
-        ALT=alt,
-        QUAL='.',
-        FILTER='.',
-        INFO='.',
-    )
+    df_vcf = DataFrame(CHROM = chr, POS = pos, ID = '.', REF = ref, ALT = alt, QUAL = '.', FILTER = '.', INFO = '.')
     rename!(df_vcf, "CHROM" => "#CHROM")
-    for j in 1:n_genotypes
+    for j = 1:n_genotypes
         df_vcf[!, "entry_$(lpad(j, length(string(n_genotypes)), '0'))"] = sample(["0/0", "1/0", "1/1"], n_variants)
     end
-    CSV.write(fname_output, df_vcf, delim="\t")
+    CSV.write(fname_output, df_vcf, delim = "\t")
     fname_output
 end
