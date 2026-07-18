@@ -51,15 +51,32 @@ true
 """
 function simulate_trial(;
     fname_output::String = "simulated_trial_data.tsv",
+    n::Int64 = 1_000,
+    t:Int64 = 3,
     additional_params::Union{Nothing,Dict{String,String}} = nothing,
     sparsity::Float64 = 0.05,
     overwrite::Bool = true,
     verbose::Bool = false,
 )::String
-    # fname_output::String = "simulated_trial_data.tsv"; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing; sparsity=0.05
+    # fname_output::String = "simulated_trial_data.tsv"; n = 1_000; t = 3; overwrite::Bool = true; verbose::Bool = false; additional_params::Union{Nothing, Dict{String, String}} = nothing; sparsity=0.05
     # additional_params::Union{Nothing, Dict{String, String}} = Dict("species" => "Lolium multiflorum", "experiments" => "STR_trial-2026", "treatments" => "control")
-    genomes = GenomicBreedingCore.simulategenomes(verbose = verbose)
-    (trials, _) = GenomicBreedingCore.simulatetrials(genomes = genomes, sparsity = sparsity, verbose = verbose)
+    trials = Trials(n=n, t=t)
+    trials.years = string.(sample(2026:2030, n))
+    trials.seasons = sample(["Autumn", "Winter", "Spring", "Summer"], n)
+    trials.measurements = string.(trials.years, "-", trials.seasons, "-", sample(["A", "B", "C"], n))
+    trials.sites = sample(string.("sites_",1:5), n)
+    trials.replications = sample(string.("replications_",1:3), n)
+    trials.blocks = sample(string.("blocks_",1:3), n)
+    trials.rows = sample(string.("rows_",1:100), n)
+    trials.cols = sample(string.("cols_",1:100), n)
+    trials.entries = sample(string.("entries_",1:100), n)
+    trials.populations = sample(string.("populations_",1:10), n)
+    trials.traits = string.("traits_",1:t)
+    trials.phenotypes = [1, 100, 1_000]' .* rand(n, t)
+    for j in 1:t
+        sparsity = sparsity < 0.0 ? 0.0 : sparsity > 1.0 ? 1.0 : sparsity
+        trials.phenotypes[sample(1:n, Int(round(n*sparsity)), replace=false), j] .= missing
+    end
     if overwrite && isfile(fname_output)
         rm(fname_output)
     end
