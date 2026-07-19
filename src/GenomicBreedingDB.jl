@@ -18,7 +18,7 @@ export list_tables, extract_table
 include("delete.jl")
 export delete_names!
 include("upload/simulate.jl")
-export simulate_trial, simulate_environment, simulate_reference_genome
+export simulate_trial, simulate_environment, simulate_reference_genome, simulate_vcf
 include("upload/load.jl")
 export load_trial_df, extract_traits, load_environment_df, extract_environment_variables
 include("upload/mutate.jl")

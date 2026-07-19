@@ -404,10 +404,10 @@ function simulate_vcf(
     fname_reference_genome::String;
     fname_output::String = "simulated_genotype_data.vcf",
     n_genotypes::Int64 = 100,
-    n_variants::Int64 = 10_000,
+    max_n_variants::Int64 = 10_000,
     overwrite::Bool = true,
 )::String
-    # fname_reference_genome::String = simulate_reference_genome(); fname_output::String = "simulated_genotype_data.vcf"; n_genotypes::Int64 = 100; n_variants::Int64 = 10_000; overwrite::Bool = true
+    # fname_reference_genome = simulate_reference_genome(); fname_output::String = "simulated_genotype_data.vcf"; n_genotypes::Int64 = 100; max_n_variants::Int64 = 10_000; overwrite::Bool = true
     if isfile(fname_output) && !overwrite
         error("The \"$fname_output\" file exists and overwrite is set to false!")
     end
@@ -417,7 +417,6 @@ function simulate_vcf(
     if !isfile(fname_reference_genome)
         error("The reference genome file \"$fname_reference_genome\" does not exist!")
     end
-
     genome_size = open(fname_reference_genome, "r") do io
         genome_size = 0
         for line in eachline(io)
@@ -427,8 +426,6 @@ function simulate_vcf(
         end
         genome_size
     end
-
-
     io = open(fname_reference_genome, "r")
     chr = String[]
     pos = Int64[]
@@ -440,7 +437,7 @@ function simulate_vcf(
     end
     current_chr = replace(line, ">" => "")
     current_pos = 0
-    for _ = 1:n_variants
+    for _ = 1:max_n_variants
         # _ = 1
         line = readline(io)
         if !isnothing(match(Regex("^>"), line))
@@ -450,10 +447,10 @@ function simulate_vcf(
         end
         n = length(line)
         for i = 1:n
-            if length(chr) == n_variants
+            if length(chr) == max_n_variants
                 break
             end
-            if rand() < (1.01 * n_variants) / genome_size
+            if rand() < (1.1 * max_n_variants) / genome_size
                 push!(chr, current_chr)
                 push!(pos, current_pos+i)
                 push!(ref, line[i])
@@ -461,16 +458,65 @@ function simulate_vcf(
             end
         end
         current_pos += n
-        if length(chr) == n_variants
+        if length(chr) == max_n_variants
             break
         end
     end
     close(io)
-    df_vcf = DataFrame(CHROM = chr, POS = pos, ID = '.', REF = ref, ALT = alt, QUAL = '.', FILTER = '.', INFO = '.')
+    df_vcf = DataFrame(CHROM = chr, POS = pos, ID = '.', REF = ref, ALT = alt, QUAL = '.', FILTER = '.', INFO = '.', FORMAT = "AD")
     rename!(df_vcf, "CHROM" => "#CHROM")
+    max_n_variants = nrow(df_vcf)
     for j = 1:n_genotypes
-        df_vcf[!, "entry_$(lpad(j, length(string(n_genotypes)), '0'))"] = sample(["0/0", "1/0", "1/1"], n_variants)
+        # j = 1
+        df_vcf[!, "entry_$(lpad(j, length(string(n_genotypes)), '0'))"] = string.(rand(0:100, max_n_variants), ",", rand(0:100, max_n_variants))
     end
-    CSV.write(fname_output, df_vcf, delim = "\t")
+    io = open(fname_output, "w")
+    write(io, "##fileformat=VCFv4.3\n")
+    write(io, "##fileDate=$(Dates.now())\n")
+    write(io, "##source=GenomicBreedingDB.jl simulation\n")
+    write(io, "##reference=file:$(fname_reference_genome)\n")
+    write(io, "##FORMAT=<ID=AD,Number=1,Type=String,Description=\"Allele depths\">\n")
+    close(io)
+    CSV.write(fname_output, df_vcf, delim = "\t", append=true, header=true)
     fname_output
 end
+
+function simulate genomes(
+    fname_output::String = "simulated_genomes.jld2";
+    fname_reference_genome::Union{Nothing, String} = nothing,
+    fname_vcf::Union{Nothing, String} = nothing,
+    overwrite::Bool = true,
+)::Tuple{String, String, String}
+    # fname_output::String = "simulated_genomes.jld2"; fname_reference_genome::Union{Nothing, String} = nothing; fname_vcf::Union{Nothing, String} = nothing; overwrite::Bool = true
+    if isfile(fname_output) && !overwrite
+        error("The \"$fname_output\" file exists and overwrite is set to false!")
+    end
+    if isfile(fname_output) && overwrite
+        rm(fname_output)
+    end
+    fname_reference_genome = if isnothing(fname_reference_genome)
+        simulate_reference_genome(overwrite=overwrite)
+    else
+        if !isfile(fname_reference_genome)
+            error("The reference genome file \"$fname_reference_genome\" does not exist!")
+        end
+        fname_reference_genome
+    end
+    fname_vcf = if isnothing(fname_vcf)
+        simulate_vcf(fname_reference_genome, overwrite=overwrite)
+    else
+        if !isfile(fname_vcf)
+            error("The VCF file \"$fname_vcf\" does not exist!")
+        end
+        fname_vcf
+    end
+    genomes = readvcf(fname=fname_vcf, verbose=true)
+    writejld2(genomes, fname=fname_output, overwrite=overwrite)
+    (
+        fname_reference_genome,
+        fname_vcf,
+        fname_output,
+    )
+end
+
+# TODO probably just use GBCore simulations...
