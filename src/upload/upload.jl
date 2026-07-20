@@ -55,16 +55,14 @@ The function performs the following operations in sequence:
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
-
-julia> df = load_trial_df(fname);
+julia> simulate_genomes() |> simulate_trials;
 
 julia> conn = dbconnect();
 
-julia> try upload_trial_data!(conn, fname=fname); catch; false; end
+julia> try upload_trial_data!(conn, fname="simulated_trials.tsv"); catch; false; end
 false
 
-julia> upload_trial_data!(conn, fname=fname, species="Acacia neglecta", experiment="some-exp", treatment="some_trt", entry_type="family", population_type="population", relationship_type="member_of");
+julia> upload_trial_data!(conn, fname="simulated_trials.tsv", species="Acacia neglecta", experiment="some-exp", treatment="some_trt", entry_type="family", population_type="population", relationship_type="member_of");
 
 julia> execute(conn, "SELECT * FROM species") |> DataFrame |> nrow > 0
 true
@@ -96,7 +94,7 @@ true
 julia> execute(conn, "SELECT * FROM phenotype_data") |> DataFrame |> nrow > 0
 true
 
-julia> close(conn); rm(fname);
+julia> close(conn);
 ```
 """
 function upload_trial_data!(
@@ -285,7 +283,7 @@ the value `"1"` for all rows.
 
 The function performs the following steps:
 
-1. Loads the environmental data using `load_environment_df()`.
+1. Loads the environmental data using `load_environments_df()`.
 2. Verifies that the required columns `measurements` and `sites` are present.
 3. Ensures the layout columns `replications`, `blocks`, `rows`, and `cols`
    exist.
@@ -323,16 +321,16 @@ functions.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> simulate_genomes() |> simulate_trials |> simulate_environments;
+
 julia> conn = dbconnect();
 
-julia> fname_trial = simulate_trial(); fname_environment = simulate_environment(fname_trial);
-
-julia> upload_environment_data!(conn, fname=fname_environment, experiment="exp-1", treatment="trt-42");
+julia> upload_environment_data!(conn, fname="simulated_environments.tsv", experiment="exp-1", treatment="trt-42");
 
 julia> execute(conn, "SELECT id,value FROM environment_data") |> DataFrame |> nrow > 0
 true
 
-julia> close(conn); rm.([fname_trial, fname_environment]);
+julia> close(conn);
 ```
 """
 function upload_environment_data!(
@@ -344,8 +342,8 @@ function upload_environment_data!(
     measurement_dates::Union{Nothing,Dict{String,String}} = nothing,
     verbose::Bool = false,
 )::Nothing
-    # conn = dbconnect(); fname = simulate_trial() |> simulate_environment; missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]; experiment="some-exp"; treatment="some_trt"; df = load_environment_df(fname, missing_strings=missing_strings); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]]; verbose::Bool = true
-    df = load_environment_df(fname, missing_strings = missing_strings)
+    # conn = dbconnect(); fname = simulate_trial() |> simulate_environment; missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]; experiment="some-exp"; treatment="some_trt"; df = load_environments_df(fname, missing_strings=missing_strings); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]]; verbose::Bool = true
+    df = load_environments_df(fname, missing_strings = missing_strings)
     if length(names(df) ∩ ["measurements", "sites"]) != 2
         error(
             "The environment data file: \"$fname\" is missing one or more of these columns: [\"measurements\", \"sites\"].",
@@ -421,18 +419,18 @@ The referenced file must already exist on disk.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_reference_genome = string("simulated_reference_genome-", Dates.now(),".fa");
+
+julia> simulate_genomes(fname_reference_genome=fname_reference_genome);
+
 julia> conn = dbconnect(); 
 
-julia> fname = simulate_reference_genome(fname_output = string("sim-ref-gen", Dates.time() |> x -> replace(string(x), "." => "_"), "-")); 
+julia> name = replace(fname_reference_genome, ".fa" => ""); notes = "simulated reference genome";
 
-julia> name = replace(fname, ".fa" => ""); notes = "simulated reference genome";
-
-julia> upload_reference_genome!(conn, fname=fname, name=name, notes=notes);
+julia> upload_reference_genome!(conn, fname=fname_reference_genome, name=name, notes=notes);
 
 julia> execute(conn, "SELECT * FROM reference_genomes") |> DataFrame |> x -> sum(x.name .== name) == 1
 true
-
-julia> rm(fname);
 
 julia> close(conn);
 ```
@@ -442,6 +440,9 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
     if !isfile(fname)
         error("The reference genome file: \"$fname\" does not exist!")
     end
+
+    # TODO: validate that this file is a fasta
+
     execute(
         conn,
         """
@@ -456,6 +457,56 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
         [name, fname, notes],
     )
     # execute(conn, "SELECT * FROM reference_genomes") |> DataFrame
+    nothing
+end
+
+function upload_genotype_vcf!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
+    # conn = dbconnect(); simulate_genomes(); fname = "simulated_genomes.vcf"; name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome";
+    if !isfile(fname)
+        error("The reference genome file: \"$fname\" does not exist!")
+    end
+
+    # TODO: validate that this file is a vcf
+
+    execute(
+        conn,
+        """
+        INSERT INTO genotype_vcfs
+        (
+            name,
+            file_path,
+            notes
+        )
+        VALUES (\$1,\$2,\$3)
+        """,
+        [name, fname, notes],
+    )
+    # execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame
+    nothing
+end
+
+function upload_genomes!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
+    # conn = dbconnect(); simulate_genomes(); fname = "simulated_genomes.jld2"; name = string("Simulated_genomes-", Dates.now()); notes = "Simulated reference genome";
+    if !isfile(fname)
+        error("The reference genome file: \"$fname\" does not exist!")
+    end
+
+    # TODO: validate that this file is a Genomes struct formatted as JLD2
+
+    execute(
+        conn,
+        """
+        INSERT INTO genomes
+        (
+            name,
+            file_path,
+            notes
+        )
+        VALUES (\$1,\$2,\$3)
+        """,
+        [name, fname, notes],
+    )
+    # execute(conn, "SELECT * FROM genomes") |> DataFrame
     nothing
 end
 

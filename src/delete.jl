@@ -66,11 +66,11 @@ All deletions are executed within a single database transaction.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial();
+julia> simulate_genomes() |> simulate_trials;
 
 julia> conn = dbconnect();
 
-julia> df = load_trial_df(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> df.entries = string.("test_delete_names-", Dates.time() |> x -> replace(string(x), "." => "_"), "-", df.entries);
 
@@ -85,7 +85,7 @@ julia> df_after = execute(conn, "SELECT * FROM entries") |> DataFrame;
 julia> nrow(df_before) > nrow(df_after)
 true
 
-julia> close(conn); rm(fname);
+julia> close(conn);
 ```
 """
 function delete_names!(

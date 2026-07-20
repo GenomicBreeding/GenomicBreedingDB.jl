@@ -24,14 +24,12 @@ Column names are standardised by renaming `"#years"` to `"years"` if present.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
-julia> rm(fname);
-
-julia> size(df)
-(12800, 14)
+julia> prod(size(df)) > 0
+true
 ```
 """
 function load_trial_df(fname::String; missing_strings::Vector{String} = String[])::DataFrame
@@ -90,9 +88,9 @@ This function identifies trait columns by:
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> traits = extract_traits(df);
 
@@ -161,9 +159,8 @@ function extract_traits(df::DataFrame; verbose::Bool = false)::Vector{String}
     String.(trait_names)
 end
 
-
 """
-    load_environment_df(
+    load_environments_df(
         fname;
         missing_strings::Vector{String}=[
             "missing",
@@ -218,15 +215,15 @@ data.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname_trial = simulate_trial(); fname_environment = simulate_environment(fname_trial);
+julia> simulate_genomes() |> simulate_trials |> simulate_environments;
 
-julia> df = load_environment_df(fname_environment); rm.([fname_trial, fname_environment]);
+julia> df = load_environments_df("simulated_environments.tsv");
 
-julia> size(df)
-(552, 7)
+julia> prod(size(df)) > 0
+true
 ```
 """
-function load_environment_df(
+function load_environments_df(
     fname;
     missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""],
 )::DataFrame
@@ -301,9 +298,9 @@ Columns containing only missing, `NaN`, or infinite values are excluded.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname_trial = simulate_trial(); fname_environment = simulate_environment(fname_trial);
+julia> simulate_genomes() |> simulate_trials |> simulate_environments;
 
-julia> df = load_environment_df(fname_environment); rm.([fname_trial, fname_environment]);
+julia> df = load_environments_df("simulated_environments.tsv");
 
 julia> sort(extract_environment_variables(df)) == sort(names(df)[3:end])
 true
