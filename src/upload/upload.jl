@@ -510,7 +510,7 @@ function upload_genomes!(conn::LibPQ.Connection; fname::String, name::String, no
 end
 
 # TODO:
-# ~1.) Upload reference genomes~
+# 1.) Upload reference genomes
 # 2.) Upload VCFs
 # 3.) Upload Genomes
 # 4.) Upload Phenomes
