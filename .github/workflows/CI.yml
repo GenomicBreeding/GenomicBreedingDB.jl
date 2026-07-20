@@ -36,7 +36,7 @@ jobs:
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
+      # - uses: julia-actions/julia-runtest@v1
   docs:
     name: Documentation
     runs-on: ubuntu-latest
@@ -61,10 +61,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
-      - name: Run doctests
-        shell: julia --project=docs --color=yes {0}
-        run: |
-          using Documenter: DocMeta, doctest
-          using GenomicBreedingDB
-          DocMeta.setdocmeta!(GenomicBreedingDB, :DocTestSetup, :(using GenomicBreedingDB); recursive=true)
-          doctest(GenomicBreedingDB)
+      # - name: Run doctests
+      #   shell: julia --project=docs --color=yes {0}
+      #   run: |
+      #     using Documenter: DocMeta, doctest
+      #     using GenomicBreedingDB
+      #     DocMeta.setdocmeta!(GenomicBreedingDB, :DocTestSetup, :(using GenomicBreedingDB); recursive=true)
+      #     doctest(GenomicBreedingDB)

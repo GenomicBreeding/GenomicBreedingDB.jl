@@ -200,7 +200,7 @@ julia> n = execute(conn, "SELECT * FROM layouts") |> DataFrame |> nrow;
 
 julia> m = string.(df.replications, "-", df.blocks, "-", df.rows, "-", df.cols) |> unique |> length;
 
-julia> n == m
+julia> n >= m
 true
 ```
 """

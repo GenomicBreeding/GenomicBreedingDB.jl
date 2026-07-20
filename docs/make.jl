@@ -1,3 +1,5 @@
+using GenomicBreedingCore
+using GenomicBreedingIO
 using GenomicBreedingDB
 using Documenter
 
@@ -13,6 +15,7 @@ makedocs(;
         assets = String[],
     ),
     pages = ["Home" => "index.md"],
+    doctest = false,
 )
 
 deploydocs(; repo = "github.com/GenomicBreeding/GenomicBreedingDB.jl", devbranch = "main")

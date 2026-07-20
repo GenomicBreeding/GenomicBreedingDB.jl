@@ -375,7 +375,6 @@ function upload_environment_data!(
     nothing
 end
 
-
 """
     upload_reference_genome!(
         conn::LibPQ.Connection;

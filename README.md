@@ -176,7 +176,7 @@ pixi run eralchemy -i postgresql://himynamejeff@localhost:5432/gbdb -o db/graph.
 ## Dev stuff:
 
 ### REPL prelude
-**
+
 ```shell
 julia --project=. --threads=2 --load test/interactive_prelude.jl
 ```
