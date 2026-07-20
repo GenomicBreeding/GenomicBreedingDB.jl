@@ -4,6 +4,7 @@ using GenomicBreedingCore, GenomicBreedingIO
 using DotEnv, LibPQ, DataFrames, Tables, StatsBase, CSV
 using Suppressor, ProgressMeter
 using Random, Dates
+using CodecZlib, TranscodingStreams
 
 # # Load database credentials
 # DotEnv.load!(joinpath(homedir(), ".env"))
