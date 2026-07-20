@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.6"
+julia_version = "1.12.5"
 manifest_format = "2.0"
 project_hash = "f767eb3fbde80c734f63281a125adbd5342f95bc"
 
@@ -655,7 +655,7 @@ version = "1.1.0"
 
 [[deps.GenomicBreedingCore]]
 deps = ["Bijectors", "Clustering", "Combinatorics", "CovarianceEstimation", "DataFrames", "Distances", "Distributions", "Documenter", "JLD2", "LinearAlgebra", "MixedModels", "MultivariateStats", "Optimisers", "PDMats", "ProgressMeter", "RDatasets", "Random", "ScatteredInterpolation", "SparseArrays", "Statistics", "StatsBase", "StatsModels", "Suppressor", "UnicodePlots"]
-git-tree-sha1 = "9523cdb8dde3c127d891950f60571b6a915c9a70"
+git-tree-sha1 = "67c8e6c88615383d5e1744d410db5f123e9242d4"
 repo-rev = "main"
 repo-url = "https://github.com/GenomicBreeding/GenomicBreedingCore.jl"
 uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"
@@ -669,7 +669,7 @@ version = "0.0.1"
 
 [[deps.GenomicBreedingIO]]
 deps = ["CodecZlib", "DataFrames", "Dates", "Documenter", "FileIO", "GZip", "GenomicBreedingCore", "JLD2", "MixedModels", "ProgressMeter", "Random", "StatsBase"]
-git-tree-sha1 = "c83e798372b4671379d7537cc2f1bc71372e5522"
+git-tree-sha1 = "84f13d95a3d4d2d3839cdbe6a293ec1984aa09da"
 repo-rev = "main"
 repo-url = "https://github.com/GenomicBreeding/GenomicBreedingIO.jl"
 uuid = "f6f5bf5f-7369-4de1-9a2f-51e3ce5e0754"
@@ -833,9 +833,9 @@ weakdeps = ["ArrowTypes"]
 
 [[deps.JuliaFormatter]]
 deps = ["CommonMark", "Glob", "JuliaSyntax", "PrecompileTools", "TOML", "Test"]
-git-tree-sha1 = "878a99e9b2f2ac45efe9b384727134a9f1744071"
+git-tree-sha1 = "02783a3bbd4f862d26bfe04bbc9a60e4f4ec5c06"
 uuid = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
-version = "2.10.1"
+version = "2.10.2"
 
 [[deps.JuliaSyntax]]
 git-tree-sha1 = "0d4b3dab95018bcf3925204475693d9f09dc45b8"
