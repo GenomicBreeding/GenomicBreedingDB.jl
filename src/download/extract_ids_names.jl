@@ -33,9 +33,9 @@ Extract database IDs for a given list of names from a specified table.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> df.entries = string.("test_extract_ids_$(Dates.time() |> x -> replace("$x", "." => "_"))-", df.entries);
 
@@ -117,9 +117,9 @@ database table.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> df.entries = string.("test_extract_names_$(Dates.time() |> x -> replace("$x", "." => "_"))-", df.entries);
 

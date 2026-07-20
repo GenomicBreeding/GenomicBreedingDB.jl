@@ -18,9 +18,10 @@ export list_tables, extract_table
 include("delete.jl")
 export delete_names!
 include("upload/simulate.jl")
-export simulate_trial, simulate_environment, simulate_reference_genome, simulate_vcf
+export simulate_reference_genome,
+    simulate_genomes, simulate_trials, simulate_environments, simulate_phenomes, simulate_fit
 include("upload/load.jl")
-export load_trial_df, extract_traits, load_environment_df, extract_environment_variables
+export load_trial_df, extract_traits, load_environments_df, extract_environment_variables
 include("upload/mutate.jl")
 export add_col!, parse_layouts!, add_measurement_dates!
 include("upload/upload_insert.jl")

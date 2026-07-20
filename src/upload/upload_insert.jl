@@ -35,9 +35,9 @@ Progress tracking is displayed if `verbose=true`.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> df.entries = string.("test_insert_names-", Dates.time() |> x -> replace(string(x), "." => "_"), "-", df.entries);
 
@@ -188,9 +188,9 @@ transaction rollback.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> conn = dbconnect();
 
@@ -287,9 +287,9 @@ Insert entry relationship records into the database from a DataFrame.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> df.entries = string.("test_entry_rels-", Dates.time() |> x -> replace(string(x), "." => "_"), "-", df.entries);
 
@@ -408,11 +408,11 @@ The function uses database transactions for data consistency, where all inserts 
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> simulate_genomes() |> simulate_trials;
+
+julia> df = load_trial_df("simulated_trials.tsv");
+
 julia> conn = dbconnect();
-
-julia> fname = simulate_trial(fname_output="test.tsv");
-
-julia> df = load_trial_df(fname); rm(fname);
 
 julia> df.entries = string.("test_phenodat-", Dates.time() |> x -> replace(string(x), "." => "_"), "-", df.entries);
 
@@ -609,11 +609,11 @@ All inserts are performed within a single database transaction.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> simulate_genomes() |> simulate_trials |> simulate_environments;
+
+julia> df = load_environments_df("simulated_environments.tsv");
+
 julia> conn = dbconnect();
-
-julia> fname_trial = simulate_trial(); fname_environment = simulate_environment(fname_trial);
-
-julia> df = load_environment_df(fname_environment);
 
 julia> add_col!(df, col = "replications", value = "1"); add_col!(df, col = "blocks", value = "1"); add_col!(df, col = "rows", value = "1"); add_col!(df, col = "cols", value = "1"); add_col!(df, col = "experiments", value = "exp-42"); add_col!(df, col = "treatments", value = "trt-42");
 
@@ -630,7 +630,7 @@ julia> insert_environment_data!(conn, df=df, environment_variables=environment_v
 julia> execute(conn, "SELECT id,value FROM environment_data") |> DataFrame |> nrow > 0
 true
 
-julia> close(conn); rm.([fname_trial, fname_environment]);
+julia> close(conn);
 
 ```
 """
@@ -640,8 +640,8 @@ function insert_environment_data!(
     environment_variables::Vector{String},
     verbose::Bool = false,
 )
-    # conn = dbconnect(); fname = simulate_trial() |> simulate_environment; missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]; experiment="some-exp"; treatment="some_trt"; df = load_environment_df(fname, missing_strings=missing_strings); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]]; verbose::Bool = true
-    # df = load_environment_df(fname, missing_strings = missing_strings)
+    # conn = dbconnect(); fname = simulate_trial() |> simulate_environment; missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]; experiment="some-exp"; treatment="some_trt"; df = load_environments_df(fname, missing_strings=missing_strings); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in [string(x) for x in unique(df.measurements)]]; verbose::Bool = true
+    # df = load_environments_df(fname, missing_strings = missing_strings)
     # add_col!(df, col = "replications", value = "1")
     # add_col!(df, col = "blocks", value = "1")
     # add_col!(df, col = "rows", value = "1")
