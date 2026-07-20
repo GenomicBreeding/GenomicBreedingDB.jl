@@ -342,9 +342,9 @@ Any other required column with a non-string type is considered invalid.
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> isnothing(validate_trials(df))
 true
@@ -420,6 +420,10 @@ false
 
 julia> try validate_date("2026-July-8"); catch; false; end
 false
+
+julia> try validate_date("2026-02-30"); catch; false; end
+false
+
 ```
 """
 function validate_date(date::String)::Nothing
@@ -432,6 +436,11 @@ function validate_date(date::String)::Nothing
         sum(isnothing.(tryparse.(Int64, date_split))) > 0
     )
         error("Invalid date format: \"$date\". We expect \"yyyy-mm-dd\" format, where all values are integers.")
+    end
+    try
+        Date(date, dateformat"yyyy-mm-dd")
+    catch
+        error("Invalid date: $(date)!")
     end
     nothing
 end

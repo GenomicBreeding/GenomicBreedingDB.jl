@@ -24,17 +24,16 @@ Verifies and adds a column in a DataFrame filling it with a single specified str
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname);
+julia> df = load_trial_df("simulated_trials.tsv");
 
-julia> size(df)
-(1000, 14)
+julia> p = ncol(df);
 
 julia> add_col!(df, col="some_new_column", value="Dolorem ipsum")
 
-julia> size(df)
-(1000, 15)
+julia> p < ncol(df)
+true
 ```
 """
 function add_col!(df::DataFrame; col::String, value::Union{Nothing,String})::Nothing
@@ -182,9 +181,11 @@ Throws an error if:
 # Example
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> fname = simulate_trial(fname_output="test.tsv");
+julia> simulate_genomes() |> simulate_trials;
 
-julia> df = load_trial_df(fname); rm(fname); measurements = String.(unique(df.measurements));
+julia> df = load_trial_df("simulated_trials.tsv"); 
+
+julia> measurements = String.(unique(df.measurements));
 
 julia> measurement_dates::Dict{String,String} = Dict(); [measurement_dates[x] = x for x in measurements];
 
