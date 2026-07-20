@@ -435,13 +435,31 @@ julia> close(conn);
 ```
 """
 function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
-    # conn = dbconnect(); fname = simulate_reference_genome(); name = "Milnesium tardigradum"; notes = "Simulated reference genome";
+    # conn = dbconnect(); fname = string("simulated_reference_genome-", Dates.now(), ".fa"); simulate_reference_genome(fname_reference_genome=fname); name = "Milnesium tardigradum"; notes = "Simulated reference genome";
     if !isfile(fname)
         error("The reference genome file: \"$fname\" does not exist!")
     end
-
-    # TODO: validate that this file is a fasta
-
+    line = String[""]
+    try
+        open(fname, "r") do io
+            line[1] = readline(io)
+            while line[1][1] != '>'
+                line[1] = readline(io)
+            end
+            line[1] = readline(io)
+        end
+    catch
+        open(CodecZlib.GzipDecompressorStream, fname, "r") do io
+            line[1] = readline(io)
+            while line[1][1] != '>'
+                line[1] = readline(io)
+            end
+            line[1] = readline(io)
+        end
+    end
+    if sum([x ∈ unique(collect(line[1])) for x in ['A', 'T', 'C', 'G']]) < 4
+        error("The \"$fname\" may not be a fasta file!")
+    end
     execute(
         conn,
         """
@@ -452,6 +470,7 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
             notes
         )
         VALUES (\$1,\$2,\$3)
+        ON CONFLICT (name) DO NOTHING
         """,
         [name, fname, notes],
     )
@@ -459,14 +478,41 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
     nothing
 end
 
-function upload_genotype_vcf!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
-    # conn = dbconnect(); simulate_genomes(); fname = "simulated_genomes.vcf"; name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome";
-    if !isfile(fname)
-        error("The reference genome file: \"$fname\" does not exist!")
+function upload_genotype_vcf!(
+    conn::LibPQ.Connection; 
+    fname_reference_genome::String, 
+    fname_genomes_vcf::String, 
+    name::String, 
+    notes::String
+)::Nothing
+    # conn = dbconnect(); fname_reference_genome = string("simulated_reference_genome-", Dates.now(), ".fa"); fname_genomes_vcf = string("simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname_genomes_vcf); name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome";
+    if !isfile(fname_reference_genome)
+        error("The reference genome file: \"$fname_reference_genome\" does not exist!")
     end
-
-    # TODO: validate that this file is a vcf
-
+    upload_reference_genome!(conn, fname=fname_reference_genome, name=string(fname_reference_genome, " for ", fname_genomes_vcf), notes="TBD")
+    reference_genome_id = DataFrame(execute(conn, "SELECT id FROM reference_genomes WHERE file_path = \$1", [fname_reference_genome])).id[1]
+    line = [String[""]]
+    open(fname, "r") do io
+        while line[1][1] != "#CHROM"
+            line[1] = split(readline(io), "\t")
+            if collect(line[1][1])[1] != '#'
+                break
+            end
+        end
+    end
+    if line[1][1] != "#CHROM"
+        open(CodecZlib.GzipDecompressorStream, fname, "r") do io
+            while line[1][1] != "#CHROM"
+                line[1] = split(readline(io), "\t")
+                if collect(line[1][1])[1] != '#'
+                    break
+                end
+            end
+        end
+    end
+    if line[1][1] != "#CHROM"
+        error("The \"$fname\" may not be a VCF file!")
+    end
     execute(
         conn,
         """
@@ -474,11 +520,13 @@ function upload_genotype_vcf!(conn::LibPQ.Connection; fname::String, name::Strin
         (
             name,
             file_path,
+            reference_genome_id,
             notes
         )
-        VALUES (\$1,\$2,\$3)
+        VALUES (\$1,\$2,\$3,\$4)
+        ON CONFLICT (name) DO NOTHING
         """,
-        [name, fname, notes],
+        [name, fname, reference_genome_id, notes],
     )
     # execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame
     nothing
@@ -502,6 +550,7 @@ function upload_genomes!(conn::LibPQ.Connection; fname::String, name::String, no
             notes
         )
         VALUES (\$1,\$2,\$3)
+        ON CONFLICT (name) DO NOTHING
         """,
         [name, fname, notes],
     )

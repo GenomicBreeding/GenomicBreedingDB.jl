@@ -1,6 +1,6 @@
 """
     simulate_reference_genome(;
-        fname_output::String="simulated_reference_genome.fa",
+        fname_reference_genome::String="simulated_reference_genome.fa",
         n_bases::Int64=10_000,
         n_chromosomes::Int64=7,
         max_characters_per_line::Int64=80,
@@ -20,7 +20,7 @@ Sequences are written in FASTA format, with chromosome names of the form
 
 # Arguments
 
-- `fname_output::String="simulated_reference_genome.fa"`:
+- `fname_reference_genome::String="simulated_reference_genome.fa"`:
   Output FASTA file.
 - `n_bases::Int64=10_000`:
   Total number of bases across all chromosomes.
