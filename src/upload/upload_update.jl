@@ -199,11 +199,20 @@ function update_table_field_by_name!(
     verbose::Bool = false,
 )::Nothing
     # conn::LibPQ.Connection = dbconnect()
-    # df = CSV.read(simulate_trial(), DataFrame); add_measurement_dates!(df, measurement_dates=measurement_dates)
+    # df = simulate_genomes() |> simulate_trials |> tabularise
+    # add_measurement_dates!(df)
     # table = "measurements"
     # df_name_col = "measurements"
     # df_source_col = "dates"
     # table_destination_field = "measure_date"
+
+    table = "entries"
+    add_col!(df, col="species", value="Acacia neglecta")
+    df_name_col = "entries"
+    df_source_col = "species"
+    table_destination_field = "species_id"
+    
+
     # verbose::Bool = true
     check(conn, table)
     check(conn, table, "name")
@@ -224,7 +233,8 @@ function update_table_field_by_name!(
         ids = String[]
         for x in String.(string.(df_tmp[!, df_source_col]))
             # x = df_tmp[!, df_source_col][1]
-            push!(ids, execute(conn, "SELECT id FROM $root_table WHERE name = \$1", [x]) |> DataFrame |> x -> first(x.id))
+            push!(ids, extract_ids(conn, names = [x], table = root_table).id[1])
+            # push!(ids, execute(conn, "SELECT id FROM $root_table WHERE name = \$1", [x]) |> DataFrame |> x -> first(x.id))
         end
         df_tmp[!, df_source_col] = ids
         df_tmp
