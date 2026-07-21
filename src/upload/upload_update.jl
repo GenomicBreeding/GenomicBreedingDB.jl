@@ -205,14 +205,11 @@ function update_table_field_by_name!(
     # df_name_col = "measurements"
     # df_source_col = "dates"
     # table_destination_field = "measure_date"
-
-    table = "entries"
-    add_col!(df, col="species", value="Acacia neglecta")
-    df_name_col = "entries"
-    df_source_col = "species"
-    table_destination_field = "species_id"
-    
-
+    # # table = "entries"
+    # # add_col!(df, col = "species", value = "Acacia neglecta")
+    # # df_name_col = "entries"
+    # # df_source_col = "species"
+    # # table_destination_field = "species_id"
     # verbose::Bool = true
     check(conn, table)
     check(conn, table, "name")
