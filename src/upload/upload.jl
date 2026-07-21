@@ -460,7 +460,7 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
     if sum([x ∈ unique(collect(line[1])) for x in ['A', 'T', 'C', 'G']]) < 4
         error("The \"$fname\" may not be a fasta file!")
     end
-    execute(
+    res = execute(
         conn,
         """
         INSERT INTO reference_genomes
@@ -474,25 +474,38 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
         """,
         [name, fname, notes],
     )
+    if LibPQ.num_affected_rows(res) == 0
+        @warn "The record for the FASTA file \"$fname\" already exists!"
+    end
+
     # execute(conn, "SELECT * FROM reference_genomes") |> DataFrame
     nothing
 end
 
 function upload_genotype_vcf!(
-    conn::LibPQ.Connection; 
-    fname_reference_genome::String, 
-    fname_genomes_vcf::String, 
-    name::String, 
-    notes::String
+    conn::LibPQ.Connection;
+    fname_reference_genome::String,
+    fname_genomes_vcf::String,
+    name::String,
+    notes::String,
+    name_reference_genome::String = "TBD",
+    notes_reference_genome::String = "TBD",
 )::Nothing
-    # conn = dbconnect(); fname_reference_genome = string("simulated_reference_genome-", Dates.now(), ".fa"); fname_genomes_vcf = string("simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname_genomes_vcf); name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome";
+    # conn = dbconnect(); fname_reference_genome = string("simulated_reference_genome-", Dates.now(), ".fa"); fname_genomes_vcf = string("simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname_genomes_vcf); name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome"; name_reference_genome::String = "TBD"; notes_reference_genome::String = "TBD"
     if !isfile(fname_reference_genome)
         error("The reference genome file: \"$fname_reference_genome\" does not exist!")
     end
-    upload_reference_genome!(conn, fname=fname_reference_genome, name=string(fname_reference_genome, " for ", fname_genomes_vcf), notes="TBD")
-    reference_genome_id = DataFrame(execute(conn, "SELECT id FROM reference_genomes WHERE file_path = \$1", [fname_reference_genome])).id[1]
+    upload_reference_genome!(
+        conn,
+        fname = fname_reference_genome,
+        name = name_reference_genome == "TBD" ? string(fname_reference_genome, " for ", fname_genomes_vcf) :
+               name_reference_genome,
+        notes = notes_reference_genome,
+    )
+    reference_genome_id =
+        DataFrame(execute(conn, "SELECT id FROM reference_genomes WHERE file_path = \$1", [fname_reference_genome])).id[1]
     line = [String[""]]
-    open(fname, "r") do io
+    open(fname_genomes_vcf, "r") do io
         while line[1][1] != "#CHROM"
             line[1] = split(readline(io), "\t")
             if collect(line[1][1])[1] != '#'
@@ -501,7 +514,7 @@ function upload_genotype_vcf!(
         end
     end
     if line[1][1] != "#CHROM"
-        open(CodecZlib.GzipDecompressorStream, fname, "r") do io
+        open(CodecZlib.GzipDecompressorStream, fname_genomes_vcf, "r") do io
             while line[1][1] != "#CHROM"
                 line[1] = split(readline(io), "\t")
                 if collect(line[1][1])[1] != '#'
@@ -511,9 +524,9 @@ function upload_genotype_vcf!(
         end
     end
     if line[1][1] != "#CHROM"
-        error("The \"$fname\" may not be a VCF file!")
+        error("The \"$fname_genomes_vcf\" may not be a VCF file!")
     end
-    execute(
+    res = execute(
         conn,
         """
         INSERT INTO genotype_vcfs
@@ -524,39 +537,83 @@ function upload_genotype_vcf!(
             notes
         )
         VALUES (\$1,\$2,\$3,\$4)
-        ON CONFLICT (name) DO NOTHING
+        ON CONFLICT (file_path) DO NOTHING
         """,
-        [name, fname, reference_genome_id, notes],
+        [name, fname_genomes_vcf, reference_genome_id, notes],
     )
+    if LibPQ.num_affected_rows(res) == 0
+        @warn "The record for the VCF file \"$fname_genomes_vcf\" already exists!"
+    end
     # execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame
     nothing
 end
 
-function upload_genomes!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
-    # conn = dbconnect(); simulate_genomes(); fname = "simulated_genomes.jld2"; name = string("Simulated_genomes-", Dates.now()); notes = "Simulated reference genome";
-    if !isfile(fname)
-        error("The reference genome file: \"$fname\" does not exist!")
+function upload_genomes!(
+    conn::LibPQ.Connection;
+    fname_reference_genome::String,
+    fname_genomes_jld2::String,
+    name::String,
+    notes::String,
+    name_reference_genome::String = "TBD",
+    notes_reference_genome::String = "TBD",
+)::Nothing
+    # conn = dbconnect(); fname_reference_genome = string("simulated_reference_genome-", Dates.now(), ".fa"); fname_genomes_jld2 = string("simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2); name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome"; name_reference_genome::String = "TBD"; notes_reference_genome::String = "TBD"
+    if !isfile(fname_reference_genome)
+        error("The reference genome file: \"$fname_reference_genome\" does not exist!")
     end
-
-    # TODO: validate that this file is a Genomes struct formatted as JLD2
-
-    execute(
+    upload_reference_genome!(
+        conn,
+        fname = fname_reference_genome,
+        name = name_reference_genome == "TBD" ? string(fname_reference_genome, " for ", fname_genomes_jld2) :
+               name_reference_genome,
+        notes = notes_reference_genome,
+    )
+    reference_genome_id =
+        DataFrame(execute(conn, "SELECT id FROM reference_genomes WHERE file_path = \$1", [fname_reference_genome])).id[1]
+    line = [String[""]]
+    open(fname_genomes_jld2, "r") do io
+        while line[1][1] != "#CHROM"
+            line[1] = split(readline(io), "\t")
+            if collect(line[1][1])[1] != '#'
+                break
+            end
+        end
+    end
+    if line[1][1] != "#CHROM"
+        open(CodecZlib.GzipDecompressorStream, fname_genomes_jld2, "r") do io
+            while line[1][1] != "#CHROM"
+                line[1] = split(readline(io), "\t")
+                if collect(line[1][1])[1] != '#'
+                    break
+                end
+            end
+        end
+    end
+    if line[1][1] != "#CHROM"
+        error("The \"$fname_genomes_jld2\" may not be a VCF file!")
+    end
+    res = execute(
         conn,
         """
         INSERT INTO genomes
         (
             name,
             file_path,
+            reference_genome_id,
             notes
         )
-        VALUES (\$1,\$2,\$3)
-        ON CONFLICT (name) DO NOTHING
+        VALUES (\$1,\$2,\$3,\$4)
+        ON CONFLICT (file_path) DO NOTHING
         """,
-        [name, fname, notes],
+        [name, fname_genomes_jld2, reference_genome_id, notes],
     )
+    if LibPQ.num_affected_rows(res) == 0
+        @warn "The record for the JLD2 file \"$fname_genomes_jld2\" already exists!"
+    end
     # execute(conn, "SELECT * FROM genomes") |> DataFrame
     nothing
 end
+
 
 # TODO:
 # 1.) Upload reference genomes

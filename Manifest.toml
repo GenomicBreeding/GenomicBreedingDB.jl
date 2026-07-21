@@ -598,9 +598,9 @@ version = "1.11.0"
 
 [[deps.FillArrays]]
 deps = ["LinearAlgebra"]
-git-tree-sha1 = "2f979084d1e13948a3352cf64a25df6bd3b4dca3"
+git-tree-sha1 = "5bad39456d9f0166184fce2248783dd9862645c1"
 uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
-version = "1.16.0"
+version = "1.17.0"
 weakdeps = ["PDMats", "SparseArrays", "StaticArrays", "Statistics"]
 
     [deps.FillArrays.extensions]
@@ -662,7 +662,7 @@ uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"
 version = "0.2.0"
 
 [[deps.GenomicBreedingDB]]
-deps = ["CSV", "DataFrames", "Dates", "Documenter", "DotEnv", "GenomicBreedingCore", "GenomicBreedingIO", "JuliaFormatter", "LibPQ", "ProgressMeter", "Random", "StatsBase", "Suppressor", "Tables"]
+deps = ["CSV", "CodecZlib", "DataFrames", "Dates", "Documenter", "DotEnv", "GenomicBreedingCore", "GenomicBreedingIO", "JuliaFormatter", "LibPQ", "ProgressMeter", "Random", "StatsBase", "Suppressor", "Tables", "TranscodingStreams"]
 path = "."
 uuid = "dd1ffd05-44c9-4da0-a67e-cb767bb549d1"
 version = "0.0.1"

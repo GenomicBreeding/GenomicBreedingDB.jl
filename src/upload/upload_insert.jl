@@ -81,7 +81,6 @@ function insert_names!(
         error(new_error)
     end
     uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
-    existing_names = execute(conn, "SELECT name FROM $table") |> DataFrame |> x -> String.(string.(x[:, 1]))
     counter = 0
     pb =
         ProgressMeter.Progress(length(uploaded_names), "Inserting names listed in \"$df_col\" into \"$table\" table...")
@@ -89,18 +88,19 @@ function insert_names!(
     try
         for x in uploaded_names
             # x = uploaded_names[1]
-            if x ∉ existing_names
-                execute(
-                    conn,
-                    """
-                    INSERT INTO $table (name)
-                    VALUES (\$1);
-                    """,
-                    [x],
-                )
+            res = execute(
+                conn,
+                """
+                INSERT INTO $table (name)
+                VALUES (\$1)
+                ON CONFLICT (name) DO NOTHING
+                """,
+                [x],
+            )
+            if LibPQ.num_affected_rows(res) > 0
                 counter += 1
-                verbose ? ProgressMeter.next!(pb) : nothing
             end
+            verbose ? ProgressMeter.next!(pb) : nothing
         end
         if verbose
             ProgressMeter.finish!(pb)
