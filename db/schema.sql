@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS genomes (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT UNIQUE NOT NULL,
     file_path TEXT UNIQUE NOT NULL,
-    genotype_vcf_id UUID NOT NULL REFERENCES genotype_vcfs(id),
+    reference_genome_id UUID NOT NULL REFERENCES reference_genomes(id),
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -446,7 +446,6 @@ CREATE INDEX IF NOT EXISTS idx_phenomes_file_path_trgm ON phenomes USING gin (fi
 CREATE INDEX IF NOT EXISTS idx_fits_file_path_trgm ON fits USING gin (file_path gin_trgm_ops);
 -- Genomic data foreign keys
 CREATE INDEX IF NOT EXISTS idx_genotype_vcfs_reference_genome ON genotype_vcfs(reference_genome_id);
-CREATE INDEX IF NOT EXISTS idx_genomes_vcf ON genomes(genotype_vcf_id);
 -- Genomes and phenomes relationships with entries, traits, experiments, sites, treatments, and measurements
 CREATE INDEX IF NOT EXISTS idx_genome_entries_entry ON genome_entries(entry_id);
 CREATE INDEX IF NOT EXISTS idx_phenome_entries_entry ON phenome_entries(entry_id);

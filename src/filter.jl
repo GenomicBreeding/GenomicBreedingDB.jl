@@ -1,109 +1,93 @@
 """
-    Filter
-
-Represents a validated query filter for a database table column.
-
-A `Filter` encapsulates a single filtering operation on a field within a
-database table. Exactly one filtering criterion must be supplied when
-constructing a `Filter`.
-
-# Fields
-
-- `table::String`: Name of the target database table.
-- `field::String`: Name of the target field (column).
-- `like::Union{Nothing,String}`: Pattern used for fuzzy matching.
-- `in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}`:
-  Values used in an SQL `IN (...)` clause.
-- `between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}`:
-  Inclusive lower and upper bounds for range filtering.
-- `equal_to::Union{Nothing,Int,AbstractFloat}`:
-  Exact value match.
-- `less_than::Union{Nothing,Int,AbstractFloat}`:
-  Upper bound filter.
-- `greater_than::Union{Nothing,Int,AbstractFloat}`:
-  Lower bound filter.
-
-# Constructor
     Filter(
         conn::LibPQ.Connection;
         table::String,
         field::String,
-        filter_like::Union{Nothing, String} = nothing,
-        filter_in::Union{Nothing, Vector{String}, Vector{Int}, Vector{AbstractFloat}} = nothing,
-        filter_between::Union{Nothing, Tuple{Int, Int}, Tuple{AbstractFloat, AbstractFloat}} = nothing,
-        filter_equal_to::Union{Nothing, Int, AbstractFloat} = nothing,
-        filter_less_than::Union{Nothing, Int, AbstractFloat} = nothing,
-        filter_greater_than::Union{Nothing, Int, AbstractFloat} = nothing,
+        filter_like::Union{Nothing,String}=nothing,
+        filter_in::Union{
+            Nothing,
+            Vector{String},
+            Vector{Int},
+            Vector{AbstractFloat}
+        }=nothing,
+        filter_between::Union{
+            Nothing,
+            Tuple{Int,Int},
+            Tuple{AbstractFloat,AbstractFloat}
+        }=nothing,
+        filter_equal_to::Union{Nothing,Int,AbstractFloat}=nothing,
+        filter_less_than::Union{Nothing,Int,AbstractFloat}=nothing,
+        filter_greater_than::Union{Nothing,Int,AbstractFloat}=nothing,
     )
 
-Create a validated database filter.
+Construct a validated database filter for querying or modifying records.
 
-The constructor verifies that:
+A `Filter` encapsulates a single filtering criterion applied to a database table.
+The constructor validates the target table and field, ensures that exactly one
+filter condition has been supplied, and automatically resolves user-friendly
+entity names to database identifiers when filtering on foreign-key fields.
 
-1. The specified `table` exists.
-2. The specified `field` exists, or can be resolved to a corresponding
-    foreign-key field (e.g. `entries → entry_id`).
-3. Exactly one filtering criterion is supplied.
-4. Identifier-based fields (`*_id`) can accept names and automatically
-    resolve them to IDs.
+When filtering on relational fields such as `entry_id`, `site_id`, or similar
+identifier columns, supplied names are translated into their corresponding
+database ids. This allows database queries to be written using meaningful names
+rather than internal identifiers.
 
 # Arguments
-- `conn::LibPQ.Connection`: Active database connection.
-- `table::String`: Target table name.
-- `field::String`: Target field name.
-- `filter_like::Union{Nothing,String}`: Match records using a fuzzy search.
-- `filter_in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}`: Match records whose values are contained in a collection.
-- `filter_between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}`: Match records with values between two bounds.
-- `filter_equal_to::Union{Nothing,Int,AbstractFloat}`: Match records equal to a specific value.
-- `filter_less_than::Union{Nothing,Int,AbstractFloat}`: Match records with values less than the specified value.
-- `filter_greater_than::Union{Nothing,Int,AbstractFloat}`: Match records with values greater than the specified value.
 
-# Details
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table to filter.
+- `field::String`: Name of the field on which filtering will be applied.
+- `filter_like::Union{Nothing,String}=nothing`: Pattern-matching filter using SQL
+  `LIKE` semantics.
+- `filter_in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}=nothing`:
+  Filter matching any value in the supplied collection.
+- `filter_between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}=nothing`:
+  Inclusive range filter.
+- `filter_equal_to::Union{Nothing,Int,AbstractFloat}=nothing`: Exact numeric
+  equality filter.
+- `filter_less_than::Union{Nothing,Int,AbstractFloat}=nothing`: Numeric
+  less-than filter.
+- `filter_greater_than::Union{Nothing,Int,AbstractFloat}=nothing`: Numeric
+  greater-than filter.
 
-- `filter_like` (one string): Case-insensitive pattern matching
-  (`ILIKE`). Wildcards (`%`) are optional; if none are supplied, the
-  constructor automatically converts the pattern to
-  `"%<pattern>%"`, resulting in a contains search. Literal underscore
-  characters (`_`) are automatically escaped (`\\_`) so that they are
-  treated as underscores rather than PostgreSQL single-character
-  wildcards.
-- `filter_in` (one or more strings or numbers): Membership in a set of values (`IN`).
-- `filter_between` (two numbers): Inclusive range filtering (`BETWEEN`).
-- `filter_equal_to` (one number): Equality to a single value (`=`).
-- `filter_less_than` (one number): Less-than comparison (`<`).
-- `filter_greater_than` (one number): Greater-than comparison (`>`).
+# Fields
 
-# Notes
-
-For foreign-key fields ending in `_id`, string values supplied via
-`filter_in` or `filter_like` are automatically translated to their
-corresponding database identifiers using `extract_ids`.
-
-Exactly one of the `filter_*` keyword arguments must be non-`nothing`.
-
-For non-identifier fields, `filter_like` automatically performs a
-contains search when no SQL wildcard (`%`) is provided. In addition,
-underscore characters (`_`) are automatically escaped because PostgreSQL
-treats `_` as a single-character wildcard in `LIKE` and `ILIKE`
-expressions.
-
-Examples:
-
-- `"site"` becomes `"%site%"`
-- `"entry_01"` becomes `"%entry\\_01%"`
-
-This ensures that identifiers such as `entry_001` are interpreted
-literally rather than as wildcard patterns.
-
-To perform more specific pattern matching, supply the desired SQL
-wildcards (`%`) explicitly.
+- `table::String`: Target database table.
+- `field::String`: Database field used in the filter expression.
+- `like::Union{Nothing,String}`: Pattern-matching filter value.
+- `in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}`:
+  Collection-based filter values.
+- `between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}`:
+  Inclusive range filter.
+- `equal_to::Union{Nothing,Int,AbstractFloat}`: Equality filter value.
+- `less_than::Union{Nothing,Int,AbstractFloat}`: Less-than filter value.
+- `greater_than::Union{Nothing,Int,AbstractFloat}`: Greater-than filter value.
 
 # Throws
 
-- `ErrorException` if the table does not exist.
-- `ErrorException` if the field cannot be resolved.
-- `ErrorException` if zero or multiple filtering criteria are supplied.
-- `ErrorException` if querying on an id field and no matched were found.
+- `ErrorException`: If the database table does not exist.
+- `ErrorException`: If the specified field cannot be resolved.
+- `ErrorException`: If zero or multiple filter criteria are supplied.
+- `ErrorException`: If supplied names cannot be resolved to database ids.
+- `ErrorException`: If no database records match a supplied relational filter.
+- Any exception raised during validation or identifier resolution.
+
+# Notes
+
+- Exactly one filtering method must be supplied. The constructor rejects filters
+  with zero or multiple active criteria.
+- Connection and schema validation are performed using `check`.
+- If the supplied field is not found, the constructor attempts to infer a
+  corresponding foreign-key field by appending `_id`.
+- Special handling is provided for `entries`, which maps to `entry_id`.
+- Relational filters are resolved using `extract_ids`.
+- Name-based `LIKE` searches on relational fields are converted into exact
+  identifier-based `IN` filters after matching candidate records.
+- Pattern-matching filters automatically receive surrounding `%` wildcards when
+  not already supplied.
+- Underscore characters are escaped to prevent unintended SQL wildcard matching.
+- `Filter` objects are typically used with functions such as `query_table`,
+  `update_table!`, `delete_names!`, and `concat_filters`.
 
 # Examples
 
@@ -267,14 +251,21 @@ struct Filter
 end
 
 """
-    Base.hash(x::Filter, h::UInt)::UInt
+    Base.hash(
+        x::Filter,
+        h::UInt,
+    )::UInt
 
 Compute a hash value for a `Filter` object.
 
-This method extends Julia's hashing mechanism for `Filter` objects,
-allowing them to be used in hash-based collections such as `Set` and
-`Dict`. The hash is computed by sequentially combining the hash values
-of all fields in the `Filter` object.
+The method extends Julia's hashing interface for the `Filter` type by combining
+the hash values of all fields contained within the object. The resulting hash
+depends on the values of every field, ensuring that filters with identical
+contents produce identical hash values.
+
+This implementation enables `Filter` objects to be used reliably in hashed data
+structures such as `Dict`, `Set`, and other collections that depend on hash-based
+lookup.
 
 # Arguments
 
@@ -283,12 +274,19 @@ of all fields in the `Filter` object.
 
 # Returns
 
-- `UInt`: Hash value for the `Filter` object.
+- `UInt`: Hash value representing the contents of the `Filter` object.
 
 # Notes
 
-- The hash is computed using all fields returned by `fieldnames(typeof(x))`.
-- Defined for the correctness of `unique()` on a `Vector{Filter}`.
+- Hash values are generated by iteratively combining the hashes of all fields in
+  the `Filter` object.
+- Field values are processed in the order returned by
+  `fieldnames(typeof(x))`.
+- The implementation is compatible with Julia's standard hashing framework.
+- Objects containing identical field values will produce identical hash values
+  when supplied with the same hash seed.
+- This method should remain consistent with any corresponding `isequal`
+  implementation for the `Filter` type.
 
 # Examples
 
@@ -312,32 +310,41 @@ function Base.hash(x::Filter, h::UInt)::UInt
 end
 
 """
-    Base.:(==)(x::Filter, y::Filter)::Bool
+    Base.:(==)(
+        x::Filter,
+        y::Filter,
+    )::Bool
 
 Determine whether two `Filter` objects are equal.
 
-Two `Filter` objects are considered equal if all corresponding fields
-have equal values. Fields are compared sequentially using `!=`, and the
-comparison terminates as soon as a mismatch is found.
+Two `Filter` objects are considered equal when all corresponding fields contain
+identical values. Equality is evaluated by comparing each field in the order
+defined by the `Filter` structure, and comparison terminates immediately when a
+difference is detected.
+
+This method extends Julia's standard equality operator for the `Filter` type and
+provides behaviour consistent with the custom `hash` implementation. The primary
+use of this method is so that the `unique` function on a vector of `Filter` objects
+work as intended.
 
 # Arguments
 
-- `x::Filter`: First filter to compare.
-- `y::Filter`: Second filter to compare.
+- `x::Filter`: First filter object.
+- `y::Filter`: Second filter object.
 
 # Returns
 
-- `true` if all fields in `x` and `y` are equal.
-- `false` if any field differs.
+- `Bool`: `true` if all fields of `x` and `y` are equal; otherwise `false`.
 
 # Notes
 
-- Equality is evaluated by comparing every field returned by
-  `fieldnames(typeof(x))`.
-- Unlike `Base.hash(::Filter, ::UInt)`, no fields are excluded from
-  the equality comparison.
-- This implementation performs a field-by-field comparison rather than
-  relying on hash values.
+- Equality is determined by comparing every field in the `Filter` structure.
+- Comparison is performed using the `!=` operator on each corresponding field.
+- Evaluation stops as soon as a mismatch is detected.
+- Filters that contain identical values in all fields are considered equal.
+- This implementation is intended to remain consistent with
+  `Base.hash(::Filter, ::UInt)`, enabling reliable use of `Filter` objects in
+  hash-based collections such as `Set` and `Dict`.
 
 # Examples
 
@@ -385,55 +392,51 @@ end
         verbose::Bool=false,
     )::Tuple{Vector{String},Vector{String}}
 
-Convert a collection of `Filter` objects into SQL query fragments and
-their associated parameter values.
+Convert a collection of `Filter` objects into SQL filter clauses and their
+associated query parameters.
 
-The function translates each filter into a parameterised SQL condition
-and returns both the SQL fragments and parameter values required for
-query execution. The generated SQL fragments are intended to be
-concatenated into a `WHERE` clause.
+The function translates validated `Filter` instances into parameterised SQL
+fragments suitable for inclusion in a `WHERE` clause. SQL expressions and query
+parameters are accumulated in the order supplied, ensuring that parameter indices
+remain aligned with the generated placeholders.
+
+The resulting SQL fragments and parameter vector can be used directly in
+subsequent database queries or update statements.
 
 # Arguments
 
-- `filters::Vector{Filter}`: Collection of filters to convert into SQL
-  query conditions.
-- `verbose::Bool=false`: If `true`, display a progress bar while
-  processing filters.
-
-# Supported Filters
-
-Each `Filter` object must define exactly one filtering condition:
-
-- `filter_like`: Case-insensitive pattern matching (`ILIKE`).
-- `filter_in`: Membership in a set of values (`IN`).
-- `filter_between`: Inclusive range filtering (`BETWEEN`).
-- `filter_equal_to`: Equality comparison (`=`).
-- `filter_less_than`: Less-than comparison (`<`).
-- `filter_greater_than`: Greater-than comparison (`>`).
-
-Multiple filters are intended to be combined using logical `AND`.
+- `filters::Vector{Filter}`: Collection of filters to convert into SQL clauses.
+- `verbose::Bool=false`: If `true`, display progress information whilst
+  processing the filters.
 
 # Returns
 
-- `Tuple{Vector{String},Vector{String}}` containing:
-  1. A vector of SQL condition fragments.
-  2. A vector of parameter values corresponding to the generated SQL.
+- `Tuple{Vector{String},Vector{String}}`:
+  - `sql`: Vector of SQL filter expressions.
+  - `par`: Vector of parameter values corresponding to the generated SQL
+    placeholders.
 
 # Throws
 
-- An exception if a `Filter` object does not define a filtering
-  condition.
+- `ErrorException`: If a filter does not contain a valid filtering criterion.
 
 # Notes
 
-- SQL statements are generated using parameter placeholders
-  (`\$1`, `\$2`, ...) to support parameterised queries.
-- The number and ordering of parameters depend on the supplied filters.
-  For example, a `filter_between` condition contributes two parameters,
-  whereas a `filter_equal_to` condition contributes one.
-- The returned SQL fragments do not include a `WHERE` clause and are
-  intended to be appended to an existing query statement.
-- Progress is displayed only when `verbose=true`.
+- SQL fragments are generated using parameter placeholders rather than embedding
+  values directly into query strings.
+- The function supports the following filter types:
+  - `like` → `ILIKE`
+  - `in` → `IN (...)`
+  - `between` → `BETWEEN ... AND ...`
+  - `equal_to` → equality comparison
+  - `less_than` → less-than comparison
+  - `greater_than` → greater-than comparison
+- Parameter numbering is generated dynamically based on the number of previously
+  accumulated parameters.
+- All parameter values are converted to strings before being returned.
+- Progress reporting is available when `verbose=true`.
+- The generated SQL fragments are intended to be concatenated with an existing
+  query rather than executed directly.
 
 # Examples
 

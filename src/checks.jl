@@ -1,47 +1,50 @@
-
 """
     check_illegal_strings(
         x::Vector{String};
-        additional_illegal_strings::Union{Nothing,Vector{String}} = nothing,
+        additional_illegal_strings::Union{Nothing,Vector{String}}=nothing,
     )::Nothing
 
-Validate that strings contain only characters permitted by the GenomicBreedingDB
-naming conventions.
+Validate a collection of strings against a predefined set of prohibited
+characters and patterns.
 
-This function performs opinionated validation of identifiers and text values that
-will be stored in database fields. It is primarily intended for validating names,
-codes, identifiers, and other structured text values used throughout the database.
-Free-text fields such as notes should typically not be validated with this function.
+The function enforces a strict naming convention intended for identifiers and
+metadata stored in the database. Each string is checked for non-ASCII characters,
+a predefined set of illegal characters, and optionally a collection of
+user-specified disallowed string patterns.
+
+If one or more violations are detected, an informative error is raised describing
+all invalid strings and the corresponding offending characters or patterns.
 
 # Arguments
-- `x::Vector{String}`: Strings to validate.
-- `additional_illegal_strings::Union{Nothing,Vector{String}}=nothing`:
-  Optional collection of additional patterns that should be treated as illegal.
-  Each supplied string is interpreted as a regular expression and matched against
-  every element of `x`.
 
-# Validation Rules
-Each string must satisfy all of the following:
-
-- Contain only ASCII characters.
-- Not contain any of the following characters:
-
-  `;`, `|`, `,`, `.`, `/`, `\\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`,
-  `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`,
-  `:`, `<`, `>`, `?`
-
-- Not match any pattern supplied through
-  `additional_illegal_strings`.
+- `x::Vector{String}`: Collection of strings to validate.
+- `additional_illegal_strings::Union{Nothing,Vector{String}}=nothing`: Optional
+  list of additional string patterns that are not permitted.
 
 # Returns
-- `nothing` if all validations succeed.
+
+- `Nothing`: Returned when all supplied strings pass validation.
 
 # Throws
-- An exception if `x` is empty.
-- An exception if any string contains non-ASCII characters.
-- An exception if any string contains prohibited characters.
-- An exception if any string matches a pattern in
+
+- `ErrorException`: If `x` is empty.
+- `ErrorException`: If one or more strings contain non-ASCII characters.
+- `ErrorException`: If one or more strings contain prohibited characters.
+- `ErrorException`: If one or more strings match a pattern listed in
   `additional_illegal_strings`.
+
+# Notes
+
+- Validation is intentionally restrictive to promote consistent naming and
+  identifier conventions throughout the database.
+- Non-ASCII characters are not permitted.
+- Prohibited characters include punctuation and symbols such as:
+  `;`, `|`, `,`, `.`, `/`, `\\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`,
+  `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`,
+  and `?`.
+- Additional prohibited patterns may be supplied using
+  `additional_illegal_strings`.
+- All detected validation errors are reported together whenever possible.
 
 # Examples
 
@@ -133,47 +136,104 @@ function check_illegal_strings(
 end
 
 """
-    check(df::DataFrame, col::String)::Nothing
+    check(
+        conn::LibPQ.Connection,
+    )::Nothing
 
-Validate that a DataFrame contains a specified column and that any
-string values within that column satisfy the naming conventions enforced
-by `check_illegal_strings()`.
+Validate that a database connection is open and available for use.
 
-The function first verifies that the requested column exists in the
-DataFrame. If the column contains string values, all unique values are
-validated to ensure they contain only permitted ASCII characters and do
-not contain prohibited characters or patterns.
+The function checks whether the supplied PostgreSQL connection has been closed.
+If the connection is no longer active, an error is raised instructing the user
+to establish a new connection before continuing.
+
+This validation function is intended to be used defensively before performing
+database operations that require an active connection.
 
 # Arguments
 
-- `df::DataFrame`: DataFrame containing the column to validate.
-- `col::String`: Name of the column to check.
-
-# Validation Performed
-
-1. Confirm that `col` exists in `df`.
-2. If the column is string-valued:
-   - Validate all unique values using `check_illegal_strings()`.
-   - Verify that values contain only permitted characters.
-   - Verify that values contain only ASCII characters.
+- `conn::LibPQ.Connection`: PostgreSQL database connection to validate.
 
 # Returns
 
-- `nothing` if validation succeeds.
+- `Nothing`: Returned when the connection is open and usable.
 
 # Throws
 
-- An exception if `col` does not exist in `df`.
-- An exception if a string value contains illegal characters.
-- An exception if a string value contains non-ASCII characters.
+- `ErrorException`: If the database connection has been closed.
 
 # Notes
 
-- Only string-valued columns are checked for illegal characters.
-- Validation is performed on unique values only to reduce redundant
-  checks and improve performance.
-- Any validation error from `check_illegal_strings()` is rethrown with
-  additional context identifying the offending column.
+- The connection state is determined using the `closed` property of the
+  `LibPQ.Connection` object.
+- The function performs validation only and does not modify the connection.
+- This check can be used before executing queries, updates, inserts, or other
+  database operations that require an active session.
+- A closed connection cannot be reopened and must be replaced with a new
+  connection created via `dbconnect()`.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> try isnothing(check(conn)); catch; false; end
+true
+
+julia> close(conn);
+
+julia> try isnothing(check(conn)); catch; false; end
+false
+````
+"""
+function check(conn::LibPQ.Connection)::Nothing
+    if conn.closed.value
+        error("The connection to the database is closed! Please open a new connection!")
+    end
+    nothing
+end
+
+
+"""
+    check(
+        df::DataFrame,
+        col::String,
+    )::Nothing
+
+Validate that a DataFrame contains a specified column and, when applicable,
+validate the string values within that column.
+
+The function verifies that `col` exists in the supplied `DataFrame`. If the column
+contains string values, all unique entries are validated using
+`check_illegal_strings` to ensure they conform to the project's naming and
+identifier conventions.
+
+If validation fails, the underlying error is rethrown with additional context
+identifying the offending column.
+
+# Arguments
+
+- `df::DataFrame`: DataFrame to validate.
+- `col::String`: Name of the column that must exist and, if applicable, contain
+  valid string values.
+
+# Returns
+
+- `Nothing`: Returned when the column exists and all validation checks pass.
+
+# Throws
+
+- `ErrorException`: If the specified column does not exist in the DataFrame.
+- `ErrorException`: If the column contains invalid string values.
+- Any exception raised by `check_illegal_strings`, wrapped with contextual
+  information identifying the column being validated.
+
+# Notes
+
+- String validation is performed only when the column element type is a subtype
+  of `AbstractString`.
+- Unique string values are validated to avoid redundant checks.
+- Validation of string content is delegated to `check_illegal_strings`.
+- The function does not modify the input `DataFrame`.
 
 # Examples
 
@@ -205,23 +265,46 @@ function check(df::DataFrame, col::String)
 end
 
 """
-    check(conn::LibPQ.Connection, table::String)::Nothing
+    check(
+        conn::LibPQ.Connection,
+        table::String,
+    )::Nothing
 
-Verify that a table exists in the connected PostgreSQL database.
+Validate that a database connection is open and that a specified table exists in
+the database.
 
-The supplied table name is first validated using `check_illegal_strings()`
-before querying the PostgreSQL system catalog.
+The function first verifies that the supplied PostgreSQL connection is active
+using `check(conn)`. It then validates the table name against the project's naming
+conventions and confirms that the table exists within the `public` schema of the
+connected database.
+
+Table existence is determined using PostgreSQL's `to_regclass` function, which
+provides a reliable mechanism for identifying registered database objects.
 
 # Arguments
-- `conn::LibPQ.Connection`: Active PostgreSQL connection.
-- `table::String`: Name of the table to check.
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table to validate.
 
 # Returns
-- `nothing` if the table exists.
+
+- `Nothing`: Returned when the connection is open and the table exists.
 
 # Throws
-- An exception if `table` contains illegal characters.
-- An exception if the table does not exist.
+
+- `ErrorException`: If the database connection has been closed.
+- `ErrorException`: If the table name contains illegal characters or strings.
+- `ErrorException`: If the specified table does not exist in the database.
+- Any database exception raised while checking table existence.
+
+# Notes
+
+- Connection validation is delegated to `check(conn)`.
+- Table-name validation is performed using `check_illegal_strings`.
+- Existence checks are performed against the `public` schema.
+- PostgreSQL's `to_regclass` function is used to determine whether the table is
+  present in the database.
+- The function performs validation only and does not modify the database.
 
 # Examples
 
@@ -239,6 +322,7 @@ julia> close(conn);
 """
 function check(conn::LibPQ.Connection, table::String)::Nothing
     # conn = dbconnect(); table = "rgsg"
+    check(conn)
     check_illegal_strings([table])
     bool =
         execute(conn, "SELECT to_regclass('public.$table') IS NOT NULL AS table_exists") |>
@@ -251,23 +335,52 @@ function check(conn::LibPQ.Connection, table::String)::Nothing
 end
 
 """
-    check(conn::LibPQ.Connection, table::String, field::String)::Nothing
+    check(
+        conn::LibPQ.Connection,
+        table::String,
+        field::String,
+    )::Nothing
 
-Verify that a field exists within a database table. 
+Validate that a database connection is open and that a specified field exists
+within a database table.
 
-Both the table name and field name are validated using `check_illegal_strings()` before querying the PostgreSQL system catalog.
+The function first verifies that the supplied PostgreSQL connection is active
+using `check(conn)`. It then validates both the table and field names against the
+project's naming conventions before confirming that the specified field exists in
+the target table and has not been dropped.
+
+Field existence is determined using PostgreSQL system catalogue metadata stored
+in `pg_attribute`.
 
 # Arguments
-- `conn::LibPQ.Connection`: Active PostgreSQL connection.
-- `table::String`: Name of the table.
-- `field::String`: Name of the field to check. 
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table containing the field.
+- `field::String`: Name of the field to validate.
 
 # Returns
-- `nothing` if the field exists within the specified table. 
 
-# Throws 
-- An exception if `table` or `field` contain illegal characters. 
-- An exception if the field does not exist in the specified table. 
+- `Nothing`: Returned when the connection is open and the specified field exists
+  in the target table.
+
+# Throws
+
+- `ErrorException`: If the database connection has been closed.
+- `ErrorException`: If the table name contains illegal characters or strings.
+- `ErrorException`: If the field name contains illegal characters or strings.
+- `ErrorException`: If the specified field does not exist in the target table.
+- Any database exception raised whilst checking field existence.
+
+# Notes
+
+- Connection validation is delegated to `check(conn)`.
+- Table and field names are validated using `check_illegal_strings`.
+- Field existence is determined using PostgreSQL system catalogue information in
+  `pg_attribute`.
+- Dropped fields are excluded from the existence check using
+  `NOT attisdropped`.
+- The target table is resolved using PostgreSQL's `regclass` mechanism.
+- The function performs validation only and does not modify the database.
 
 # Examples
 
@@ -285,6 +398,7 @@ julia> close(conn);
 """
 function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
     # conn = dbconnect(); table = "phenotype_data"; field = "site_id"; # field = "site"
+    check(conn)
     check_illegal_strings([table])
     check_illegal_strings([field])
     bool = execute(
@@ -306,40 +420,50 @@ function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
 end
 
 """
-    validate_trials(df::DataFrame)::Nothing
+    validate_trials(
+        df::DataFrame,
+    )::Nothing
 
-Validate that a DataFrame contains all required columns for the Trials structure.
+Validate that a DataFrame conforms to the expected structure and content of a
+trial dataset.
 
-Checks that the input DataFrame includes all mandatory fields from the Trials struct,
-excluding columns that match the patterns "phenotypes" or "traits". Validates that string
-columns contain only allowed characters using `check_illegal_strings()`. Raises an error
-if any required columns are missing or contain illegal characters.
+The function verifies that all required trial columns are present, validates the
+contents of string-valued columns against the project's naming conventions, and
+checks that only expected fields are stored using numeric data types.
+
+Required columns are determined from the `Trials` structure definition, excluding
+phenotype and trait matrices. String columns are validated using
+`check_illegal_strings`, whilst numeric columns are checked against a predefined
+list of permitted numeric fields.
 
 # Arguments
-- `df::DataFrame`: The DataFrame to validate against the Trials structure requirements.
+
+- `df::DataFrame`: Trial dataset to validate.
 
 # Returns
-- `Nothing`: Returns nothing if validation passes.
+
+- `Nothing`: Returned when all validation checks pass successfully.
 
 # Throws
-- `String`: An error message listing missing columns if validation fails.
-- `String`: An error message if any string column contains illegal characters or non-ASCII content.
 
-# Details
-1. All required columns derived from `fieldnames(Trials)` are present.
-2. String-valued columns contain only permitted characters.
-3. String-valued columns contain only ASCII characters. 
-4. Most required columns are expected to contain string values.
-The following columns are exceptions and may be stored as either string or numeric types:
-   - `years`
-   - `measurements`
-   - `replications`
-   - `blocks`
-   - `rows`
-   - `cols`
-Any other required column with a non-string type is considered invalid.
+- `ErrorException`: If one or more required columns are missing.
+- `ErrorException`: If a string column contains illegal characters or strings.
+- `ErrorException`: If unexpected numeric columns are detected.
 
-# Example
+# Notes
+
+- Required columns are derived from the fields of the `Trials` structure.
+- Fields containing `phenotypes` or `traits` are excluded from the required-column
+  check.
+- String-valued columns are validated using `check_illegal_strings`.
+- Numeric columns are expected only for:
+  `years`, `measurements`, `replications`, `blocks`, `rows`, and `cols`.
+- Any additional numeric columns are treated as potential data-formatting errors
+  and will cause validation to fail.
+- The function performs validation only and does not modify the input
+  `DataFrame`.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> simulate_genomes() |> simulate_trials;
@@ -381,26 +505,45 @@ function validate_trials(df::DataFrame)::Nothing
 end
 
 """
-    validate_date(date::String)::Bool
+    validate_date(
+        date::String,
+    )::Nothing
 
-Validate that a date string follows the strict `yyyy-mm-dd` format.
-Note that we also allow `yyyy-m-d`, i.e. single digits for the month and day.
+Validate that a string represents a valid date in `yyyy-mm-dd` format.
+
+The function verifies that the supplied string conforms to the expected date
+format and that each component can be parsed as an integer. It then attempts to
+construct a `Date` object to confirm that the date is valid according to the
+Gregorian calendar.
+
+Both formatting errors and invalid calendar dates result in an exception being
+raised.
 
 # Arguments
-- `date::String`: A date string to validate.
+
+- `date::String`: Date string to validate.
 
 # Returns
-- `Bool`: `true` if the date string is valid, `false` otherwise.
 
-# Details
-The function checks that:
-- The date contains exactly 3 parts separated by `-`
-- The year part has exactly 4 digits
-- The month part has 1-2 digits
-- The day part has 1-2 digits
-- All parts can be parsed as integers
+- `Nothing`: Returned when the supplied date is valid.
 
-# Example
+# Throws
+
+- `ErrorException`: If the date does not conform to the `yyyy-mm-dd` format.
+- `ErrorException`: If any date component is not an integer.
+- `ErrorException`: If the date is not a valid calendar date.
+
+# Notes
+
+- Dates must follow the format `yyyy-mm-dd`.
+- The year component must contain four digits.
+- Month and day components must contain one or two digits.
+- Validation includes both format checking and calendar validation.
+- Internally, the date is validated using
+  `Date(date, dateformat"yyyy-mm-dd")`.
+- The function performs validation only and does not return a `Date` object.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> validate_date("2026-07-08") |> x -> isnothing(x)
@@ -445,68 +588,48 @@ function validate_date(date::String)::Nothing
     nothing
 end
 
-
 """
-    validate_data_table(df::DataFrame)::Nothing
+    validate_data_table(
+        df::DataFrame,
+    )::Nothing
 
-Validate that a data table conforms to the schema expected by
-`query_table()` outputs and downstream analysis functions.
+Validate that a DataFrame conforms to the expected structure of a phenotype or
+environmental data table.
 
-The function verifies that the supplied `DataFrame` contains the
-required identifier and measurement fields expected for experimental
-data. Fields ending in `_id` are treated equivalently to their
-identifier-resolved counterparts by removing the `_id` suffix prior to
-validation.
+The function checks that the DataFrame contains the required fields needed for
+long-format observational data. Field names ending in `_id` are normalised by
+removing the suffix before validation, allowing both identifier-based and
+name-based representations of the data.
 
-A valid table must contain all required fields except that exactly one
-of `trait` or `environmental_variable` may be absent. This accommodates
-both phenotype tables (which contain `trait`) and environmental tables
-(which contain `environmental_variable`).
+The dataset must contain all core experimental design fields together with a
+`value` field and exactly one of either `trait` or
+`environmental_variable`.
 
 # Arguments
 
 - `df::DataFrame`: Data table to validate.
 
-# Validation Performed
-
-1. Column names are normalised by removing any `_id` suffixes.
-2. The following fields are expected:
-
-   - `experiment`
-   - `site`
-   - `treatment`
-   - `layout`
-   - `measurement`
-   - `entry`
-   - `trait`
-   - `environmental_variable`
-   - `value`
-
-3. All required fields must be present, except that one of the
-   following may be missing:
-
-   - `trait`
-   - `environmental_variable`
-
 # Returns
 
-- `nothing` if validation succeeds.
+- `Nothing`: Returned when the DataFrame satisfies the expected structure.
 
 # Throws
 
-- An exception if required fields are missing.
-- An exception if both `trait` and `environmental_variable` are missing.
-- An exception if any required field other than `trait` or
-  `environmental_variable` is missing.
+- `ErrorException`: If required fields are missing from the DataFrame.
 
 # Notes
 
-The function is designed to validate both phenotype and environmental
-data tables:
-
-- Phenotype tables typically contain a `trait` field.
-- Environmental tables typically contain an
-  `environmental_variable` field.
+- Identifier fields ending in `_id` are treated as equivalent to their
+  corresponding name-based fields.
+- Required fields include:
+  `experiment`, `site`, `treatment`, `layout`, `measurement`, `entry`,
+  and `value`.
+- Exactly one of `trait` or `environmental_variable` may be omitted.
+- The function supports both phenotype and environmental data tables.
+- Validation is limited to field presence and does not verify data types or
+  field contents.
+- The function performs validation only and does not modify the input
+  `DataFrame`.
 
 # Examples
 
@@ -556,44 +679,40 @@ function validate_data_table(df::DataFrame)::Nothing
 end
 
 """
-    validate_filters(filters::Vector{Filter})::Nothing
+    validate_filters(
+        filters::Vector{Filter},
+    )::Nothing
 
-Validate a collection of `Filter` objects.
+Validate that a collection of filters references exactly one database table.
 
-The function verifies that all supplied filters reference the same
-database table. This is required by functions such as `query_table()`,
-which construct a single SQL query against a single table.
+The function examines all supplied `Filter` objects and verifies that they target
+the same table. This constraint is required for operations that construct a single
+SQL query from multiple filters, such as querying or updating records.
+
+If filters referencing multiple tables are detected, an error is raised describing
+the offending filter definitions.
 
 # Arguments
 
 - `filters::Vector{Filter}`: Collection of filters to validate.
 
-# Validation Performed
-
-1. Extract the table name associated with each filter.
-2. Confirm that exactly one unique table is represented across all
-   filters.
-
 # Returns
 
-- `nothing` if validation succeeds.
+- `Nothing`: Returned when all filters reference the same table.
 
 # Throws
 
-- An exception if the filters reference more than one table.
+- `ErrorException`: If the filters reference more than one database table.
 
 # Notes
 
-A query can only target a single database table. Consequently, filter
-collections such as:
-
-```julia
-[
-    Filter(conn, table="phenotype_data", ...),
-    Filter(conn, table="environment_data", ...)
-]
-```
-are invalid and will raise an error.
+- The function does not validate individual filter contents.
+- Validation is limited to ensuring table consistency across all filters.
+- An empty filter collection is not explicitly checked and may require validation
+  elsewhere in the workflow.
+- This function is commonly used before constructing SQL queries from multiple
+  filter conditions.
+- The function performs validation only and does not modify the supplied filters.
 
 # Examples
 
@@ -623,91 +742,4 @@ function validate_filters(filters::Vector{Filter})::Nothing
         error("We expect one and only one table in the filters! See:\n\t- $(join(filters, "\n\t- "))")
     end
     nothing
-end
-
-"""
-    list_tables(conn::LibPQ.Connection)::DataFrame
-
-List all user tables in the connected PostgreSQL database.
-
-The function queries PostgreSQL system statistics and returns the names
-of all user tables together with their estimated row counts.
-
-# Argument
-- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-
-# Returns
-- `DataFrame`: A DataFrame containing:
-  - `table_name::String`: Database table name.
-  - `estimated_row_count::Integer`: PostgreSQL estimate of the
-    number of rows in the table.
-
-# Notes
-- Row counts are obtained from PostgreSQL statistics
-  (`pg_stat_user_tables`) and are therefore estimates rather than
-  exact counts.
-- Only user tables are returned.
-
-# Examples
-
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> conn = dbconnect();
-
-julia> list_tables(conn) |> nrow > 0
-true
-
-julia> close(conn);
-```
-"""
-function list_tables(conn::LibPQ.Connection)::DataFrame
-    # conn = dbconnect()
-    execute(
-        conn,
-        """
-        SELECT 
-            relname AS table_name, 
-            n_live_tup AS estimated_row_count
-        FROM 
-            pg_stat_user_tables
-        """,
-    ) |> DataFrame |> sort
-end
-
-"""
-    extract_table( conn::LibPQ.Connection, table::String, )::DataFrame
-
-Extract all records from a database table.
-
-Validates that the specified table exists using `check()` and then retrieves all rows and columns from the table.
-
-# Arguments
-- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `table::String`: Name of the table to extract.
-
-# Returns
-- `DataFrame`: A DataFrame containing all rows and columns from `table`.
-
-# Throws
-- An exception if `table` contains illegal characters.
-- An exception if `table` does not exist in the database.
-
-# Notes
-
-For large tables, this function may require substantial memory because the entire table is loaded into a single `DataFrame`.
-
-# Examples
-
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> conn = dbconnect();
-
-julia> extract_table(conn, "entries") |> nrow > 0
-true
-
-julia> close(conn);
-```
-"""
-function extract_table(conn::LibPQ.Connection, table::String)::DataFrame
-    # conn = dbconnect(); table = "entries"
-    check(conn, table)
-    execute(conn, "SELECT * FROM $table") |> DataFrame
 end

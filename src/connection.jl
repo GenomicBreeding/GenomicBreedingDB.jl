@@ -1,22 +1,43 @@
 """
     dbconnect()::LibPQ.Connection
 
-Establishes a connection to a PostgreSQL database using environment variables.
+Create a connection to the configured PostgreSQL database and validate the
+database schema.
 
-Validates that all tables in the database contain a mandatory 'name' column.
-Throws an error if any table lacks this required field.
+The function loads database connection settings from a `.env` file located in the
+user's home directory and establishes a connection using `LibPQ`. After
+connecting, a series of schema validation checks are performed to ensure that
+required database tables contain the expected `name` field.
+
+If the connection cannot be established or the database schema does not satisfy
+the required conventions, an informative error is raised.
 
 # Returns
-- `LibPQ.Connection`: A connection object to the PostgreSQL database
 
-# Environment Variables Required
-- `DB_USER`: Database username
-- `DB_PASSWORD`: Database password 
-- `DB_NAME`: Name of the database
-- `DB_HOST`: Database host address
+- `LibPQ.Connection`: Active PostgreSQL database connection.
 
-# Exceptions
-- `String`: Throws if any non-system table is missing the mandatory 'name' column
+# Throws
+
+- `ErrorException`: If the database connection cannot be established.
+- `ErrorException`: If required environment variables are missing.
+- `Exception`: If one or more required database tables do not contain a `name`
+  field.
+- Any exception raised while querying database metadata.
+
+# Notes
+
+- Connection details are loaded from `~/.env` using `DotEnv.load!`.
+- The following environment variables are required:
+  `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_HOST`.
+- Database connections are established using `LibPQ.Connection`.
+- After connecting, the schema is validated using metadata from
+  `information_schema`.
+- The following tables are expected to contain a mandatory `name` field:
+  `species`, `entries`, `experiments`, `sites`, `treatments`, `traits`,
+  `measurements`, `reference_genomes`, `genotype_vcfs`, `genomes`,
+  `phenomes`, and `fits`.
+- The function serves as both a connection helper and a schema-validation
+  safeguard for downstream database operations.
 """
 function dbconnect()::LibPQ.Connection
     DotEnv.load!(joinpath(homedir(), ".env"))
@@ -61,23 +82,52 @@ function dbconnect()::LibPQ.Connection
 end
 
 """
-    dbinit(schema_path::String = "db/schema.sql")::Nothing
+    dbinit(
+        schema_path::String="db/schema.sql",
+    )::Nothing
 
-Initialize the database by executing SQL statements from a schema file.
+Initialise the database schema from a SQL definition file.
 
-This function connects to the database, reads SQL statements from the specified schema file,
-and executes them sequentially (except for functions, i.e. between dollar signs which gets
-executed as a single string unit). Each statement in the file should be separated by semicolons.
-If an error occurs during execution, the transaction is rolled back automatically.
+The function establishes a database connection, reads the specified schema file,
+and executes each SQL statement sequentially. Special handling is provided for
+PostgreSQL function definitions so that multi-statement function bodies are
+processed correctly despite containing internal semicolons.
+
+Errors encountered during schema creation are collected and reported after all
+statements have been processed. Certain expected errors related to existing enum
+types may be tolerated, whilst unexpected errors cause database initialisation to
+fail.
 
 # Arguments
-- `schema_path::String`: Path to the SQL schema file. Defaults to "db/schema.sql"
+
+- `schema_path::String="db/schema.sql"`: Path to the SQL schema file used to
+  initialise the database.
 
 # Returns
-- `Nothing`: Function performs database operations but does not return a value
 
-# Exceptions
-- Errors during SQL execution will trigger a rollback and be re-thrown
+- `Nothing`: Database schema objects are created or updated in place.
+
+# Throws
+
+- `ErrorException`: If the schema file cannot be read.
+- `ErrorException`: If database initialisation encounters unexpected errors.
+- Any exception raised while connecting to the database.
+- Any exception raised while executing schema statements that prevent successful
+  initialisation.
+
+# Notes
+
+- A database connection is established using `dbconnect`.
+- SQL statements are executed sequentially from the supplied schema file.
+- PostgreSQL function definitions are reconstructed before execution to handle
+  embedded semicolons correctly.
+- Failed statements trigger a transaction rollback before processing continues.
+- Errors are accumulated and evaluated after all statements have been processed.
+- Errors associated with existing `entry_type` or `relationship_type`
+  definitions may be treated as non-fatal.
+- Database connections are closed before the function exits.
+- The function is intended for schema creation and maintenance rather than
+  routine database operations.
 """
 function dbinit(schema_path::String = "db/schema.sql")::Nothing
     # schema_path = "db/schema.sql"

@@ -7,49 +7,51 @@
         verbose::Bool=false,
     )::Nothing
 
-Update a single field in a database table for records matching a set of
-filtering criteria.
+Update a single field in a database table for the record matching a set of filters.
 
-The function constructs and executes a parameterised SQL `UPDATE`
-statement using the supplied filters. All filters must reference the
-same database table. The specified `destination_field` is updated to the
-supplied `value` for records satisfying all filter conditions.
+The function constructs and executes a parameterised SQL `UPDATE` statement using
+the supplied filters to identify the target record. The specified
+`destination_field` is updated with the provided `value`.
 
-For safety, the function expects exactly one row to be modified. An
-exception is raised if zero rows or multiple rows are affected.
+The update is performed within a database transaction. To minimise the risk of
+unintended modifications, the function verifies that exactly one row was affected by
+the operation. If no rows or multiple rows are updated, the transaction is rolled
+back and an error is raised.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `filters::Vector{Filter}`: Collection of filtering criteria used to
-  identify the record to update. All filters must reference the same
-  table.
-- `destination_field::String`: Field to update.
-- `value::Union{String,AbstractFloat,Int}`: New value to assign
-  to `destination_field`.
-- `verbose::Bool=false`: If `true`, display progress information while
-  constructing the filtering clause.
+- `filters::Vector{Filter}`: Collection of filters used to identify the record to
+  update.
+- `destination_field::String`: Name of the field to be updated.
+- `value::Union{String,AbstractFloat,Int}`: New value to assign to the destination
+  field.
+- `verbose::Bool=false`: If `true`, display diagnostic information while
+  constructing the query.
 
 # Returns
 
-- `nothing` if the update succeeds and exactly one row is modified.
+- `Nothing`: The database record is updated in place.
 
 # Throws
 
-- An exception if the filters reference multiple tables.
-- An exception if any `Filter` does not define a filtering condition.
-- An exception if the update affects a number of rows other than one.
-- Any exception raised by PostgreSQL during query execution.
+- `ErrorException`: If the supplied filters are invalid.
+- `ErrorException`: If the update affects zero rows.
+- `ErrorException`: If the update affects more than one row.
+- Any database exception raised during query execution.
 
 # Notes
 
-- All supplied filters are combined using logical `AND`.
-- The SQL statement is parameterised to reduce the risk of SQL
-  injection.
-- This function is intended for updating a single database record.
-  Updates affecting multiple rows are treated as errors.
-- Filter processing is delegated to `validate_filters()` and
-  `concat_filters()`.
+- All filters are validated using `validate_filters` before query execution.
+- The target table is inferred from the first filter in `filters`.
+- SQL parameters are supplied separately from the query text to support safe,
+  parameterised execution.
+- Database modifications are performed within an explicit transaction using
+  `BEGIN`, `COMMIT`, and `ROLLBACK`.
+- The function expects exactly one matching record and will fail if this condition
+  is not satisfied.
+- This function performs a database modification and does not return the updated
+  record.
 
 # Examples
 
@@ -92,6 +94,7 @@ function update_table!(
     verbose::Bool = false,
 )::Nothing
     # conn = dbconnect()
+    # fname_reference_genome="Milnesium_tardigradum.fa"; simulate_reference_genome(fname_reference_genome=fname_reference_genome); upload_reference_genome!(conn, fname=fname_reference_genome, name="Milnesium tardigradum", notes="Simulated reference genome")
     # filters = [Filter(conn, table="reference_genomes", field="name", filter_in=["Milnesium tardigradum"])]
     # destination_field = "name"
     # value::Union{String, AbstractFloat, Int} = "some_new_name"
@@ -100,55 +103,87 @@ function update_table!(
     table = filters[1].table
     filter_cat, par = concat_filters(filters, verbose = verbose)
     sql = join(vcat(String["UPDATE $table SET $(destination_field) = \$$(length(par)+1) WHERE 1=1"], filter_cat), " ")
+    execute(conn, "BEGIN")
     res = execute(conn, sql, vcat(par, value))
     if LibPQ.num_affected_rows(res) != 1
+        execute(conn, "ROLLBACK")
         error(
-            "Unexpected number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"! The table may be empty or the filters yielded no matches!",
+            "Unexpected number of rows affected, i.e. affecting $(LibPQ.num_affected_rows(res)) rows in \"$table\"! The table may be empty or the filters yielded no or multiple matches!",
         )
     end
+    execute(conn, "COMMIT")
     # execute(conn, "SELECT * FROM $table") |> DataFrame
     # query_table(conn, filters=filters)
     nothing
 end
 
 """
-    update_table_field_by_name!(conn::LibPQ.Connection; df::DataFrame, table::String, df_name_col::String, df_source_col::String, table_destination_field::String, verbose::Bool = false)::Nothing
+    update_table_field_by_name!(
+        conn::LibPQ.Connection;
+        df::DataFrame,
+        table::String,
+        df_name_col::String,
+        df_source_col::String,
+        table_destination_field::String,
+        verbose::Bool=false,
+    )::Nothing
 
-Update a specific field in a database table by matching records based on a name column in a DataFrame.
+Update a field in a database table by matching records using their `name` values.
+
+The function uses values from a DataFrame to update an existing database table. Rows
+are matched using the table's `name` field and values from `df_name_col`. The
+corresponding values from `df_source_col` are then written to
+`table_destination_field`.
+
+If the destination field represents a foreign-key relationship, identified by a
+field name ending in `_id`, source values are automatically resolved to their
+corresponding identifiers in the related table before updates are applied.
+
+Updates are performed individually using `update_table!`, which ensures that each
+update affects exactly one database record.
 
 # Arguments
-- `conn::LibPQ.Connection`: Active database connection.
-- `df::DataFrame`: Source DataFrame containing the data to update.
-- `table::String`: Name of the target table in the database.
-- `df_name_col::String`: Name of the column in `df` whose values are matched against the `name` field of the target database table.
-- `df_source_col::String`: Name of the column in `df` containing the values used to update `table_destination_field`. This may be the same as `df_name_col`.
-- `table_destination_field::String`: Name of the field in the database table to update. If the field name ends with "_id", the function will resolve foreign key references from the corresponding related table.
-- `verbose::Bool`: If `true`, displays a progress bar during the update operation. Defaults to `false`.
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `df::DataFrame`: DataFrame containing source values for the update.
+- `table::String`: Name of the table to update.
+- `df_name_col::String`: Column containing names used to match records in the
+  database table.
+- `df_source_col::String`: Column containing values to write to the destination
+  field.
+- `table_destination_field::String`: Name of the field to update in the target
+  table.
+- `verbose::Bool=false`: If `true`, display progress information and summary
+  messages during the update process.
 
 # Returns
-- `Nothing`
 
-# Behaviour
-- Validates that `df_name_col` and `df_source_col` exist in the provided DataFrame.
-- Supports `df_name_col == df_source_col`, allowing the same column to be used both for row matching and as the source of update values.
-- Validates that the target table and field exist in the database.
-- Validates string columns using `check_illegal_strings()` to ensure they contain only allowed characters for database identifiers and names. The following characters are not allowed: `;`, `|`, `,`, `.`, `/`, `\\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`. Non-ASCII characters are also rejected.
-- Supports `df_name_col == df_source_col`, allowing the same column to be used both for row matching and as the source of update values.
-- Removes duplicate update operations by working on unique combinations of matching and source values.
-- Automatically handles foreign key relationships when the destination field ends with "_id" by looking up IDs from the related table.
-- Updates the `updated_at` timestamp for each modified record (Note: the PostgreSQL schema does this automatically for the metadata table, hence redundant here but I like to be explicit here).
-- Uses database transactions (BEGIN/COMMIT/ROLLBACK) to ensure atomicity.
-- Throws an error if the number of affected rows is unexpected (i.e. ero or more than 1) or if the table is empty.
-- Displays a progress meter if verbose mode is enabled.
+- `Nothing`: Records are updated directly in the database.
 
 # Throws
-- `String`: If required columns don't exist in the DataFrame.
-- `String`: If string columns contain illegal characters or non-ASCII content (see `check_illegal_strings()` for details).
-- `String`: If the table or field doesn't exist in the database.
-- `String`: If the table is empty before updating.
-- `String`: If an unexpected number of rows are affected during update.
 
-# Example
+- `ErrorException`: If the target table does not exist.
+- `ErrorException`: If the table does not contain a `name` field.
+- `ErrorException`: If the destination field does not exist.
+- `ErrorException`: If either source column is missing from the DataFrame.
+- `ErrorException`: If the target table is empty.
+- Any database exception raised during the update process.
+
+# Notes
+
+- The target table must contain a `name` field used to identify records.
+- Duplicate combinations of `df_name_col` and `df_source_col` are removed before
+  processing.
+- Destination fields ending in `_id` are interpreted as foreign keys and are
+  resolved using `extract_ids`.
+- Related table names are inferred automatically from the destination field name.
+- `Date` and `DateTime` values are converted to strings before being written to the
+  database.
+- Updates are delegated to `update_table!`, which validates that exactly one record
+  is modified for each operation.
+- Progress reporting is available when `verbose=true`.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> simulate_genomes() |> simulate_trials;
@@ -243,39 +278,32 @@ function update_table_field_by_name!(
         nrow(df_tmp),
         desc = "Updating $(nrow(df_tmp)) values of the \"$table_destination_field\" field in the \"$table\" table at ...",
     )
-    execute(conn, "BEGIN")
-    try
-        bool = execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |> DataFrame |> x -> x.exists[1]
-        if !bool
-            error(
-                "The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.",
-            )
-        end # Making this explicit here, although this error is covered in update_table!(...), because I like it to be explicit here in this specific-use-case function...
-        for i = 1:nrow(df_tmp)
-            # i = 1
-            value = if isa(df_tmp[i, df_source_col], Date) || isa(df_tmp[i, df_source_col], DateTime)
-                String(string(df_tmp[i, df_source_col]))
-            else
-                df_tmp[i, df_source_col]
-            end
-            update_table!(
-                conn,
-                filters = [Filter(conn, table = table, field = "name", filter_in = String[df_tmp[i, df_name_col]])],
-                destination_field = table_destination_field,
-                value = value,
-                verbose = verbose,
-            )
-            counter += 1
-            verbose ? ProgressMeter.next!(pb) : nothing
+    bool = execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |> DataFrame |> x -> x.exists[1]
+    if !bool
+        error(
+            "The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.",
+        )
+    end # Making this explicit here, although this error is covered in update_table!(...), because I like it to be explicit here in this specific-use-case function...
+    for i = 1:nrow(df_tmp)
+        # i = 1
+        value = if isa(df_tmp[i, df_source_col], Date) || isa(df_tmp[i, df_source_col], DateTime)
+            String(string(df_tmp[i, df_source_col]))
+        else
+            df_tmp[i, df_source_col]
         end
-        if verbose
-            ProgressMeter.finish!(pb)
-            println("Updated $counter rows in the \"$table\" table.")
-        end
-        execute(conn, "COMMIT")
-    catch e
-        execute(conn, "ROLLBACK")
-        rethrow(e)
+        update_table!(
+            conn,
+            filters = [Filter(conn, table = table, field = "name", filter_in = String[df_tmp[i, df_name_col]])],
+            destination_field = table_destination_field,
+            value = value,
+            verbose = verbose,
+        )
+        counter += 1
+        verbose ? ProgressMeter.next!(pb) : nothing
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
+        println("Updated $counter rows in the \"$table\" table.")
     end
     nothing
 end

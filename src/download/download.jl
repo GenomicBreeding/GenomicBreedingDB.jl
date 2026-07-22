@@ -1,89 +1,173 @@
 """
-    query_table(
-        conn::LibPQ.Connection;
-        filters::Vector{Filter},
-        output_fields::Vector{String} = ["*"],
-        exclude_fields::Vector{String} = ["id", "created_at", "updated_at"],
-        verbose::Bool = false,
+    extract_all_tables(
+        conn::LibPQ.Connection,
     )::DataFrame
 
-Query a database table using one or more filtering criteria.
+List all user-defined database tables together with their estimated row counts.
 
-The function dynamically constructs and executes a SQL query based on a
-collection of `Filter` objects. Results can be restricted to selected
-fields, and specified fields may be excluded from the final output.
+The function validates that the supplied database connection is open and then
+queries PostgreSQL system statistics to retrieve the names of all user tables and
+their corresponding estimated number of live rows. Results are returned as a
+sorted `DataFrame`.
 
-After retrieving the query results, columns ending in `_id` are
-automatically converted from database identifiers to their corresponding
-names by querying the appropriate lookup table. Converted columns are
-renamed by removing the `_id` suffix.
+This function is useful for inspecting the current database contents, verifying
+that expected tables exist, and obtaining a quick overview of table sizes without
+executing potentially expensive row-count queries.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `filters::Vector{Filter}`: Collection of filtering criteria.
-  All filters must reference the same database table, which is used as
-  the query source table.
-- `output_fields::Vector{String}=["*"]`: Fields to include in the query.
-  Use `["*"]` to select all fields.
-- `exclude_fields::Vector{String}=["id", "created_at", "updated_at"]`:
-  Fields to remove from the returned `DataFrame`.
-- `verbose::Bool=false`: If `true`, display progress bars and status
-  messages during query construction and post-processing.
-
-# Supported Filters
-
-Each `Filter` object must define exactly one filtering condition:
-
-- `filter_like` (one string no need for wildcards): Case-insensitive pattern matching (`ILIKE`).
-- `filter_in` (one or more strings or numbers): Membership in a set of values (`IN`).
-- `filter_between` (two numbers): Inclusive range filtering (`BETWEEN`).
-- `filter_equal_to` (one number): Equality to a single value (`=`).
-- `filter_less_than` (one number): Less-than comparison (`<`).
-- `filter_greater_than` (one number): Greater-than comparison (`>`).
-
-Multiple filters are combined using logical `AND`.
-
-# Identifier Resolution
-
-Columns whose names end in `_id` are automatically converted into
-human-readable names where possible. For example:
-
-- `entry_id` → `entry`
-- `site_id` → `site`
-- `program_id` → `program`
-
-This is achieved by querying the corresponding lookup table and
-replacing identifier values with the associated `name` values.
 
 # Returns
 
-- `DataFrame`: Query results after application of field exclusions and
-  automatic identifier-to-name conversion.
+- `DataFrame`: Table containing the fields `table_name` and
+  `estimated_row_count`.
 
 # Throws
 
-- An exception if the supplied filters reference different table names.
-- An exception if the table name defined in the supplied filters, or any
-  element of `output_fields`, contains illegal characters.
-- An exception if a `Filter` object does not define a filtering
-  condition.
-- Any exception raised by PostgreSQL while executing the generated query.
+- `ErrorException`: If the database connection has been closed.
+- Any database exception raised while querying PostgreSQL system statistics.
 
 # Notes
 
-- All supplied filters must reference the same table. The query table is
-  inferred from `filters`, and providing filters from multiple tables
-  results in an error.
-- Duplicate filters are automatically removed before query
-  construction. Consequently, supplying the same `Filter` more than
-  once has no effect on the query results.
-- Supplied filters are combined using logical `AND`.
-- Queries are parameterised to reduce the risk of SQL injection.
-- Automatic `_id` conversion may require additional database queries and
-  can increase execution time for large result sets.
-- Fields listed in `exclude_fields` are removed after the query result
-  has been retrieved.
+- Connection validation is performed using `check(conn)`.
+- Table information is obtained from PostgreSQL's `pg_stat_user_tables`
+  system view.
+- Row counts are estimates based on database statistics and may not exactly match
+  the result of `COUNT(*)`.
+- Only user-defined tables are included in the output.
+- Results are sorted prior to being returned.
+- The function performs a read-only query and does not modify the database.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> extract_all_tables(conn) |> nrow > 0
+true
+
+julia> close(conn);
+```
+"""
+function extract_all_tables(conn::LibPQ.Connection)::DataFrame
+    # conn = dbconnect()
+    check(conn)
+    execute(
+        conn,
+        """
+        SELECT 
+            relname AS table_name, 
+            n_live_tup AS estimated_row_count
+        FROM 
+            pg_stat_user_tables
+        """,
+    ) |> DataFrame |> sort
+end
+
+"""
+    extract_table_contents(
+        conn::LibPQ.Connection,
+        table::String,
+    )::DataFrame
+
+Extract all records from a database table and return them as a `DataFrame`.
+
+The function validates that the supplied database connection is open and confirms
+that the specified table exists before executing a `SELECT *` query. All rows and
+columns from the table are retrieved and returned without modification.
+
+This function provides a convenient way to inspect, export, or explore the
+contents of a database table in tabular form.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table to extract.
+
+# Returns
+
+- `DataFrame`: Complete contents of the specified database table.
+
+# Throws
+
+- `ErrorException`: If the database connection has been closed.
+- `ErrorException`: If the specified table does not exist.
+- Any database exception raised whilst executing the query.
+
+# Notes
+
+- Connection validation is performed using `check(conn)`.
+- Table validation is performed using `check(conn, table)`.
+- The query retrieves all rows and all columns using `SELECT *`.
+- No filtering, sorting, or column selection is applied.
+- The function performs a read-only operation and does not modify the database.
+- Large tables may require substantial memory to load into a `DataFrame`.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> extract_table_contents(conn, "entries") |> nrow > 0
+true
+
+julia> close(conn);
+```
+"""
+function extract_table_contents(conn::LibPQ.Connection, table::String)::DataFrame
+    # conn = dbconnect(); table = "entries"
+    check(conn)
+    check(conn, table)
+    execute(conn, "SELECT * FROM $table") |> DataFrame
+end
+
+"""
+    query_table(
+        conn::LibPQ.Connection;
+        filters::Vector{Filter},
+        output_fields::Vector{String}=["*"],
+        verbose::Bool=false,
+    )::DataFrame
+
+Query a database table using a collection of `Filter` objects and return the
+results as a `DataFrame`.
+
+The target table is inferred from the first filter in `filters`. All supplied
+filters are validated and combined into a parameterised SQL `WHERE` clause. The
+resulting query is executed and returned as a `DataFrame`.
+
+Columns whose names end with `_id` are automatically resolved to their
+corresponding entity names by querying the associated lookup table. Identifier
+columns are replaced with the resolved names and renamed accordingly. For example,
+`entry_id` becomes `entry`.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `filters::Vector{Filter}`: Collection of filters used to construct the `WHERE`
+  clause.
+- `output_fields::Vector{String}=["*"]`: Columns to include in the `SELECT`
+  statement.
+- `verbose::Bool=false`: If `true`, display progress information while resolving
+  foreign-key fields.
+
+# Returns
+
+- `DataFrame`: Query results with foreign-key identifiers resolved to their
+  corresponding names.
+
+# Notes
+
+- Connection validation is performed using `check(conn)`.
+- All filters must reference the same table.
+- SQL parameters are supplied separately from the query text to support safe,
+  parameterised execution.
+- Foreign-key fields are identified using the `_id` suffix convention.
+- Associated lookup tables are inferred automatically from field names, for
+  example `site_id` → `sites`.
+- The special case `entry_id` is resolved using the `entries` table.
+- Progress reporting is available when `verbose=true`.
 
 # Examples
 
@@ -139,7 +223,6 @@ function query_table(
     conn::LibPQ.Connection;
     filters::Vector{Filter},
     output_fields::Vector{String} = ["*"],
-    exclude_fields::Vector{String} = ["id", "created_at", "updated_at"],
     verbose::Bool = false,
 )::DataFrame
     # conn = dbconnect()
@@ -150,14 +233,13 @@ function query_table(
     #     Filter(conn, table="phenotype_data", field="site", filter_in=["site_1", "site_2"]),
     # ]
     # output_fields = String["*"]
-    # exclude_fields = ["id", "created_at", "updated_at"]
     # verbose = true
+    check(conn)
     validate_filters(filters)
     table = filters[1].table
     filter_cat, par = concat_filters(filters, verbose = verbose)
     sql = join(vcat(String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"], filter_cat), " ")
     df = execute(conn, sql, par) |> DataFrame
-    select!(df, Not(exclude_fields))
     pb = ProgressMeter.Progress(ncol(df), desc = "Converting *_id fields into names...")
     for f in names(df)
         # f = names(df)[6]
