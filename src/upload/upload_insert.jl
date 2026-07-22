@@ -1,36 +1,55 @@
 """
-    insert_names!(conn::LibPQ.Connection; df::DataFrame, table::String, df_col::String, verbose::Bool = false)::Nothing
+    insert_names!(
+        conn::LibPQ.Connection;
+        df::DataFrame,
+        table::String,
+        df_col::String,
+        verbose::Bool=false,
+    )::Nothing
 
-Insert new names from a DataFrame column into a specified database table.
+Insert unique names from a DataFrame column into a database table.
+
+The function extracts unique values from the specified DataFrame column and inserts
+them into the `name` field of the target database table. Existing names are ignored
+using an `ON CONFLICT DO NOTHING` clause, allowing the operation to be safely
+repeated without creating duplicate records.
+
+All inserts are performed within a database transaction. If an error occurs during
+insertion, the transaction is rolled back and the original exception is rethrown.
 
 # Arguments
-- `conn::LibPQ.Connection`: Database connection object
-- `df::DataFrame`: DataFrame containing the names to insert
-- `table::String`: Target table name in the database
-- `df_col::String`: Column name in the DataFrame to extract names from
-- `verbose::Bool = false`: If true, display progress information during insertion
 
-# Throws
-- `String`: If the specified column `df_col` does not exist in the DataFrame
-- `String`: If the specified `table` does not exist in the database or lacks a 'name' field
-- `String`: If the column contains illegal characters or non-ASCII content (see `check_illegal_strings()` for details on allowed characters)
-
-# Details
-This function performs the following operations:
-1. Validates that the specified column exists in the DataFrame
-2. Validates that all names in the column contain only allowed characters using `check_illegal_strings()`
-   - Illegal characters: `;`, `|`, `,`, `.`, `/`, `\`, `"`, `'`, `` ` ``, `~`, `!`, `@`, `#`, `\$`, `%`, `^`, `&`, `*`, `(`, `)`, `+`, `=`, `{`, `}`, `[`, `]`, `:`, `<`, `>`, `?`
-   - Non-ASCII characters are rejected
-3. Extracts, sorts, and deduplicates names from the specified column
-4. Retrieves existing names from the database table
-5. Inserts only new names that don't already exist in the table
-6. Uses database transactions with rollback on error
-
-The function maintains data integrity through transaction handling (BEGIN/COMMIT/ROLLBACK).
-Progress tracking is displayed if `verbose=true`.
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `df::DataFrame`: DataFrame containing names to be inserted.
+- `table::String`: Name of the target database table.
+- `df_col::String`: Name of the DataFrame column containing the names to insert.
+- `verbose::Bool=false`: If `true`, display progress information and a summary of
+  inserted records.
 
 # Returns
-`Nothing`
+
+- `Nothing`: Names are inserted into the database and the input DataFrame is not
+  modified.
+
+# Throws
+
+- `ErrorException`: If the specified table does not exist.
+- `ErrorException`: If the table does not contain a `name` column.
+- `ErrorException`: If `df_col` is not present in the DataFrame.
+- `ErrorException`: If one or more values in `df_col` contain illegal strings.
+- Any database exception raised during insertion is rethrown after the transaction
+  is rolled back.
+
+# Notes
+
+- The target table must contain a unique constraint on the `name` column for
+  conflict handling to work correctly.
+- Values are converted to strings, sorted, and deduplicated before insertion.
+- Inserts are wrapped in a single transaction using `BEGIN`, `COMMIT`, and
+  `ROLLBACK`.
+- Existing records are preserved through the use of
+  `ON CONFLICT (name) DO NOTHING`.
+- Progress reporting is available when `verbose=true`.
 
 # Examples
 
@@ -122,68 +141,50 @@ end
         verbose::Bool=false,
     )::Nothing
 
-Insert unique layout positions from a DataFrame into the `layouts` table.
+Insert unique layout definitions from a DataFrame into the `layouts` database
+table.
 
-The function standardises layout information using @ref,
-extracts unique layout combinations, and inserts them into the database within
-a single transaction.
+The function parses layout information from the input DataFrame, extracts unique
+layout combinations, and inserts them into the `layouts` table. Each layout is
+represented by a composite name of the form
+`"<replication>-<block>-<row>-<col>"` together with its individual component
+values.
 
-Each unique layout is represented by:
-
-- `replication`
-- `block`
-- `row`
-- `col`
-
-and is assigned a layout name of the form:
-
-`"<replication>-<block>-<row>-<col>"`.
-
-Rows that already exist in the `layouts` table are ignored using
-`ON CONFLICT (name) DO NOTHING`.
+All insert operations are performed within a single database transaction. Existing
+layouts are ignored using an `ON CONFLICT DO NOTHING` clause, ensuring that repeated
+imports do not generate duplicate records.
 
 # Arguments
 
-- `conn::LibPQ.Connection`: An open PostgreSQL connection.
-- `df::DataFrame`: A DataFrame containing layout information.
-
-# Keyword Arguments
-
-- `is_trial::Bool=true`: If `true`, validates the input data through
-  `parse_layouts!(df; is_trial=true)` before insertion. Set to `false`
-  to skip validation.
-- `verbose::Bool=false`: If `true`, displays insertion progress and
-  completion information.
-
-# Details
-
-The function:
-
-1. Calls `parse_layouts!()` to ensure the columns
-   `:replications`, `:blocks`, `:rows`, and `:cols`
-   contain integer values and that the `:layouts` column exists.
-2. Identifies unique layout names from `df.layouts`.
-3. Splits each layout name into its replication, block, row, and column
-   components.
-4. Inserts each unique layout into the `layouts` table.
-
-# Transaction Behaviour
-
-All inserts are executed inside a single database transaction.
-
-- On success, the transaction is committed.
-- On failure, the transaction is rolled back and the original exception is
-  rethrown.
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `df::DataFrame`: DataFrame containing layout information.
+- `is_trial::Bool=true`: If `true`, validate and parse the DataFrame as trial
+  data before extracting layouts.
+- `verbose::Bool=false`: If `true`, display progress information and summary
+  messages during insertion.
 
 # Returns
 
-`Nothing`.
+- `Nothing`: Layout information is inserted into the database and the input
+  DataFrame may be modified in place during parsing.
 
 # Throws
 
-Any exception generated by the database connection, query execution,
-transaction handling, or layout parsing is propagated to the caller after a
-transaction rollback.
+- `ErrorException`: If the `layouts` table does not exist.
+- `ErrorException`: If layout information cannot be parsed from the DataFrame.
+- Any database exception raised during insertion is rethrown after the transaction
+  is rolled back.
+
+# Notes
+
+- Layout identifiers are generated and standardised using `parse_layouts!`.
+- Each unique layout is inserted only once.
+- Insert operations are wrapped in a transaction using `BEGIN`, `COMMIT`, and
+  `ROLLBACK`.
+- Existing records are preserved through the use of
+  `ON CONFLICT (name) DO NOTHING`.
+- Progress reporting is available when `verbose=true`.
+- The function performs database writes but does not return the inserted records.
 
 # Examples
 
@@ -252,39 +253,59 @@ function insert_layouts!(conn::LibPQ.Connection; df::DataFrame, is_trial::Bool =
 end
 
 """
-    insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool=false)::Nothing
+    insert_entry_relationships!(
+        conn::LibPQ.Connection;
+        df::DataFrame,
+        verbose::Bool=false,
+    )::Nothing
 
-Insert entry relationship records into the database from a DataFrame.
+Insert relationships between entries and populations into the
+`entry_relationships` database table.
+
+The function extracts unique combinations of entries, populations, and relationship
+types from the supplied DataFrame and inserts them into the database. Entry and
+population names are first resolved to their corresponding identifiers in the
+`entries` table before relationship records are created.
+
+All insert operations are performed within a single transaction. Existing
+relationships are ignored using an `ON CONFLICT DO NOTHING` clause, allowing the
+function to be safely re-run without creating duplicate records.
 
 # Arguments
-- `conn::LibPQ.Connection`: Database connection object
-- `df::DataFrame`: Input DataFrame containing relationship data
-- `verbose::Bool=false`: If true, display a progress meter during insertion
 
-# Required DataFrame Columns
-- `entries`: Names of child entries
-- `populations`: Names of parent entries (populations)
-- `relationship_types`: Types of relationships between entries and populations, i.e.:
-    + `member_of`
-    + `clone_of`
-    + `parent_is`
-    + `maternal_parent_is`
-    + `paternal_parent_is`
-
-# Behaviour
-- Validates that all required columns are present in the input DataFrame
-- Makes sure there are no duplicate relationships to te inserted based on the combination of entries, populations, and relationship_types
-- Inserts each unique relationship into the `entry_relationships` table
-- Uses `ON CONFLICT DO NOTHING` to skip duplicate entries (based on child_id, parent_id, rel_type constraints)
-- Wraps all operations in a transaction; rolls back on error
-
-# Throws
-- `String`: If required columns are missing from the DataFrame
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `df::DataFrame`: DataFrame containing relationship information.
+- `verbose::Bool=false`: If `true`, display progress information and summary
+  messages during insertion.
 
 # Returns
-- `Nothing`
 
-# Example
+- `Nothing`: Relationship records are inserted into the database.
+
+# Throws
+
+- `ErrorException`: If the `entry_relationships` table does not exist.
+- `ErrorException`: If any required columns are missing from the DataFrame.
+- `ErrorException`: If an invalid relationship type is encountered.
+- Any database exception raised during insertion is rethrown after the transaction
+  is rolled back.
+
+# Notes
+
+- The input DataFrame must contain the columns `entries`, `populations`, and
+  `relationship_types`.
+- Supported relationship types are:
+  `member_of`, `clone_of`, `parent_is`, `maternal_parent_is`, and
+  `paternal_parent_is`.
+- Entry and population names are resolved to identifiers using lookups against the
+  `entries` table.
+- Insert operations are wrapped in a transaction using `BEGIN`, `COMMIT`, and
+  `ROLLBACK`.
+- Existing records are preserved through the use of
+  `ON CONFLICT (child_id, parent_id, rel_type) DO NOTHING`.
+- Progress reporting is available when `verbose=true`.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> simulate_genomes() |> simulate_trials;
@@ -379,33 +400,60 @@ function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verb
 end
 
 """
-    insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::Vector{String}, verbose::Bool=false)
+    insert_phenotype_data!(
+        conn::LibPQ.Connection;
+        df::DataFrame,
+        traits::Vector{String},
+        verbose::Bool=false,
+    )::Nothing
 
-Insert phenotype data from a DataFrame into the database.
+Insert phenotype observations from a DataFrame into the `phenotype_data` database
+table.
+
+The function resolves identifiers for entries, experiments, sites, treatments,
+layouts, measurements, and traits before importing phenotype values into the
+database. For each row in the input DataFrame and each specified trait, a phenotype
+record is created linking the relevant experimental factors to the observed trait
+value.
+
+All insert operations are performed within a single transaction. Existing phenotype
+records are ignored using an `ON CONFLICT DO NOTHING` clause, allowing repeated
+imports without creating duplicate observations.
 
 # Arguments
-- `conn::LibPQ.Connection`: Database connection object
-- `df::DataFrame`: DataFrame containing phenotype data with columns for the names of:
-    + entries,
-    + experiments,
-    + sites,
-    + treatments,
-    + layouts,
-    + measurements, and
-    + traits
-- `traits::Vector{String}`: Vector of trait column names to insert
-- `verbose::Bool=false`: If true, displays a progress bar during insertion
 
-# Description
-This function inserts phenotype measurements into the database by:
-1. Extracting IDs for all referenced entities (entries, experiments, sites, treatments, layouts, measurements, traits)
-2. Iterating through each row and trait combination
-3. Inserting or skipping (on conflict) phenotype records into the `phenotype_data` table
-4. Handling missing values as NaN
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `df::DataFrame`: DataFrame containing phenotype observations and associated
+  metadata.
+- `traits::Vector{String}`: Names of trait columns to import as phenotype data.
+- `verbose::Bool=false`: If `true`, display progress information during import.
 
-The function uses database transactions for data consistency, where all inserts are committed together or rolled back on error.
+# Returns
 
-# Example
+- `Nothing`: Phenotype records are inserted into the database.
+
+# Throws
+
+- `ErrorException`: If the `phenotype_data` table does not exist.
+- `ErrorException`: If any required reference table has not been initialised.
+- Any database exception raised during insertion is rethrown after the transaction
+  is rolled back.
+
+# Notes
+
+- The following reference tables must be populated before import:
+  `entries`, `experiments`, `sites`, `treatments`, `layouts`, `measurements`, and
+  `traits`.
+- Identifier values are resolved using `extract_ids` prior to data insertion.
+- Missing phenotype values are stored as `NaN`.
+- One database record is generated for each combination of DataFrame row and trait.
+- Insert operations are wrapped in a transaction using `BEGIN`, `COMMIT`, and
+  `ROLLBACK`.
+- Existing records are preserved through the use of a composite
+  `ON CONFLICT DO NOTHING` constraint.
+- Progress reporting is available when `verbose=true`.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> simulate_genomes() |> simulate_trials;
@@ -540,73 +588,57 @@ end
         verbose::Bool=false,
     )::Nothing
 
-Insert environmental measurements into the `environment_data` table.
+Insert environmental observations from a DataFrame into the `environment_data`
+database table.
 
-This function inserts environmental observations from a DataFrame into the
-database. Each environmental value is linked to an experiment, site,
-treatment, layout, measurement, and environmental variable using the
-corresponding identifiers stored in the database.
+The function resolves identifiers for experiments, sites, treatments, layouts,
+measurements, and environmental variables before importing environmental
+observations into the database. For each row in the input DataFrame and each
+specified environmental variable, a record is created linking the relevant
+experimental factors to the observed value.
+
+All insert operations are performed within a single transaction. Existing records
+are ignored using an `ON CONFLICT DO NOTHING` clause, allowing repeated imports
+without creating duplicate observations.
 
 # Arguments
 
-- `conn::LibPQ.Connection`: An open PostgreSQL connection.
-- `df::DataFrame`: A DataFrame containing environmental measurements and
-  associated metadata.
-- `environment_variables::Vector{String}`: Names of environmental-variable
-  columns in `df` to import.
-
-# Keyword Arguments
-
-- `verbose::Bool=false`: If `true`, displays a progress bar while importing
-  data.
-
-# Details
-
-The function expects the following lookup tables to have already been
-initialised and populated:
-
-- `experiments`
-- `sites`
-- `treatments`
-- `layouts`
-- `measurements`
-- `environment_variables`
-
-For each row of `df`, the function:
-
-1. Looks up the corresponding identifiers for the experiment, site,
-   treatment, layout, and measurement.
-2. Iterates over each environmental variable listed in
-   `environment_variables`.
-3. Looks up the identifier of the environmental variable.
-4. Inserts the environmental value into the `environment_data` table.
-
-Missing values are converted to `NaN` before insertion.
-
-Duplicate records are ignored using the unique constraint on
-
-`(experiment_id, site_id, treatment_id, layout_id, measurement_id, environment_variable_id)`.
-
-# Transaction Behaviour
-
-All inserts are performed within a single database transaction.
-
-- On success, the transaction is committed.
-- On failure, the transaction is rolled back and the original exception is
-  rethrown.
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `df::DataFrame`: DataFrame containing environmental observations and associated
+  metadata.
+- `environment_variables::Vector{String}`: Names of environmental variable columns
+  to import.
+- `verbose::Bool=false`: If `true`, display progress information during import.
 
 # Returns
 
-`Nothing`.
+- `Nothing`: Environmental records are inserted into the database.
 
 # Throws
 
-- `ErrorException`: If one or more required lookup tables have not been
-  initialised.
-- Any exception generated during identifier lookup, query execution, or
-  transaction handling.
+- `ErrorException`: If the `environment_data` table does not exist.
+- `ErrorException`: If any required reference table has not been initialised.
+- Any database exception raised during insertion is rethrown after the transaction
+  is rolled back.
 
-# Example
+# Notes
+
+- The following reference tables must be populated before import:
+  `experiments`, `sites`, `treatments`, `layouts`, `measurements`, and
+  `environment_variables`.
+- Identifier values are resolved using `extract_ids` prior to data insertion.
+- Missing environmental values are stored as `NaN`.
+- One database record is generated for each combination of DataFrame row and
+  environmental variable.
+- Insert operations are wrapped in a transaction using `BEGIN`, `COMMIT`, and
+  `ROLLBACK`.
+- Existing records are preserved through the use of a composite
+  `ON CONFLICT DO NOTHING` constraint.
+- Progress reporting is available when `verbose=true`.
+- The function assumes all environmental variable names have already been
+  registered in the `environment_variables` table.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> simulate_genomes() |> simulate_trials |> simulate_environments;

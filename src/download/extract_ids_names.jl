@@ -1,36 +1,43 @@
-
 """
-    extract_ids(conn::LibPQ.Connection;
-                names::Vector{String},
-                table::String,
-                is_like::Bool=false)::DataFrame
+    extract_ids(
+        conn::LibPQ.Connection;
+        names::Vector{String},
+        table::String,
+        is_like::Bool=false,
+    )::DataFrame
 
-Extract database IDs for a given list of names from a specified table.
+Retrieve identifier and name pairs from a database table for a collection of names.
+
+When `is_like` is `false`, names are matched exactly using a SQL `ANY` condition.
+When `is_like` is `true`, each provided name is matched using a case-insensitive
+`ILIKE` search, allowing partial matches. Matching records are returned as a
+`DataFrame` containing `id` and `name` columns.
+
+The function validates that the specified table exists and contains a `name` column
+before executing any queries. Missing identifiers are removed from the result and
+all returned values are converted to `String`.
 
 # Arguments
-- `conn::LibPQ.Connection`: A connection to a PostgreSQL database.
-- `names::Vector{String}`: Vector of names or search patterns to look up in the table.
-- `table::String`: The name of the table to query.
-- `is_like::Bool=false`: If `false`, perform exact matching using `=`.
-  If `true`, perform case-insensitive pattern matching using SQL `ILIKE`. In this case,
-  entries in `names` contain SQL wildcard characters, i.e. "%\$(name)%".
-  Additionally underscores in `names` are escaped so that they are not translated as wildcards.
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `names::Vector{String}`: Names to search for in the specified table.
+- `table::String`: Name of the table containing `id` and `name` fields.
+- `is_like::Bool=false`: If `true`, perform case-insensitive partial matching using
+  `ILIKE`; otherwise perform exact matching.
 
 # Returns
-- `DataFrame`: A DataFrame with two columns:
-  - `id`: The database IDs corresponding to the matched names.
-  - `name`: The original input names or search patterns.
 
-# Throws
-- An exception if `table` does not exist.
-- An exception if the `name` field does not exist in `table`.
-- An exception if `table` contains illegal characters.
+- `DataFrame`: Table containing matching `id` and `name` pairs.
 
 # Notes
-- When `is_like=false`, zero or one exact match for each item in `names` is expected.
-- When `is_like=true`, zero or more matches for each case-insensitive pattern in `names` is expected.
 
-# Example
+- The specified table must contain both `id` and `name` columns.
+- Partial matching is performed individually for each element in `names`.
+- Underscore characters in search strings are escaped when using `ILIKE` to prevent
+  unintended wildcard matching.
+- Rows with missing identifiers are removed from the returned result.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> simulate_genomes() |> simulate_trials;
@@ -74,45 +81,40 @@ function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::Strin
     df
 end
 
-
-
-
 """
-    extract_names(conn::LibPQ.Connection; ids::Vector{String}, table::String)::DataFrame
+    extract_names(
+        conn::LibPQ.Connection;
+        ids::Vector{String},
+        table::String,
+    )::DataFrame
 
-Extract names corresponding to a set of database identifiers.
+Retrieve name values associated with a collection of identifiers from a database
+table.
 
-The function queries the specified database table and returns the
-`id` and `name` fields for all matching identifiers. Prior to querying,
-the function validates that the table exists and contains a `name`
-field using `check()`.
+The function queries the specified table for records whose identifiers match the
+provided `ids` and returns the corresponding `id` and `name` pairs as a
+`DataFrame`. The table and required `name` column are validated before the query is
+executed.
 
-Any records with missing identifiers are removed from the result,
-and both `id` and `name` columns are returned as `String` vectors.
+Rows with missing identifiers are removed from the result, and both `id` and `name`
+columns are converted to `String` values before being returned.
 
 # Arguments
+
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `ids::Vector{String}`: Database identifiers to retrieve names for.
-- `table::String`: Name of the database table containing `id` and
-  `name` fields.
+- `ids::Vector{String}`: Identifiers to look up in the specified table.
+- `table::String`: Name of the table containing `id` and `name` fields.
 
 # Returns
-- `DataFrame`: A DataFrame containing:
-  - `id::String`
-  - `name::String`
 
-Only rows corresponding to identifiers present in `ids` are returned.
-
-# Throws
-- An exception if `table` does not exist.
-- An exception if the `name` field does not exist in `table`.
-- An exception if `table` contains illegal characters.
+- `DataFrame`: Table containing matching `id` and `name` pairs.
 
 # Notes
 
-The returned DataFrame may contain fewer rows than the number of
-supplied identifiers if some identifiers are not present in the
-database table.
+- The specified table must exist and contain a `name` column.
+- Identifier matching is performed using a parameterised SQL `ANY` condition.
+- Rows with missing identifiers are excluded from the returned result.
+- Returned `id` and `name` values are converted to `String` for consistency.
 
 # Examples
 

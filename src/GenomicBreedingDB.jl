@@ -15,7 +15,6 @@ include("filter.jl")
 export Filter, hash, ==, concat_filters
 include("checks.jl")
 export check_illegal_strings, check, validate_trials, validate_date, validate_data_table, validate_filters
-export list_tables, extract_table
 include("delete.jl")
 export delete_names!
 include("upload/simulate.jl")
@@ -30,11 +29,17 @@ export insert_names!, insert_layouts!, insert_entry_relationships!, insert_pheno
 include("upload/upload_update.jl")
 export update_table_field_by_name!, update_table!
 include("upload/upload.jl")
-export upload_trial_data!, upload_environment_data!, upload_reference_genome!
+export upload_trial_data!,
+    upload_environment_data!,
+    upload_reference_genome!,
+    upload_genotype_vcf!,
+    upload_genomes!,
+    upload_phenomes!,
+    upload_fit!
 include("download/extract_ids_names.jl")
 export extract_ids, extract_names
 include("download/download.jl")
-export query_table
+export extract_all_tables, extract_table_contents, query_table
 include("download/transform.jl")
 export unstack_data_table
 

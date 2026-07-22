@@ -1,25 +1,46 @@
 """
-    load_trial_df(fname::String; missingstring::Vector{String}=[])::DataFrame
+    load_trial_df(
+        fname::String;
+        missing_strings::Vector{String}=String[],
+    )::DataFrame
 
-Load trial data from a delimited file and return it as a DataFrame.
+Load trial data from a delimited file and return it as a `DataFrame`.
+
+The function first verifies that the specified file exists. If no custom missing
+value strings are provided, it attempts to parse the file using
+`GenomicBreedingIO.readdelimited` and convert the result into a tabular
+representation. If this process fails, the file is read directly using `CSV.read`
+with a predefined set of missing value markers.
+
+When custom missing value strings are supplied, the file is read directly using
+`CSV.read` and the specified missing value definitions. If present, a column named
+`#years` is automatically renamed to `years`.
 
 # Arguments
-- `fname::String`: Path to the input file containing trial data.
-- `missingstring::Vector{String}=[]`: Vector of strings to be interpreted as missing values. 
-  If empty, attempts to use `GenomicBreedingIO.readdelimited()` with default missing strings 
-  `["missing", "NA", "na", "N/A", "n/a", ""]`. Falls back to `CSV.read()` if that fails.
+
+- `fname::String`: Path to the trial data file.
+- `missing_strings::Vector{String}=String[]`: Strings that should be interpreted as
+  missing values when reading the file.
 
 # Returns
-- `DataFrame`: A tabularised DataFrame containing the trial data with standardised column names.
 
-# Details
-The function attempts to load trial data in the following order:
-1. If `missingstring` is empty, tries to read using `GenomicBreedingIO.readdelimited()` with default 
-   missing value specifications and applies `tabularise()`.
-2. On failure, falls back to `CSV.read()` with default missing strings.
-3. If `missingstring` is provided, directly uses `CSV.read()` with the specified missing value strings.
+- `DataFrame`: Trial data loaded from the specified file.
 
-Column names are standardised by renaming `"#years"` to `"years"` if present.
+# Throws
+
+- `ErrorException`: If the specified file does not exist.
+
+# Notes
+
+- When `missing_strings` is empty, the function preferentially uses
+  `GenomicBreedingIO.readdelimited` followed by
+  `GenomicBreedingCore.tabularise`.
+- If parsing with `GenomicBreedingIO.readdelimited` fails, the file is read using
+  `CSV.read` as a fallback.
+- The default missing value markers are `"missing"`, `"NA"`, `"na"`, `"N/A"`,
+  `"n/a"`, and `""`.
+- A column named `#years` is renamed to `years` when present to improve
+  compatibility with downstream processing.
 
 # Examples
 
@@ -63,27 +84,49 @@ function load_trial_df(fname::String; missing_strings::Vector{String} = String[]
 end
 
 """
-    extract_traits(df::DataFrame; verbose::Bool=false)::Vector{String}
+    extract_traits(
+        df::DataFrame;
+        verbose::Bool=false,
+    )::Vector{String}
 
-Extract trait column names from a DataFrame by filtering out trial metadata, 
-ID columns, and non-numeric columns.
+Identify trait columns in a trial `DataFrame` and return their names.
+
+The function determines candidate trait columns by excluding known metadata fields and
+standard trial attributes. Candidate names are validated to ensure they do not contain
+illegal strings and are then filtered to retain only columns containing at least one
+valid numeric value.
+
+Columns named `id` or ending with `_id` are excluded from consideration. Columns
+containing only missing, `NaN`, or infinite values are also removed. If no valid trait
+columns remain after filtering, an error is raised describing the rejected
+candidates.
 
 # Arguments
-- `df::DataFrame`: Input DataFrame containing trial data and trait measurements
-- `verbose::Bool=false`: If `true`, print information about found traits
+
+- `df::DataFrame`: Trial data containing metadata columns and one or more trait
+  columns.
+- `verbose::Bool=false`: If `true`, print the detected trait names to standard
+  output.
 
 # Returns
-- `Vector{String}`: Vector of trait column names that contain numeric data
 
-# Details
-This function identifies trait columns by:
-1. Excluding standard trial columns (fields from `Trials` type; see: https://genomicbreeding.github.io/GenomicBreedingCore.jl/stable/#GenomicBreedingCore.Trials)
-2. Excluding common metadata columns (dates, species, experiments, etc.)
-3. Filtering out ID columns (columns ending with `_id` or named "id")
-4. Removing columns with no valid numeric values (all missing, NaN, or Inf)
+- `Vector{String}`: Names of columns identified as valid trait variables.
 
 # Throws
-- `String`: Error message if no valid numeric trait columns are found after filtering
+
+- `ErrorException`: If candidate trait names contain illegal strings.
+- `ErrorException`: If no valid numeric trait columns are found.
+
+# Notes
+
+- Standard trial-related columns defined by `Trials` are automatically excluded.
+- Additional metadata columns such as `dates`, `species`, `experiments`,
+  `treatments`, and related descriptors are excluded from trait detection.
+- Columns named `id` or matching the pattern `*_id` are ignored.
+- A trait column must contain at least one non-missing, finite numeric value to be
+  considered valid.
+- Returned trait names are sorted according to the order they appear in the input
+  `DataFrame`.
 
 # Examples
 
@@ -163,54 +206,37 @@ end
     load_environments_df(
         fname;
         missing_strings::Vector{String}=[
-            "missing",
-            "NA",
-            "na",
-            "N/A",
-            "n/a",
-            "",
+            "missing", "NA", "na", "N/A", "n/a", ""
         ],
     )::DataFrame
 
-Load environmental data from a delimited text file into a DataFrame.
+Load environmental data from a delimited file and return it as a `DataFrame`.
 
-This function reads an environmental data file using `CSV.read()` and converts
-specified strings representing missing values into `missing`.
+The function verifies that the specified file exists before reading it using
+`CSV.read`. Values matching any of the supplied missing-value strings are converted
+to `missing` during import.
 
 # Arguments
 
 - `fname`: Path to the environmental data file.
-
-# Keyword Arguments
-
-- `missing_strings::Vector{String}`: Strings that should be interpreted as
-  missing values during import. The default values are:
-
-  - `"missing"`
-  - `"NA"`
-  - `"na"`
-  - `"N/A"`
-  - `"n/a"`
-  - `""` (empty string)
-
-# Details
-
-The function first verifies that the supplied file exists. If the file is
-found, it is imported using `CSV.read()` with the specified missing value
-strings passed to the `missingstring` argument.
-
-The returned object is a `DataFrame` containing the imported environmental
-data.
+- `missing_strings::Vector{String}=["missing", "NA", "na", "N/A", "n/a", ""]`:
+  Strings that should be interpreted as missing values when reading the file.
 
 # Returns
 
-- `DataFrame`: The contents of the input file with recognised missing-value
-  strings converted to `missing`.
+- `DataFrame`: Environmental data loaded from the specified file.
 
 # Throws
 
-- `ErrorException`: If `fname` does not correspond to an existing file.
-- Any exception generated by `CSV.read()` while parsing the file.
+- `ErrorException`: If the specified file does not exist.
+
+# Notes
+
+- Data are imported using `CSV.read`.
+- The default missing value markers are `"missing"`, `"NA"`, `"na"`, `"N/A"`,
+  `"n/a"`, and `""`.
+- Any value matching an entry in `missing_strings` is converted to `missing` in the
+  resulting `DataFrame`.
 
 # Examples
 
@@ -233,67 +259,49 @@ function load_environments_df(
     CSV.read(fname, DataFrame, missingstring = missing_strings)
 end
 
-
 """
     extract_environment_variables(
         df::DataFrame;
         verbose::Bool=false,
     )::Vector{String}
 
-Extract environmental variable names from a DataFrame.
+Identify environmental variable columns in a `DataFrame` and return their names.
 
-This function identifies candidate environmental variables by excluding
-known identifier and metadata columns, validating the remaining column names,
-and retaining only columns that contain at least one finite, non-missing
-numeric value.
+The function determines candidate environmental variables by excluding known
+identifier and metadata columns. Candidate names are validated to ensure they do not
+contain illegal strings and are then filtered to retain only columns containing at
+least one valid numeric value.
+
+Columns containing only missing, `NaN`, or infinite values are excluded from the
+result. If no valid environmental variables remain after filtering, an error is
+raised describing the rejected candidates.
 
 # Arguments
 
-- `df::DataFrame`: A DataFrame containing identifier columns and environmental
-  measurements.
-
-# Keyword Arguments
-
-- `verbose::Bool=false`: If `true`, prints a summary of the environmental
-  variables that were identified.
-
-# Details
-
-The following columns are excluded from consideration:
-
-- `measurements`
-- `sites`
-- `replications`
-- `blocks`
-- `rows`
-- `cols`
-- `experiments`
-- `treatments`
-- `dates`
-- `layouts`
-
-The remaining columns are treated as candidate environmental variables.
-
-The function then:
-
-1. Validates candidate column names using `check_illegal_strings()`.
-2. Removes missing values from each candidate column.
-3. Removes `NaN` values.
-4. Removes infinite values (`Inf` and `-Inf`).
-5. Retains only columns containing at least one remaining value.
-
-Columns containing only missing, `NaN`, or infinite values are excluded.
+- `df::DataFrame`: Environmental data containing identifier columns and one or more
+  environmental variables.
+- `verbose::Bool=false`: If `true`, print the detected environmental variable names
+  to standard output.
 
 # Returns
 
-- `Vector{String}`: The names of environmental variable columns containing at
-  least one finite, non-missing value.
+- `Vector{String}`: Names of columns identified as valid environmental variables.
 
 # Throws
 
-- `ErrorException`: If one or more candidate environmental variable names fail
-  validation by `check_illegal_strings()`.
-- `ErrorException`: If no valid environmental variables remain after filtering.
+- `ErrorException`: If candidate variable names contain illegal strings.
+- `ErrorException`: If no valid numeric environmental variables are found.
+
+# Notes
+
+- Known identifier and metadata columns such as `measurements`, `sites`,
+  `replications`, `blocks`, `rows`, `cols`, `experiments`, `treatments`, `dates`,
+  and `layouts` are automatically excluded.
+- Environmental variables must contain at least one non-missing, finite numeric
+  value to be considered valid.
+- Columns consisting entirely of missing, `NaN`, or infinite values are excluded.
+- Returned names preserve the order in which columns appear in the input
+  `DataFrame`.
 
 # Examples
 

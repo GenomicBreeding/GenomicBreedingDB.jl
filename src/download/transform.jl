@@ -1,78 +1,33 @@
-
 """
     unstack_data_table(df::DataFrame)::DataFrame
 
-Convert a long-format data table into a wide-format table.
+Convert a validated long-format data table into a wide-format `DataFrame`.
 
-The function reshapes a validated data table by spreading the
-`trait` or `environmental_variable` column into multiple columns and
-using the corresponding `value` entries as cell values.
+The function identifies all columns except `trait`, `environmental_variable`, and
+`value` as row keys and uses either `trait` or `environmental_variable` as the
+column key. The selected key column is expanded into individual columns using
+`unstack`, with values sourced from the `value` column.
 
-Prior to reshaping, the input is validated using
-`validate_data_table()`.
+This transformation is useful for converting observational or measurement data from
+a normalised long format into an analysis-ready wide format where traits or
+environmental variables become separate columns.
 
 # Arguments
 
-- `df::DataFrame`: Data table in long format.
+- `df::DataFrame`: Long-format data table containing a `value` column and either a
+  `trait` or `environmental_variable` column.
 
 # Returns
 
-- `DataFrame`: A wide-format table produced by unstacking the
-  `trait` or `environmental_variable` column.
-
-# Transformation
-
-The following columns are treated as row identifiers:
-
-- `experiment`
-- `site`
-- `treatment`
-- `layout`
-- `measurement`
-- `entry`
-
-Any additional columns present in the input, other than
-`trait`, `environmental_variable`, and `value`, are also retained as
-row identifiers.
-
-The column used to define the new wide-format variables is:
-
-- `trait`, if present; otherwise
-- `environmental_variable`.
-
-The corresponding `value` column provides the values populating the
-wide-format table.
-
-# Throws
-
-- Any exception raised by `validate_data_table()`.
-- Any exception raised by `DataFrames.unstack()`.
+- `DataFrame`: Wide-format table produced by unstacking the input data.
 
 # Notes
 
-This function is intended for converting tables returned by
-`query_table()` into a format more suitable for statistical analysis
-and modelling.
-
-Phenotype data:
-
-```text
-entry    trait      value
------    --------   -----
-A        yield      10.1
-A        height     150
-B        yield      11.3
-B        height     145
-```
-
-becomes:
-
-```text
-entry    yield    height
------    -----    ------
-A        10.1     150
-B        11.3     145
-```
+- The input is validated using `validate_data_table` before reshaping.
+- Exactly one of `trait` or `environmental_variable` is used as the column key.
+- All remaining columns, excluding the key and value columns, are used to define
+  unique rows in the output.
+- Internally, the transformation is performed using `DataFrames.unstack`.
 
 # Examples
 

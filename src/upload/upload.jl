@@ -2,55 +2,87 @@
     upload_trial_data!(
         conn::LibPQ.Connection;
         fname::String,
-        missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""],
-        species::Union{Nothing, String} = nothing,
-        experiment::Union{Nothing, String} = nothing,
-        treatment::Union{Nothing, String} = nothing,
-        entry_type::Union{Nothing, String} = nothing,
-        population_type::Union{Nothing, String} = nothing,
-        relationship_type::Union{Nothing, String} = nothing,
-        measurement_dates::Union{Nothing, Dict{String, String}} = nothing,
-        verbose::Bool = true,
+        missing_strings::Vector{String}=[
+            "missing", "NA", "na", "N/A", "n/a", ""
+        ],
+        species::Union{Nothing,String}=nothing,
+        experiment::Union{Nothing,String}=nothing,
+        treatment::Union{Nothing,String}=nothing,
+        entry_type::Union{Nothing,String}=nothing,
+        population_type::Union{Nothing,String}=nothing,
+        relationship_type::Union{Nothing,String}=nothing,
+        measurement_dates::Union{Nothing,Dict{String,String}}=nothing,
+        verbose::Bool=false,
     )::Nothing
 
-Load and insert trial phenotype data into the GenomicBreedingDB database.
+Upload trial data from a file into the database and populate all associated
+reference and phenotype tables.
 
-This is the primary function for uploading phenotypic trial data. 
-It handles the complete pipeline of data validation, transformation, and insertion into 
-the database, including species, experiments, treatments, sites, measurements, layouts, 
-entries, traits, and phenotype values.
+The function loads and validates trial data, standardises layout information,
+augments missing metadata fields, and inserts or updates all required database
+records. This includes layouts, species, experiments, treatments, sites,
+measurements, entries, populations, entry relationships, traits, and phenotype
+observations.
+
+Measurement dates may be provided explicitly or inferred from measurement names.
+Database reference tables are populated automatically where required, and
+associated metadata fields are updated using name-based lookups.
 
 # Arguments
-- `conn::LibPQ.Connection`: Active database connection for data insertion
-- `fname::String`: Path to the input data file (supports both Trial struct format and CSV)
-- `missing_strings::Vector{String}`: Missing value strings (default: `["missing", "NA", "na", "N/A", "n/a", ""]`)
-- Include the following arguments if they are not present in the input dta file as separate columns:
-    + `species::Union{Nothing, String}`: Species name to associate with the trial data
-    + `experiment::Union{Nothing, String}`: Experiment identifier
-    + `treatment::Union{Nothing, String}`: Treatment name or identifier
-    + `entry_type::Union{Nothing, String}`: Type of entries (i.e., "cultivar", "population", "individual", "family")
-    + `population_type::Union{Nothing, String}`: Type of population (i.e., "cultivar", "population", "individual", "family")
-    + `relationship_type::Union{Nothing, String}`: Type of relationships between entries
-    + `measurement_dates::Union{Nothing, Dict{String, String}}`: Dictionary mapping measurement names to dates
-- `verbose::Bool`: Enable detailed logging of processing steps (default: `true`)
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `fname::String`: Path to the trial data file.
+- `missing_strings::Vector{String}=["missing", "NA", "na", "N/A", "n/a", ""]`:
+  Strings that should be interpreted as missing values when reading the file.
+- `species::Union{Nothing,String}=nothing`: Species name to assign when a
+  `species` column is not present in the input data.
+- `experiment::Union{Nothing,String}=nothing`: Experiment name to assign when an
+  `experiments` column is not present.
+- `treatment::Union{Nothing,String}=nothing`: Treatment name to assign when a
+  `treatments` column is not present.
+- `entry_type::Union{Nothing,String}=nothing`: Entry type assigned to entries when
+  an `entry_types` column is not present.
+- `population_type::Union{Nothing,String}=nothing`: Entry type assigned to
+  populations when a `population_types` column is not present.
+- `relationship_type::Union{Nothing,String}=nothing`: Relationship type assigned
+  when a `relationship_types` column is not present.
+- `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Optional
+  mapping between measurement identifiers and dates.
+- `verbose::Bool=false`: If `true`, display progress information and summary
+  messages during processing.
 
 # Returns
 
-- `Nothing`
+- `Nothing`: Trial information is inserted into the database.
 
-# Details
+# Throws
 
-The function performs the following operations in sequence:
+- `ErrorException`: If `entry_type` is not one of the supported values.
+- `ErrorException`: If `population_type` is not one of the supported values.
+- `ErrorException`: If `relationship_type` is not one of the supported values.
+- `ErrorException`: If the trial file cannot be loaded or fails validation.
+- Any database exception raised during the import process.
 
-1. **Data Loading**: Reads trial data from file (supports GenomicBreedingIO Trial struct format or CSV)
-2. **Validation**: Ensures all required columns are present
-3. **Layout Parsing**: Extracts layout information (replication, block, row, column)
-4. **Metadata Assignment**: Adds species, experiment, treatment, entry type, and population type information
-5. **Database Insertion**: Inserts or updates reference tables (species, experiments, treatments, sites, measurements, layouts, entries, traits)
-6. **Field Updates**: Associates measurements with dates and layouts with spatial coordinates
-7. **Entry Relationships**: Inserts pedigree/relationship data between entries
-8. **Trait Extraction**: Identifies numeric phenotypic traits
-9. **Phenotype Data**: Inserts individual phenotypic measurements linked to entries, experiments, sites, treatments, layouts, and measurement dates
+# Notes
+
+- Supported entry and population types are:
+  `cultivar`, `population`, `individual`, and `family`.
+- Supported relationship types are:
+  `member_of`, `clone_of`, `parent_is`, `maternal_parent_is`, and
+  `paternal_parent_is`.
+- Trial data are loaded using `load_trial_df` and validated using
+  `validate_trials`.
+- Layout information is standardised using `parse_layouts!`.
+- Missing metadata columns may be added automatically using `add_col!`.
+- Measurement dates are validated or generated using
+  `add_measurement_dates!`.
+- Reference tables are populated using `insert_names!`.
+- Existing measurement and entry metadata are updated using
+  `update_table_field_by_name!`.
+- Entry-to-population relationships are inserted using
+  `insert_entry_relationships!`.
+- Trait columns are detected automatically using `extract_traits`.
+- Phenotype observations are inserted using `insert_phenotype_data!`.
 
 # Examples
 
@@ -215,18 +247,12 @@ function upload_trial_data!(
     nothing
 end
 
-
 """
     upload_environment_data!(
         conn::LibPQ.Connection;
         fname::String,
         missing_strings::Vector{String}=[
-            "missing",
-            "NA",
-            "na",
-            "N/A",
-            "n/a",
-            "",
+            "missing", "NA", "na", "N/A", "n/a", ""
         ],
         experiment::Union{Nothing,String}=nothing,
         treatment::Union{Nothing,String}=nothing,
@@ -234,91 +260,64 @@ end
         verbose::Bool=false,
     )::Nothing
 
-Load environmental data from a file and upload it to the database.
+Upload environmental data from a file into the database and populate all associated
+reference and environmental data tables.
 
-This function provides a high-level workflow for importing environmental data.
-It loads an environmental data file, standardises required metadata columns,
-identifies environmental variables, updates lookup tables as needed, and
-inserts the resulting observations into the `environment_data` table.
+The function loads environmental data, validates the presence of required fields,
+adds missing metadata where necessary, identifies environmental variables, and
+imports all associated records into the database. This includes layouts,
+experiments, treatments, sites, measurements, environmental variables, and
+environmental observations.
+
+Missing spatial layout columns are automatically populated with default values when
+not present. Measurement dates may be supplied explicitly or inferred from
+measurement identifiers.
 
 # Arguments
 
-- `conn::LibPQ.Connection`: An open PostgreSQL connection.
-- `fname::String`: Path to an environmental data file.
-
-# Keyword Arguments
-
-- `missing_strings::Vector{String}`: Strings that should be interpreted as
-  missing values when importing the file.
-- `experiment::Union{Nothing,String}=nothing`: Experiment name to assign to
-  all observations.
-- `treatment::Union{Nothing,String}=nothing`: Treatment name to assign to all
-  observations.
-- `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Dictionary
-  mapping measurement names to measurement dates. Passed directly to
-  `add_measurement_dates!()`.
-- `verbose::Bool=false`: If `true`, displays progress and summary information
-  during import.
-
-# Required Columns
-
-The input file must contain the following columns:
-
-- `measurements`
-- `sites`
-
-# Optional Columns
-
-The following layout columns are optional:
-
-- `replications`
-- `blocks`
-- `rows`
-- `cols`
-
-If any of these columns are missing, they are automatically added and assigned
-the value `"1"` for all rows.
-
-# Details
-
-The function performs the following steps:
-
-1. Loads the environmental data using `load_environments_df()`.
-2. Verifies that the required columns `measurements` and `sites` are present.
-3. Ensures the layout columns `replications`, `blocks`, `rows`, and `cols`
-   exist.
-4. Adds `experiments` and `treatments` columns using the supplied keyword
-   arguments.
-5. Adds measurement-date information using `add_measurement_dates!()`.
-6. Identifies environmental-variable columns using
-   `extract_environmental_variables()`.
-7. Inserts any missing records into the:
-   - `layouts`
-   - `experiments`
-   - `treatments`
-   - `sites`
-   - `measurements`
-   - `environment_variables`
-   
-   tables.
-8. Inserts environmental observations into the `environment_data` table using
-   `insert_environment_data!()`.
-
-Existing records are ignored where appropriate through the underlying insert
-functions.
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `fname::String`: Path to the environmental data file.
+- `missing_strings::Vector{String}=["missing", "NA", "na", "N/A", "n/a", ""]`:
+  Strings that should be interpreted as missing values when reading the file.
+- `experiment::Union{Nothing,String}=nothing`: Experiment name to assign when an
+  `experiments` column is not present in the input data.
+- `treatment::Union{Nothing,String}=nothing`: Treatment name to assign when a
+  `treatments` column is not present in the input data.
+- `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Optional
+  mapping between measurement identifiers and measurement dates.
+- `verbose::Bool=false`: If `true`, display progress information and diagnostic
+  messages during processing.
 
 # Returns
 
-`Nothing`.
+- `Nothing`: Environmental data are inserted into the database.
 
 # Throws
 
-- `ErrorException`: If `fname` does not exist.
-- `ErrorException`: If either the `measurements` or `sites` column is missing.
-- Any exception generated by file loading, environmental-variable extraction,
-  database insertion, or transaction handling in the underlying functions.
+- `ErrorException`: If the environmental data file cannot be loaded.
+- `ErrorException`: If either the `measurements` or `sites` column is missing from
+  the input data.
+- `ErrorException`: If measurement dates are invalid or incomplete.
+- `ErrorException`: If environmental variables cannot be identified.
+- Any database exception raised during the import process.
 
-# Example
+# Notes
+
+- Environmental data are loaded using `load_environments_df`.
+- The columns `measurements` and `sites` are mandatory.
+- Missing spatial columns (`replications`, `blocks`, `rows`, and `cols`) are
+  automatically added with a default value of `"1"`.
+- Missing experiment and treatment metadata may be added using `add_col!`.
+- Measurement dates are validated or generated using
+  `add_measurement_dates!`.
+- Environmental variables are detected automatically using
+  `extract_environment_variables`.
+- Layout information is standardised and uploaded using `insert_layouts!`.
+- Reference tables are populated using `insert_names!`.
+- Environmental observations are inserted using
+  `insert_environment_data!`.
+
+# Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> simulate_genomes() |> simulate_trials |> simulate_environments;
@@ -383,37 +382,63 @@ end
         notes::String,
     )::Nothing
 
-Upload a reference genome record to the database.
+Upload a reference genome file to the database and register its metadata.
 
-The function registers a reference genome by storing its name, file
-location, and descriptive notes in the `reference_genomes` table.
-The referenced file must already exist on disk.
+The function validates that the supplied file exists and appears to be a valid
+FASTA file before inserting a corresponding record into the
+`reference_genomes` table. Both uncompressed FASTA files and gzip-compressed
+FASTA files are supported.
+
+Prior to insertion, the database is queried to ensure that the file path has not
+already been registered. If the file has already been uploaded, a detailed error
+message is returned describing the existing record. An additional consistency
+check is performed to ensure that multiple records do not reference the same file
+path.
+
+Validation is performed by locating the first sequence record and confirming
+that the sequence contains the canonical DNA nucleotide bases `A`, `T`, `C`,
+and `G`.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `fname::String`: Path to the reference genome file.
-- `name::String`: Name of the reference genome.
-- `notes::String`: Additional notes or description associated with the
-  reference genome.
+- `fname::String`: Path to the reference genome FASTA file.
+- `name::String`: Unique name used to identify the reference genome.
+- `notes::String`: Descriptive notes associated with the reference genome.
 
 # Returns
 
-- `nothing` if the reference genome record is successfully uploaded.
+- `Nothing`: The reference genome metadata are inserted into the database.
 
 # Throws
 
-- An exception if `fname` does not exist.
-- Any exception raised by PostgreSQL while inserting the record.
+- `ErrorException`: If the specified file does not exist.
+- `ErrorException`: If the file does not appear to contain valid FASTA-formatted
+  sequence data.
+- `ErrorException`: If the file path has already been registered in the
+  database.
+- `ErrorException`: If multiple database records reference the same file path.
+- Any database exception raised during insertion.
+
+# Warnings
+
+- A warning is emitted when a reference genome with the same name already exists
+  in the database.
 
 # Notes
 
-- This function stores the file path in the database; it does not copy
-  or modify the referenced file.
-- The referenced genome file is expected to remain accessible at the
-  stored location.
-- Typical file formats include FASTA files generated by
-  `simulate_reference_genome()` or obtained from external sources.
+- Both plain-text FASTA files and gzip-compressed FASTA files are supported.
+- FASTA validation is based on inspection of the first detected sequence
+  record.
+- The function checks for the presence of the nucleotide bases `A`, `T`, `C`,
+  and `G` in the sequence data.
+- File-path uniqueness is verified before insertion using `query_table`.
+- Metadata are inserted into the `reference_genomes` table using the supplied
+  name, file path, and notes.
+- Existing records with the same name are preserved through the use of
+  `ON CONFLICT (name) DO NOTHING`.
+- The genome file itself is not copied into the database; only its metadata and
+  file location are recorded.
 
 # Examples
 
@@ -424,11 +449,9 @@ julia> simulate_genomes(fname_reference_genome=fname_reference_genome);
 
 julia> conn = dbconnect(); 
 
-julia> name = replace(fname_reference_genome, ".fa" => ""); notes = "simulated reference genome";
+julia> upload_reference_genome!(conn, fname=fname_reference_genome, name=fname_reference_genome, notes="simulated");
 
-julia> upload_reference_genome!(conn, fname=fname_reference_genome, name=name, notes=notes);
-
-julia> execute(conn, "SELECT * FROM reference_genomes") |> DataFrame |> x -> sum(x.name .== name) == 1
+julia> execute(conn, "SELECT * FROM reference_genomes WHERE name = (\$1)", [fname_reference_genome]) |> DataFrame |> nrow == 1
 true
 
 julia> close(conn);
@@ -460,6 +483,18 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
     if sum([x ∈ unique(collect(line[1])) for x in ['A', 'T', 'C', 'G']]) < 4
         error("The \"$fname\" may not be a fasta file!")
     end
+    # Check if the file path has already been uploaded
+    df_tmp = query_table(
+        conn, 
+        filters = [Filter(conn, table="reference_genomes", field="file_path", filter_in=[fname])],
+    )
+    if nrow(df_tmp) == 1
+        info = string.(names(df_tmp), ": ", collect(df_tmp[1, :]))
+        error("The reference genome \"\" has already been uploaded with the following information:\n\t- $(join(info, "\n\t- "))")
+    end
+    if nrow(df_tmp) > 1
+        error("Catastropic error! We do not expect the same file (\"$fname\") to be in the database multiple times!")
+    end
     res = execute(
         conn,
         """
@@ -477,11 +512,99 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the FASTA file \"$fname\" already exists!"
     end
-
     # execute(conn, "SELECT * FROM reference_genomes") |> DataFrame
     nothing
 end
 
+"""
+    upload_genotype_vcf!(
+        conn::LibPQ.Connection;
+        fname_reference_genome::String,
+        fname_genomes_vcf::String,
+        name::String,
+        notes::String,
+        name_reference_genome::String="TBD",
+        notes_reference_genome::String="TBD",
+    )::Nothing
+
+Upload a genotype VCF file to the database and associate it with a reference
+genome.
+
+The function validates the supplied reference genome and VCF files, ensures that
+the reference genome has been registered in the database, and creates a
+corresponding record in the `genotype_vcfs` table. If the reference genome has not
+previously been uploaded, it is registered automatically before the VCF metadata
+are inserted.
+
+Validation is performed by inspecting the VCF header and confirming the presence of
+the mandatory `#CHROM` line. Both uncompressed and gzip-compressed VCF files are
+supported.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `fname_reference_genome::String`: Path to the reference genome FASTA file.
+- `fname_genomes_vcf::String`: Path to the genotype VCF file.
+- `name::String`: Unique name used to identify the genotype dataset.
+- `notes::String`: Descriptive notes associated with the genotype dataset.
+- `name_reference_genome::String="TBD"`: Name assigned to the reference genome
+  record if it must be uploaded.
+- `notes_reference_genome::String="TBD"`: Descriptive notes associated with the
+  reference genome record if it must be uploaded.
+
+# Returns
+
+- `Nothing`: Metadata describing the genotype VCF dataset are inserted into the
+  database.
+
+# Throws
+
+- `ErrorException`: If the reference genome file does not exist.
+- `ErrorException`: If the VCF file does not appear to be a valid VCF file.
+- `ErrorException`: If the associated reference genome cannot be resolved in the
+  database.
+- Any database exception raised during insertion.
+
+# Warnings
+
+- A warning is emitted when a record for the supplied VCF file already exists in
+  the database.
+
+# Notes
+
+- The associated reference genome is identified using its file path.
+- If the reference genome is not already registered, it is uploaded using
+  `upload_reference_genome!`.
+- If `name_reference_genome == "TBD"`, a reference genome name is generated
+  automatically from the reference genome and VCF filenames.
+- Existing reference genome records are reused when available.
+- Both plain-text and gzip-compressed VCF files are supported.
+- VCF validation is based on detection of the mandatory `#CHROM` header line.
+- The reference genome identifier is stored in the `genotype_vcfs` table.
+- Existing records are preserved through the use of
+  `ON CONFLICT (file_path) DO NOTHING`.
+- The VCF file itself is not stored in the database; only its metadata, file path,
+  and reference genome association are recorded.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_reference_genome = string("simulated_reference_genome-", Dates.now(),".fa");
+
+julia> fname_genomes_vcf = string("simulated_genotype_vcf-", Dates.now(),".vcf");
+
+julia> simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname_genomes_vcf);
+
+julia> conn = dbconnect(); 
+
+julia> upload_genotype_vcf!(conn, fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname_genomes_vcf, name=fname_genomes_vcf, notes="simulated");
+
+julia> execute(conn, "SELECT * FROM genotype_vcfs WHERE name = (\$1)", [fname_genomes_vcf]) |> DataFrame |> nrow == 1
+true
+
+julia> close(conn);
+```
+"""
 function upload_genotype_vcf!(
     conn::LibPQ.Connection;
     fname_reference_genome::String,
@@ -495,15 +618,18 @@ function upload_genotype_vcf!(
     if !isfile(fname_reference_genome)
         error("The reference genome file: \"$fname_reference_genome\" does not exist!")
     end
-    upload_reference_genome!(
-        conn,
-        fname = fname_reference_genome,
-        name = name_reference_genome == "TBD" ? string(fname_reference_genome, " for ", fname_genomes_vcf) :
-               name_reference_genome,
-        notes = notes_reference_genome,
-    )
-    reference_genome_id =
-        DataFrame(execute(conn, "SELECT id FROM reference_genomes WHERE file_path = \$1", [fname_reference_genome])).id[1]
+    filters = [Filter(conn, table="reference_genomes", field="file_path", filter_in=[fname_reference_genome])]
+    reference_genome_id = try
+        name_reference_genome = if name_reference_genome == "TBD"
+            string(fname_reference_genome, " for ", fname_genomes_vcf)
+        else
+            name_reference_genome
+        end
+        upload_reference_genome!(conn, fname = fname_reference_genome, name = name_reference_genome, notes = notes_reference_genome)
+        query_table(conn, filters=filters, output_fields=["id"]).id[1]
+    catch
+        query_table(conn, filters=filters, output_fields=["id"]).id[1]
+    end
     line = [String[""]]
     open(fname_genomes_vcf, "r") do io
         while line[1][1] != "#CHROM"
@@ -548,6 +674,97 @@ function upload_genotype_vcf!(
     nothing
 end
 
+"""
+    upload_genomes!(
+        conn::LibPQ.Connection;
+        fname_reference_genome::String,
+        fname_genomes_jld2::String,
+        name::String,
+        notes::String,
+        name_reference_genome::String="TBD",
+        notes_reference_genome::String="TBD",
+    )::Nothing
+
+Upload a `Genomes` JLD2 file to the database and associate it with a reference
+genome.
+
+The function validates the supplied reference genome and JLD2 files, ensures that
+the reference genome has been registered in the database, and creates a
+corresponding record in the `genomes` table. If the reference genome has not
+previously been uploaded, it is registered automatically before the genomic
+dataset metadata are inserted.
+
+Validation is performed by inspecting the JLD2 file contents and confirming the
+presence of signatures indicating a Julia-generated HDF5-backed JLD2 file
+containing a `Genomes` object.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `fname_reference_genome::String`: Path to the reference genome FASTA file.
+- `fname_genomes_jld2::String`: Path to the JLD2 file containing a `Genomes`
+  object.
+- `name::String`: Unique name used to identify the genomic dataset.
+- `notes::String`: Descriptive notes associated with the genomic dataset.
+- `name_reference_genome::String="TBD"`: Name assigned to the reference genome
+  record if it must be uploaded.
+- `notes_reference_genome::String="TBD"`: Descriptive notes associated with the
+  reference genome record if it must be uploaded.
+
+# Returns
+
+- `Nothing`: Metadata describing the genomic dataset are inserted into the
+  database.
+
+# Throws
+
+- `ErrorException`: If the reference genome file does not exist.
+- `ErrorException`: If the JLD2 file does not appear to contain a valid
+  `Genomes` object.
+- `ErrorException`: If the associated reference genome cannot be resolved in the
+  database.
+- Any database exception raised during insertion.
+
+# Warnings
+
+- A warning is emitted when a record for the supplied JLD2 file already exists in
+  the database.
+
+# Notes
+
+- The associated reference genome is identified using its file path.
+- If the reference genome is not already registered, it is uploaded using
+  `upload_reference_genome!`.
+- If `name_reference_genome == "TBD"`, a reference genome name is generated
+  automatically from the reference genome and JLD2 filenames.
+- Existing reference genome records are reused when available.
+- JLD2 validation is based on detection of the strings `Julia`, `HDF5`, and
+  `Genomes` within the file contents.
+- The reference genome identifier is stored in the `genomes` table.
+- Existing records are preserved through the use of
+  `ON CONFLICT (file_path) DO NOTHING`.
+- The JLD2 file itself is not stored in the database; only its metadata, file
+  path, and reference genome association are recorded.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_reference_genome = string("simulated_reference_genome-", Dates.now(),".fa");
+
+julia> fname_genomes_jld2 = string("simulated_genotype_jld2-", Dates.now(),".jld2");
+
+julia> simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2);
+
+julia> conn = dbconnect(); 
+
+julia> upload_genomes!(conn, fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2, name=fname_genomes_jld2, notes="simulated");
+
+julia> execute(conn, "SELECT * FROM genomes WHERE name = (\$1)", [fname_genomes_jld2]) |> DataFrame |> nrow == 1
+true
+
+julia> close(conn);
+```
+"""
 function upload_genomes!(
     conn::LibPQ.Connection;
     fname_reference_genome::String,
@@ -557,40 +774,29 @@ function upload_genomes!(
     name_reference_genome::String = "TBD",
     notes_reference_genome::String = "TBD",
 )::Nothing
-    # conn = dbconnect(); fname_reference_genome = string("simulated_reference_genome-", Dates.now(), ".fa"); fname_genomes_jld2 = string("simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2); name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome"; name_reference_genome::String = "TBD"; notes_reference_genome::String = "TBD"
+    # conn = dbconnect(); fname_reference_genome = string("simulated_reference_genome-", Dates.now(), ".fa"); fname_genomes_jld2 = string("simulated_genomes-", Dates.now(), ".jld2"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2); name = replace(fname_genomes_jld2, ".jld2" => ""); notes = "Simulated genomes JLD2"; name_reference_genome::String = "TBD"; notes_reference_genome::String = "TBD"
     if !isfile(fname_reference_genome)
         error("The reference genome file: \"$fname_reference_genome\" does not exist!")
     end
-    upload_reference_genome!(
-        conn,
-        fname = fname_reference_genome,
-        name = name_reference_genome == "TBD" ? string(fname_reference_genome, " for ", fname_genomes_jld2) :
-               name_reference_genome,
-        notes = notes_reference_genome,
-    )
-    reference_genome_id =
-        DataFrame(execute(conn, "SELECT id FROM reference_genomes WHERE file_path = \$1", [fname_reference_genome])).id[1]
-    line = [String[""]]
-    open(fname_genomes_jld2, "r") do io
-        while line[1][1] != "#CHROM"
-            line[1] = split(readline(io), "\t")
-            if collect(line[1][1])[1] != '#'
-                break
-            end
+    filters = [Filter(conn, table="reference_genomes", field="file_path", filter_in=[fname_reference_genome])]
+    reference_genome_id = try
+        name_reference_genome = if name_reference_genome == "TBD"
+            string(fname_reference_genome, " for ", fname_genomes_jld2)
+        else
+            name_reference_genome
         end
+        upload_reference_genome!(conn, fname = fname_reference_genome, name = name_reference_genome, notes = notes_reference_genome)
+        query_table(conn, filters=filters, output_fields=["id"]).id[1]
+    catch
+        query_table(conn, filters=filters, output_fields=["id"]).id[1]
     end
-    if line[1][1] != "#CHROM"
-        open(CodecZlib.GzipDecompressorStream, fname_genomes_jld2, "r") do io
-            while line[1][1] != "#CHROM"
-                line[1] = split(readline(io), "\t")
-                if collect(line[1][1])[1] != '#'
-                    break
-                end
-            end
-        end
+    tmp = open(fname_genomes_jld2, "r") do io
+        read(io, 1_000) |> String
     end
-    if line[1][1] != "#CHROM"
-        error("The \"$fname_genomes_jld2\" may not be a VCF file!")
+    if isnothing(match(Regex("Julia"), tmp)) ||
+       isnothing(match(Regex("HDF5"), tmp)) ||
+       isnothing(match(Regex("Genomes"), tmp))
+        error("The file \"$fname_genomes_jld2\" may not be a JLD2 file containing a Genomes struct!")
     end
     res = execute(
         conn,
@@ -614,18 +820,216 @@ function upload_genomes!(
     nothing
 end
 
+"""
+    upload_phenomes!(
+        conn::LibPQ.Connection;
+        fname_phenomes_jld2::String,
+        name::String,
+        notes::String,
+    )::Nothing
 
-# TODO:
-# 1.) Upload reference genomes
-# 2.) Upload VCFs
-# 3.) Upload Genomes
-# 4.) Upload Phenomes
-# 5.) Upload Fits
-# 6.) Generate the relationship tables:
-#   - genome_entries
-#   - phenome_entries
-#   - phenome_experiments
-#   - phenome_sites
-#   - phenome_treatments
-#   - phenome_measurements
-#   - phenome_traits
+Upload a `Phenomes` JLD2 file to the database and register its metadata.
+
+The function validates that the supplied JLD2 file exists and appears to contain a
+valid `Phenomes` object before inserting a corresponding record into the
+`phenomes` table. Validation is performed by inspecting the file contents for
+signatures indicating a Julia-generated HDF5-backed JLD2 file containing a
+`Phenomes` structure.
+
+Once validated, the file path and associated metadata are recorded in the
+database.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `fname_phenomes_jld2::String`: Path to the JLD2 file containing a `Phenomes`
+  object.
+- `name::String`: Unique name used to identify the phenomic dataset.
+- `notes::String`: Descriptive notes associated with the phenomic dataset.
+
+# Returns
+
+- `Nothing`: Metadata describing the phenomic dataset are inserted into the
+  database.
+
+# Throws
+
+- `ErrorException`: If the specified file does not exist.
+- `ErrorException`: If the file does not appear to contain a valid `Phenomes`
+  object.
+- Any database exception raised during insertion.
+
+# Warnings
+
+- A warning is emitted when a record for the supplied JLD2 file already exists in
+  the database.
+
+# Notes
+
+- JLD2 validation is based on detection of the strings `Julia`, `HDF5`, and
+  `Phenomes` within the file contents.
+- Metadata are inserted into the `phenomes` table using the supplied name, file
+  path, and notes.
+- Existing records are preserved through the use of
+  `ON CONFLICT (file_path) DO NOTHING`.
+- The JLD2 file itself is not stored in the database; only its metadata and file
+  location are recorded.
+- The function is intended for registering previously generated phenomic datasets
+  rather than creating new ones.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_phenomes_jld2 = string("simulated_phenotype_jld2-", Dates.now(),".jld2");
+
+julia> genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname_phenomes_jld2);
+
+julia> conn = dbconnect(); 
+
+julia> upload_phenomes!(conn, fname_phenomes_jld2=fname_phenomes_jld2, name=fname_phenomes_jld2, notes="simulated");
+
+julia> execute(conn, "SELECT * FROM phenomes WHERE name = (\$1)", [fname_phenomes_jld2]) |> DataFrame |> nrow == 1
+true
+
+julia> close(conn);
+```
+"""
+function upload_phenomes!(conn::LibPQ.Connection; fname_phenomes_jld2::String, name::String, notes::String)::Nothing
+    # conn = dbconnect(); fname_phenomes_jld2 = string("simulated_phenomes-", Dates.now(), ".jld2"); simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname_phenomes_jld2); name = replace(fname_phenomes_jld2, ".tsv" => ""); notes = "simulated phenomes";
+    if !isfile(fname_phenomes_jld2)
+        error("The phenomes file: \"$fname_phenomes_jld2\" does not exist!")
+    end
+    tmp = open(fname_phenomes_jld2, "r") do io
+        read(io, 1_000) |> String
+    end
+    if isnothing(match(Regex("Julia"), tmp)) ||
+       isnothing(match(Regex("HDF5"), tmp)) ||
+       isnothing(match(Regex("Phenomes"), tmp))
+        error("The file \"$fname_genomes_jld2\" may not be a JLD2 file containing a Phenomes struct!")
+    end
+    res = execute(
+        conn,
+        """
+        INSERT INTO phenomes
+        (
+            name,
+            file_path,
+            notes
+        )
+        VALUES (\$1,\$2,\$3)
+        ON CONFLICT (file_path) DO NOTHING
+        """,
+        [name, fname_phenomes_jld2, notes],
+    )
+    if LibPQ.num_affected_rows(res) == 0
+        @warn "The record for the JLD2 file \"$fname_phenomes_jld2\" already exists!"
+    end
+    # execute(conn, "SELECT * FROM phenomes") |> DataFrame
+    nothing
+end
+
+"""
+    upload_fit!(
+        conn::LibPQ.Connection;
+        fname_fit_jld2::String,
+        name::String,
+        notes::String,
+    )::Nothing
+
+Upload a `Fit` JLD2 file to the database and register its metadata.
+
+The function validates that the supplied JLD2 file exists and appears to contain a
+valid `Fit` object before inserting a corresponding record into the `fits` table.
+Validation is performed by inspecting the file contents for signatures indicating a
+Julia-generated HDF5-backed JLD2 file containing a `Fit` structure.
+
+Once validated, the file path and associated metadata are recorded in the
+database.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `fname_fit_jld2::String`: Path to the JLD2 file containing a `Fit` object.
+- `name::String`: Unique name used to identify the fitted model.
+- `notes::String`: Descriptive notes associated with the fitted model.
+
+# Returns
+
+- `Nothing`: Metadata describing the fitted model are inserted into the database.
+
+# Throws
+
+- `ErrorException`: If the specified file does not exist.
+- `ErrorException`: If the file does not appear to contain a valid `Fit` object.
+- Any database exception raised during insertion.
+
+# Warnings
+
+- A warning is emitted when a record for the supplied JLD2 file already exists in
+  the database.
+
+# Notes
+
+- JLD2 validation is based on detection of the strings `Julia`, `HDF5`, and
+  `Fit` within the file contents.
+- Metadata are inserted into the `fits` table using the supplied name, file path,
+  and notes.
+- Existing records are preserved through the use of
+  `ON CONFLICT (file_path) DO NOTHING`.
+- The JLD2 file itself is not stored in the database; only its metadata and file
+  location are recorded.
+- The function is intended for registering previously generated fitted models for
+  subsequent retrieval and analysis.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_fit_jld2 = string("simulated_fit_jld2-", Dates.now(),".jld2");
+
+julia> genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> simulate_phenomes;
+
+julia> simulate_fit(genomes, phenomes, fname_fit_jld2=fname_fit_jld2);
+
+julia> conn = dbconnect(); 
+
+julia> upload_fit!(conn, fname_fit_jld2=fname_fit_jld2, name=fname_fit_jld2, notes="simulated");
+
+julia> execute(conn, "SELECT * FROM fits WHERE name = (\$1)", [fname_fit_jld2]) |> DataFrame |> nrow == 1
+true
+
+julia> close(conn);
+```
+"""
+function upload_fit!(conn::LibPQ.Connection; fname_fit_jld2::String, name::String, notes::String)::Nothing
+    # conn = dbconnect(); fname_fit_jld2 = string("simulated_fit-", Dates.now(), ".jld2"); genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> simulate_phenomes; simulate_fit(genomes, phenomes, fname_fit_jld2=fname_fit_jld2); name = replace(fname_fit_jld2, ".tsv" => ""); notes = "simulated fit";
+    if !isfile(fname_fit_jld2)
+        error("The fit file: \"$fname_fit_jld2\" does not exist!")
+    end
+    tmp = open(fname_fit_jld2, "r") do io
+        read(io, 1_000) |> String
+    end
+    if isnothing(match(Regex("Julia"), tmp)) ||
+       isnothing(match(Regex("HDF5"), tmp)) ||
+       isnothing(match(Regex("Fit"), tmp))
+        error("The file \"$fname_genomes_jld2\" may not be a JLD2 file containing a Fit struct!")
+    end
+    res = execute(
+        conn,
+        """
+        INSERT INTO fits
+        (
+            name,
+            file_path,
+            notes
+        )
+        VALUES (\$1,\$2,\$3)
+        ON CONFLICT (file_path) DO NOTHING
+        """,
+        [name, fname_fit_jld2, notes],
+    )
+    if LibPQ.num_affected_rows(res) == 0
+        @warn "The record for the JLD2 file \"$fname_fit_jld2\" already exists!"
+    end
+    # execute(conn, "SELECT * FROM fits") |> DataFrame
+    nothing
+end
