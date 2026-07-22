@@ -246,7 +246,7 @@ function query_table(
         # f == "id" ? continue : nothing
         isnothing(match(Regex("_id\$"), f)) ? continue : nothing
         f = replace(f, Regex("_id\$") => "")
-        metatable = f == "entry" ? "entries" : "$(f)s"
+        metatable = f == "entry" ? "entries" : f == "species" ? "species" : "$(f)s"
         values = df[!, "$(f)_id"]
         df_tmp =
             execute(conn, "SELECT id,name FROM $metatable WHERE id = ANY(\$1)", [string.(unique(values))]) |> DataFrame
