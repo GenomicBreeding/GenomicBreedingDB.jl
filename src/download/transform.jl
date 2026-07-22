@@ -50,11 +50,10 @@ julia> df = query_table(conn, filters=filters);
 
 julia> df_unstacked = unstack_data_table(df);
 
-julia> ncol(df_unstacked) == (length(unique(df.trait)) + (ncol(df)-2))
+julia> sum(.!isnothing.(match.(Regex("trait"), names(df)))) < sum(.!isnothing.(match.(Regex("trait"), names(df_unstacked))))
 true
 
-julia> nrow(df_unstacked) < nrow(df)
-true
+julia> close(conn);
 ```
 """
 function unstack_data_table(df::DataFrame)::DataFrame

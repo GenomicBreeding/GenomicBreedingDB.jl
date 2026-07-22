@@ -447,11 +447,11 @@ julia> fname_reference_genome = string("simulated_reference_genome-", Dates.now(
 
 julia> simulate_genomes(fname_reference_genome=fname_reference_genome);
 
-julia> conn = dbconnect(); 
+julia> conn = dbconnect();
 
 julia> upload_reference_genome!(conn, fname=fname_reference_genome, name=fname_reference_genome, notes="simulated");
 
-julia> execute(conn, "SELECT * FROM reference_genomes WHERE name = (\$1)", [fname_reference_genome]) |> DataFrame |> nrow == 1
+julia> query_table(conn, filters=[Filter(conn, table="reference_genomes", field="name", filter_in=[fname_reference_genome])]) |> nrow == 1
 true
 
 julia> close(conn);
@@ -485,12 +485,14 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
     end
     # Check if the file path has already been uploaded
     df_tmp = query_table(
-        conn, 
-        filters = [Filter(conn, table="reference_genomes", field="file_path", filter_in=[fname])],
+        conn,
+        filters = [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname])],
     )
     if nrow(df_tmp) == 1
         info = string.(names(df_tmp), ": ", collect(df_tmp[1, :]))
-        error("The reference genome \"\" has already been uploaded with the following information:\n\t- $(join(info, "\n\t- "))")
+        error(
+            "The reference genome \"\" has already been uploaded with the following information:\n\t- $(join(info, "\n\t- "))",
+        )
     end
     if nrow(df_tmp) > 1
         error("Catastropic error! We do not expect the same file (\"$fname\") to be in the database multiple times!")
@@ -599,7 +601,7 @@ julia> conn = dbconnect();
 
 julia> upload_genotype_vcf!(conn, fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname_genomes_vcf, name=fname_genomes_vcf, notes="simulated");
 
-julia> execute(conn, "SELECT * FROM genotype_vcfs WHERE name = (\$1)", [fname_genomes_vcf]) |> DataFrame |> nrow == 1
+julia> query_table(conn, filters=[Filter(conn, table="genotype_vcfs", field="name", filter_in=[fname_genomes_vcf])]) |> nrow == 1
 true
 
 julia> close(conn);
@@ -618,17 +620,22 @@ function upload_genotype_vcf!(
     if !isfile(fname_reference_genome)
         error("The reference genome file: \"$fname_reference_genome\" does not exist!")
     end
-    filters = [Filter(conn, table="reference_genomes", field="file_path", filter_in=[fname_reference_genome])]
+    filters = [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome])]
     reference_genome_id = try
         name_reference_genome = if name_reference_genome == "TBD"
             string(fname_reference_genome, " for ", fname_genomes_vcf)
         else
             name_reference_genome
         end
-        upload_reference_genome!(conn, fname = fname_reference_genome, name = name_reference_genome, notes = notes_reference_genome)
-        query_table(conn, filters=filters, output_fields=["id"]).id[1]
+        upload_reference_genome!(
+            conn,
+            fname = fname_reference_genome,
+            name = name_reference_genome,
+            notes = notes_reference_genome,
+        )
+        query_table(conn, filters = filters, output_fields = ["id"]).id[1]
     catch
-        query_table(conn, filters=filters, output_fields=["id"]).id[1]
+        query_table(conn, filters = filters, output_fields = ["id"]).id[1]
     end
     line = [String[""]]
     open(fname_genomes_vcf, "r") do io
@@ -759,7 +766,7 @@ julia> conn = dbconnect();
 
 julia> upload_genomes!(conn, fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2, name=fname_genomes_jld2, notes="simulated");
 
-julia> execute(conn, "SELECT * FROM genomes WHERE name = (\$1)", [fname_genomes_jld2]) |> DataFrame |> nrow == 1
+julia> query_table(conn, filters=[Filter(conn, table="genomes", field="name", filter_in=[fname_genomes_jld2])]) |> nrow == 1
 true
 
 julia> close(conn);
@@ -778,17 +785,22 @@ function upload_genomes!(
     if !isfile(fname_reference_genome)
         error("The reference genome file: \"$fname_reference_genome\" does not exist!")
     end
-    filters = [Filter(conn, table="reference_genomes", field="file_path", filter_in=[fname_reference_genome])]
+    filters = [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome])]
     reference_genome_id = try
         name_reference_genome = if name_reference_genome == "TBD"
             string(fname_reference_genome, " for ", fname_genomes_jld2)
         else
             name_reference_genome
         end
-        upload_reference_genome!(conn, fname = fname_reference_genome, name = name_reference_genome, notes = notes_reference_genome)
-        query_table(conn, filters=filters, output_fields=["id"]).id[1]
+        upload_reference_genome!(
+            conn,
+            fname = fname_reference_genome,
+            name = name_reference_genome,
+            notes = notes_reference_genome,
+        )
+        query_table(conn, filters = filters, output_fields = ["id"]).id[1]
     catch
-        query_table(conn, filters=filters, output_fields=["id"]).id[1]
+        query_table(conn, filters = filters, output_fields = ["id"]).id[1]
     end
     tmp = open(fname_genomes_jld2, "r") do io
         read(io, 1_000) |> String
@@ -888,7 +900,7 @@ julia> conn = dbconnect();
 
 julia> upload_phenomes!(conn, fname_phenomes_jld2=fname_phenomes_jld2, name=fname_phenomes_jld2, notes="simulated");
 
-julia> execute(conn, "SELECT * FROM phenomes WHERE name = (\$1)", [fname_phenomes_jld2]) |> DataFrame |> nrow == 1
+julia> query_table(conn, filters=[Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2])]) |> nrow == 1
 true
 
 julia> close(conn);
@@ -994,7 +1006,7 @@ julia> conn = dbconnect();
 
 julia> upload_fit!(conn, fname_fit_jld2=fname_fit_jld2, name=fname_fit_jld2, notes="simulated");
 
-julia> execute(conn, "SELECT * FROM fits WHERE name = (\$1)", [fname_fit_jld2]) |> DataFrame |> nrow == 1
+julia> query_table(conn, filters=[Filter(conn, table="fits", field="name", filter_in=[fname_fit_jld2])]) |> nrow == 1
 true
 
 julia> close(conn);

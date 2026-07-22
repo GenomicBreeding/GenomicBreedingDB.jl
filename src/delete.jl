@@ -102,12 +102,8 @@ function delete_names!(
     try
         for x in uploaded_names
             # x = uploaded_names[1]
-            sql, par = concat_filters([Filter(conn, table=table, field="name", filter_in=[x])])
-            execute(
-                conn,
-                join(vcat(["DELETE FROM $table WHERE 1 = 1"], sql), " "),
-                par,
-            )
+            sql, par = concat_filters([Filter(conn, table = table, field = "name", filter_in = [x])])
+            execute(conn, join(vcat(["DELETE FROM $table WHERE 1 = 1"], sql), " "), par)
             counter += 1
             verbose ? ProgressMeter.next!(pb) : nothing
         end
