@@ -835,3 +835,162 @@ function validate_filters(filters::Vector{Filter})::Nothing
     end
     nothing
 end
+
+"""
+    check_reference_genome(
+        fname::String,
+    )::Nothing
+
+Validate that a reference genome file exists and appears to be a valid FASTA file.
+
+The function verifies that the supplied file exists and performs a lightweight
+validation of its contents by locating the first FASTA record and inspecting the
+associated sequence. Validation succeeds when the sequence contains the canonical
+DNA nucleotide bases `A`, `T`, `C`, and `G`.
+
+Both uncompressed FASTA files and gzip-compressed FASTA files are supported.
+
+# Arguments
+
+- `fname::String`: Path to the reference genome FASTA file.
+
+# Returns
+
+- `Nothing`: Returned when the file exists and appears to contain valid
+  FASTA-formatted DNA sequence data.
+
+# Throws
+
+- `ErrorException`: If the specified file does not exist.
+- `ErrorException`: If the file does not appear to be a valid FASTA file.
+- Any exception raised whilst opening or reading the file.
+
+# Notes
+
+- File existence is verified before content validation is performed.
+- Both plain-text FASTA files and gzip-compressed FASTA files are supported.
+- Validation is based on inspection of the first detected FASTA record.
+- The function searches for the first header line beginning with `>`.
+- Sequence validation is performed by checking for the presence of the canonical
+  DNA bases `A`, `T`, `C`, and `G`.
+- This is a lightweight heuristic validation and does not fully parse the FASTA
+  file.
+- The function performs validation only and does not modify the file.
+
+# Examples
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_reference_genome = string("simulated_reference_genome-", Dates.now(),".fa");
+
+julia> simulate_genomes(fname_reference_genome=fname_reference_genome);
+
+julia> check_reference_genome(fname_reference_genome) |> isnothing
+true
+````
+"""
+function check_reference_genome(fname::String)::Nothing
+    if !isfile(fname)
+        error("The reference genome file: \"$fname\" does not exist!")
+    end
+    line = String[""]
+    try
+        open(fname, "r") do io
+            line[1] = readline(io)
+            while line[1][1] != '>'
+                line[1] = readline(io)
+            end
+            line[1] = readline(io)
+        end
+    catch
+        open(CodecZlib.GzipDecompressorStream, fname, "r") do io
+            line[1] = readline(io)
+            while line[1][1] != '>'
+                line[1] = readline(io)
+            end
+            line[1] = readline(io)
+        end
+    end
+    if sum([x ∈ unique(collect(line[1])) for x in ['A', 'T', 'C', 'G']]) < 4
+        error("The \"$fname\" may not be a fasta file!")
+    end
+    nothing
+end
+
+"""
+    check_vcf(
+        fname::String,
+    )::Nothing
+
+Validate that a file exists and appears to be a valid Variant Call Format (VCF)
+file.
+
+The function verifies that the supplied file exists and performs a lightweight
+validation of its contents by searching for the mandatory VCF header line
+beginning with `#CHROM`. Validation succeeds when this header line is detected in
+either an uncompressed or gzip-compressed file.
+
+Both plain-text and gzip-compressed VCF files are supported.
+
+# Arguments
+
+- `fname::String`: Path to the VCF file.
+
+# Returns
+
+- `Nothing`: Returned when the file exists and appears to contain valid
+  VCF-formatted data.
+
+# Throws
+
+- `ErrorException`: If the specified file does not exist.
+- `ErrorException`: If the file does not appear to be a valid VCF file.
+- Any exception raised whilst opening or reading the file.
+
+# Notes
+
+- File existence is verified before content validation is performed.
+- Both plain-text and gzip-compressed VCF files are supported.
+- Validation is based on detection of the mandatory `#CHROM` header line.
+- The function scans through comment lines until either `#CHROM` is found or an
+  invalid record structure is encountered.
+- This is a lightweight heuristic validation and does not verify the complete
+  correctness of the VCF file.
+- The function performs validation only and does not modify the file.
+
+# Examples
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> fname_genomes_vcf = string("simulated_genotype_vcf-", Dates.now(),".vcf");
+
+julia> simulate_genomes(fname_genomes_vcf=fname_genomes_vcf);
+
+julia> check_vcf(fname_genomes_vcf) |> isnothing
+true
+````
+"""
+function check_vcf(fname::String)::Nothing
+    if !isfile(fname)
+        error("The VCF file: \"$fname\" does not exist!")
+    end
+    line = [String[""]]
+    open(fname, "r") do io
+        while line[1][1] != "#CHROM"
+            line[1] = split(readline(io), "\t")
+            if collect(line[1][1])[1] != '#'
+                break
+            end
+        end
+    end
+    if line[1][1] != "#CHROM"
+        open(CodecZlib.GzipDecompressorStream, fname, "r") do io
+            while line[1][1] != "#CHROM"
+                line[1] = split(readline(io), "\t")
+                if collect(line[1][1])[1] != '#'
+                    break
+                end
+            end
+        end
+    end
+    if line[1][1] != "#CHROM"
+        error("The \"$fname\" may not be a VCF file!")
+    end
+    nothing
+end

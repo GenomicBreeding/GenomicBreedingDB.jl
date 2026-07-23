@@ -14,7 +14,8 @@ export dbconnect, dbinit
 include("filter.jl")
 export Filter, hash, ==, concat_filters
 include("checks.jl")
-export check_illegal_strings, check, validate_trials, validate_date, validate_data_table, validate_filters
+export check_illegal_strings,
+    check, validate_trials, validate_date, validate_data_table, validate_filters, check_reference_genome, check_vcf
 include("delete.jl")
 export delete_names!
 # Uploads
@@ -39,6 +40,8 @@ include("upload/upload_models.jl")
 export upload_fit!
 include("upload/define_relationship_tables.jl")
 export define_relationships!
+include("upload/upload.jl")
+export upload
 # Downloads
 include("download/extract_ids_names.jl")
 export extract_ids, extract_names
