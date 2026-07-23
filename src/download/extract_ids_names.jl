@@ -52,10 +52,10 @@ julia> insert_names!(conn, df=df, table="entries", df_col="entries")
 
 julia> df_entries = extract_ids(conn, names=sort(unique(df.entries)), table="entries");
 
-julia> close(conn);
-
-julia> df_entries.name == sort(unique(df.entries))
+julia> sort(df_entries.name) == sort(unique(df.entries))
 true
+
+julia> close(conn);
 ```
 """
 function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::String, is_like::Bool = false)::DataFrame

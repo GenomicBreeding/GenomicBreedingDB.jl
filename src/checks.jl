@@ -420,6 +420,98 @@ function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
 end
 
 """
+    check(
+        type::Type{T};
+        fname::String,
+    )::Nothing where {T<:AbstractGB}
+
+Validate that a file exists and appears to be a JLD2 file containing an object of
+the specified GenomicBreeding type.
+
+The function first verifies that the supplied file exists and then performs a
+lightweight validation by inspecting the beginning of the file for signatures
+indicating that it is a Julia-generated HDF5-backed JLD2 file containing an
+object whose type matches the supplied `AbstractGB` subtype.
+
+Validation succeeds only when the file contents contain the strings `Julia`,
+`HDF5`, and the name of the requested type. If any of these signatures are
+absent, an error is raised.
+
+# Type Parameters
+
+- `T <: AbstractGB`: Expected GenomicBreeding object type stored in the JLD2
+  file, such as `Genomes`, `Phenomes`, or `Fit`.
+
+# Arguments
+
+- `type::Type{T}`: Expected object type contained within the file.
+- `fname::String`: Path to the JLD2 file to validate.
+
+# Returns
+
+- `Nothing`: Returned when the file exists and appears to contain an object of
+  the specified type.
+
+# Throws
+
+- `ErrorException`: If the specified file does not exist.
+- `ErrorException`: If the file does not appear to be a JLD2 file containing an
+  object of the specified type.
+- Any exception raised while opening or reading the file.
+
+# Notes
+
+- File existence is verified before any content validation is performed.
+- Validation is performed by reading the first 1,000 bytes of the file.
+- The function checks for the presence of the strings:
+  - `Julia`
+  - `HDF5`
+  - `string(type)`
+- This is a lightweight heuristic validation and does not fully deserialize the
+  object.
+- The function is intended to quickly verify file compatibility before loading
+  larger datasets.
+- Typical supported types include `Genomes`, `Phenomes`, `Fit`, and other
+  subtypes of `AbstractGB`.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> genomes = simulate_genomes();
+
+julia> phenomes = simulate_trials(genomes) |> simulate_phenomes;
+
+julia> simulate_fit(genomes, phenomes);
+
+julia> try isnothing(check(Genomes, fname="simulated_genomes.jld2")); catch; false; end
+true
+
+julia> try isnothing(check(Phenomes, fname="simulated_phenomes.jld2")); catch; false; end
+true
+
+julia> try isnothing(check(Fit, fname="simulated_fit.jld2")); catch; false; end
+true
+
+julia> try isnothing(check(Fit, fname="some_non_exitent_file.jld2")); catch; false; end
+false
+```
+"""
+function check(type::Type{T}; fname::String)::Nothing where {T<:AbstractGB}
+    if !isfile(fname)
+        error("The $type file: \"$fname\" does not exist!")
+    end
+    tmp = open(fname, "r") do io
+        read(io, 1_000) |> String
+    end
+    if isnothing(match(Regex("Julia"), tmp)) ||
+       isnothing(match(Regex("HDF5"), tmp)) ||
+       isnothing(match(Regex(string(type)), tmp))
+        error("The file \"$fname\" may not be a JLD2 file containing a $type struct!")
+    end
+    nothing
+end
+
+"""
     validate_trials(
         df::DataFrame,
     )::Nothing
