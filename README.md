@@ -46,15 +46,15 @@ upload("siumulated_fit.jld2")
 
 - Tab-delimited files (comma and other delimiters can also be used):
     + trial data (e.g. ["simulated_trials.tsv"](./res/simulated_trials.tsv))
-    + environmental data (e.g.)
+    + environmental data (e.g. ["simulated_environments.tsv"](./res/simulated_environments.tsv))
 - FASTA ([see specifications for details](https://en.wikipedia.org/wiki/FASTA_format))
-    + reference genome file
+    + reference genome file (e.g. ["simulated_reference_genome.fa"](./res/simulated_reference_genome.fa))
 - VCF ([see specifications for details](https://samtools.github.io/hts-specs/VCFv4.2.pdf))
-    + genotype data file
+    + genotype data file (e.g. ["simulated_genomes.vcf"](./res/simulated_genomes.vcf))
 - JLD2
-    + [Genomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Genomes)
-    + [Phenomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Phenomes)
-    + [Fit struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Fit)
+    + [Genomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Genomes) (e.g. ["simulated_genomes.jld2"](./res/simulated_genomes.jld2))
+    + [Phenomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Phenomes) (e.g. ["simulated_phenomes.jld2"](./res/simulated_phenomes.jld2))
+    + [Fit struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Fit) (e.g. ["simulated_fit.jld2"](./res/simulated_fit.jld2))
 
 ## Database schema
 
