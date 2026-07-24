@@ -146,24 +146,23 @@ pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt start
 
 #### Initialise the tables
 
-1. Open julia and load GenomicBreedingDB.jl:
+1. Open julia, initialise GenomicBreedingDB.jl, and start an interactive Julia session:
 
 ```shell
 cd GenomicBreedingDB.jl/
-julia --project=. --threads=2,1 --load test/interactive_prelude.jl
+pixi run julia --project=. --threads=2,1 -e "using Pkg; Pkg.instantiate()"
+pixi run julia --project=. --threads=2,1 --load test/interactive_prelude.jl
 ```
 
 2. Initialise tables using the `./db/schema.sql`:
 
 ```julia
-dbinit()
-# Test
-conn = dbconnect()
-close(conn)
 # Initialise the database
 dbinit()
-# Test query
-querytable("entries")
+# Open a connection to the database, list all the tables initialised, and close the connection
+conn = dbconnect()
+extract_all_tables(conn)
+close(conn)
 ```
 
 ## Database schema visualisation

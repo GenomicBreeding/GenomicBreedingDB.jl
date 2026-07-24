@@ -20,17 +20,24 @@
         filter_greater_than::Union{Nothing,Int,AbstractFloat}=nothing,
     )
 
-Construct a validated database filter for querying or modifying records.
+Construct a validated database filter for querying, updating, or deleting
+records.
 
 A `Filter` encapsulates a single filtering criterion applied to a database table.
 The constructor validates the target table and field, ensures that exactly one
-filter condition has been supplied, and automatically resolves user-friendly
-entity names to database identifiers when filtering on foreign-key fields.
+filter condition has been supplied, and automatically resolves human-readable
+entity names into database identifiers when filtering on foreign-key fields.
 
-When filtering on relational fields such as `entry_id`, `site_id`, or similar
-identifier columns, supplied names are translated into their corresponding
-database ids. This allows database queries to be written using meaningful names
-rather than internal identifiers.
+If a supplied field does not exist in the target table, the constructor attempts
+to infer a related foreign-key field. For example, fields such as `entry`,
+`entries`, `species`, `site`, or `trait` may be mapped automatically to their
+corresponding identifier fields (`entry_id`, `species_id`, `site_id`,
+`trait_id`, etc.) when those fields exist in the database schema.
+
+When filtering on identifier fields, supplied names are automatically translated
+into their corresponding database ids using `extract_ids`. This allows filters to
+be expressed using meaningful biological or experimental identifiers rather than
+internal database keys.
 
 # Arguments
 
@@ -38,7 +45,7 @@ rather than internal identifiers.
 - `table::String`: Name of the table to filter.
 - `field::String`: Name of the field on which filtering will be applied.
 - `filter_like::Union{Nothing,String}=nothing`: Pattern-matching filter using SQL
-  `LIKE` semantics.
+  `ILIKE` semantics.
 - `filter_in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}=nothing`:
   Filter matching any value in the supplied collection.
 - `filter_between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}=nothing`:
@@ -58,36 +65,43 @@ rather than internal identifiers.
 - `in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}`:
   Collection-based filter values.
 - `between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}`:
-  Inclusive range filter.
+  Inclusive range filter values.
 - `equal_to::Union{Nothing,Int,AbstractFloat}`: Equality filter value.
 - `less_than::Union{Nothing,Int,AbstractFloat}`: Less-than filter value.
 - `greater_than::Union{Nothing,Int,AbstractFloat}`: Greater-than filter value.
 
 # Throws
 
-- `ErrorException`: If the database table does not exist.
-- `ErrorException`: If the specified field cannot be resolved.
+- `ErrorException`: If the target table does not exist.
+- `ErrorException`: If the specified field cannot be resolved to a valid field.
 - `ErrorException`: If zero or multiple filter criteria are supplied.
 - `ErrorException`: If supplied names cannot be resolved to database ids.
-- `ErrorException`: If no database records match a supplied relational filter.
-- Any exception raised during validation or identifier resolution.
+- `ErrorException`: If no database records match a relational filter value.
+- Any exception raised during database validation or identifier resolution.
 
 # Notes
 
-- Exactly one filtering method must be supplied. The constructor rejects filters
-  with zero or multiple active criteria.
+- Exactly one filtering criterion must be supplied.
 - Connection and schema validation are performed using `check`.
-- If the supplied field is not found, the constructor attempts to infer a
-  corresponding foreign-key field by appending `_id`.
-- Special handling is provided for `entries`, which maps to `entry_id`.
-- Relational filters are resolved using `extract_ids`.
-- Name-based `LIKE` searches on relational fields are converted into exact
-  identifier-based `IN` filters after matching candidate records.
+- If the supplied field is not present in the table, the constructor attempts to
+  infer a suitable foreign-key field by appending `_id`.
+- Special handling is provided for:
+  - `entries` → `entry_id`
+  - `species` → `species_id`
+- Name-based filters applied to foreign-key fields are automatically translated
+  into numeric identifiers using `extract_ids`.
+- Foreign-key mappings are resolved through the corresponding lookup tables:
+  - `entry_id` ↔ `entries`
+  - `species_id` ↔ `species`
+  - `<name>_id` ↔ `<name>s`
+- `filter_like` searches on foreign-key fields are resolved to matching ids and
+  subsequently converted into `IN` filters.
 - Pattern-matching filters automatically receive surrounding `%` wildcards when
   not already supplied.
 - Underscore characters are escaped to prevent unintended SQL wildcard matching.
-- `Filter` objects are typically used with functions such as `query_table`,
-  `update_table!`, `delete_names!`, and `concat_filters`.
+- The resulting `Filter` object contains fully resolved values and is ready for
+  use by functions such as `query_table`, `concat_filters`, `update_table!`, and
+  `delete_names!`.
 
 # Examples
 
@@ -181,6 +195,8 @@ struct Filter
         catch
             if field == "entries"
                 "entry_id"
+            elseif field == "species"
+                "species_id"
             else
                 field_split = collect(field)
                 if field_split[end] == 's'
@@ -194,7 +210,13 @@ struct Filter
         filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
             filter_in, filter_like
         else
-            metatable = field == "entry_id" ? "entries" : replace(field, "_id" => "s")
+            metatable = if field == "entry_id"
+                "entries"
+            elseif field == "species_id"
+                "species"
+            else
+                replace(field, "_id" => "s")
+            end
             filter_in = if isnothing(filter_in)
                 nothing
             else
