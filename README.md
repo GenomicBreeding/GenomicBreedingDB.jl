@@ -17,6 +17,45 @@ This separation enables:
 - improved reproducibility, and
 - broad applicability across species and breeding programs.
 
+## Quickstart
+
+Assuming PostgreSQL has been setup ([see below for details](#postgresql-setup)):
+
+### Uploads and downloads using simulated data
+
+```julia
+using GenomicBreedingDB.jl
+# Simulate
+genomes = simulate_genomes()
+trials = simulate_trials(genomes)
+phenomes = simulate_phenomes(trials)
+fit = simulate_fit(genomes, phenomes)
+# Uploads
+upload("siumulated_trials.tsv")
+upload("siumulated_environments.tsv")
+upload("siumulated_reference_genome.fa")
+upload("siumulated_genomes.vcf", fname_reference_genome="siumulated_reference_genome.fa")
+upload("siumulated_genomes.jld2", fname_reference_genome="siumulated_reference_genome.fa")
+upload("siumulated_phenomes.jld2")
+upload("siumulated_fit.jld2")
+# Downloads
+# TODO....
+```
+
+### Input file formats
+
+- Tab-delimited files (comma and other delimiters can also be used):
+    + trial data (e.g. ["simulated_trials.tsv"](./res/simulated_trials.tsv))
+    + environmental data (e.g.)
+- FASTA ([see specifications for details](https://en.wikipedia.org/wiki/FASTA_format))
+    + reference genome file
+- VCF ([see specifications for details](https://samtools.github.io/hts-specs/VCFv4.2.pdf))
+    + genotype data file
+- JLD2
+    + [Genomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Genomes)
+    + [Phenomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Phenomes)
+    + [Fit struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Fit)
+
 ## Database schema
 
 ### Core Design Principles
