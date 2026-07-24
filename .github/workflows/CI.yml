@@ -15,7 +15,7 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 180
     permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
       actions: write
       contents: read
@@ -28,6 +28,20 @@ jobs:
           - ubuntu-latest
         arch:
           - x64
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: qwerty12345
+          POSTGRES_USER: himynamejeff
+          POSTGRES_DB: gbdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
