@@ -10,11 +10,15 @@
 Delete records from a database table by matching names contained in a DataFrame
 column.
 
-The function extracts unique names from the specified DataFrame column and removes
-matching records from the target database table. Deletion criteria are
-constructed using `Filter` objects and translated into parameterised SQL
-statements via `concat_filters`, ensuring consistent filtering behaviour across
-database operations.
+The function extracts unique values from the specified DataFrame column and
+removes matching records from the target database table. Each name is converted
+into a validated `Filter` object and translated into a parameterised SQL
+`DELETE` statement, ensuring consistent filtering behaviour across database
+operations.
+
+To reduce the risk of SQL injection and accidental deletion of unintended
+records, both table names and values extracted from the DataFrame are validated
+using `check_illegal_strings` prior to query construction.
 
 All delete operations are performed within a single transaction. If an error
 occurs during processing, the transaction is rolled back and the original
@@ -23,11 +27,11 @@ exception is rethrown.
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `df::DataFrame`: DataFrame containing names to be removed.
+- `df::DataFrame`: DataFrame containing names to delete.
 - `table::String`: Name of the target database table.
-- `df_col::String`: Name of the DataFrame column containing names to delete.
-- `verbose::Bool=false`: If `true`, display progress information and a summary of
-  deleted records.
+- `df_col::String`: Name of the DataFrame column containing values to remove.
+- `verbose::Bool=false`: If `true`, display progress information and a summary
+  of deleted records.
 
 # Returns
 
@@ -36,20 +40,26 @@ exception is rethrown.
 # Throws
 
 - `ErrorException`: If `df_col` does not exist in the DataFrame.
-- Any database exception raised during deletion is rethrown after the transaction
-  is rolled back.
+- `ErrorException`: If `table` contains illegal characters or strings.
+- `ErrorException`: If one or more values extracted from `df_col` contain
+  illegal characters or strings.
+- Any database exception raised during deletion is rethrown after transaction
+  rollback.
 
 # Notes
 
-- Names are converted to strings, sorted, and deduplicated before processing.
+- Values are converted to strings, sorted, and deduplicated before processing.
+- Table names are validated using `check_illegal_strings`.
+- Extracted names are validated using `check_illegal_strings`.
 - Delete statements are generated using `Filter` and `concat_filters`.
 - SQL parameters are supplied separately from the query text to support safe,
   parameterised execution.
 - Delete operations are wrapped in a transaction using `BEGIN`, `COMMIT`, and
   `ROLLBACK`.
 - Progress reporting is available when `verbose=true`.
-- The function attempts a delete operation for each supplied name regardless of
-  whether a matching record exists.
+- A delete operation is attempted for each unique value supplied.
+- Records that do not exist in the target table are silently ignored by the
+  underlying SQL `DELETE` statement.
 - The function permanently removes matching records from the specified table.
 
 # Examples
@@ -96,14 +106,17 @@ function delete_names!(
         )
     end
     uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
+    check_illegal_strings([table])
+    check_illegal_strings(uploaded_names)
     counter = 0
     pb = ProgressMeter.Progress(length(uploaded_names), "Deleting names listed in \"$df_col\" from \"$table\" table...")
     execute(conn, "BEGIN")
     try
         for x in uploaded_names
             # x = uploaded_names[1]
-            sql, par = concat_filters([Filter(conn, table = table, field = "name", filter_in = [x])])
-            execute(conn, join(vcat(["DELETE FROM $table WHERE 1 = 1"], sql), " "), par)
+            filter_cat, par = concat_filters([Filter(conn, table = table, field = "name", filter_in = [x])])
+            sql = join(vcat(["DELETE FROM $table WHERE 1 = 1"], filter_cat), " ")
+            execute(conn, sql, par)
             counter += 1
             verbose ? ProgressMeter.next!(pb) : nothing
         end

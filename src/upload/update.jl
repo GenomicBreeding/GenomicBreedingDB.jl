@@ -7,51 +7,58 @@
         verbose::Bool=false,
     )::Nothing
 
-Update a single field in a database table for the record matching a set of filters.
+Update a single field in exactly one database record.
 
-The function constructs and executes a parameterised SQL `UPDATE` statement using
-the supplied filters to identify the target record. The specified
-`destination_field` is updated with the provided `value`.
+The function applies a parameterised SQL `UPDATE` statement to a database table
+using a collection of validated filters to identify the target record. The
+specified field is updated to the supplied value, and the operation succeeds only
+when exactly one row is affected.
 
-The update is performed within a database transaction. To minimise the risk of
-unintended modifications, the function verifies that exactly one row was affected by
-the operation. If no rows or multiple rows are updated, the transaction is rolled
-back and an error is raised.
+All updates are performed within a transaction. If the update affects zero rows
+or more than one row, the transaction is rolled back and an error is raised to
+prevent unintended modifications.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `filters::Vector{Filter}`: Collection of filters used to identify the record to
-  update.
-- `destination_field::String`: Name of the field to be updated.
-- `value::Union{String,AbstractFloat,Int}`: New value to assign to the destination
+- `filters::Vector{Filter}`: Collection of filters defining the target record.
+  All filters must reference the same database table.
+- `destination_field::String`: Name of the field to update.
+- `value::Union{String,AbstractFloat,Int}`: New value to assign to the target
   field.
-- `verbose::Bool=false`: If `true`, display diagnostic information while
-  constructing the query.
+- `verbose::Bool=false`: If `true`, display progress information while
+  concatenating filters.
 
 # Returns
 
-- `Nothing`: The database record is updated in place.
+- `Nothing`: The specified field is updated in the database.
 
 # Throws
 
-- `ErrorException`: If the supplied filters are invalid.
+- `ErrorException`: If the supplied filters reference multiple tables.
+- `ErrorException`: If the table name contains illegal characters or strings.
+- `ErrorException`: If the destination field contains illegal characters or
+  strings.
 - `ErrorException`: If the update affects zero rows.
 - `ErrorException`: If the update affects more than one row.
-- Any database exception raised during query execution.
+- Any database exception raised whilst executing the update statement.
 
 # Notes
 
-- All filters are validated using `validate_filters` before query execution.
-- The target table is inferred from the first filter in `filters`.
-- SQL parameters are supplied separately from the query text to support safe,
-  parameterised execution.
-- Database modifications are performed within an explicit transaction using
-  `BEGIN`, `COMMIT`, and `ROLLBACK`.
-- The function expects exactly one matching record and will fail if this condition
-  is not satisfied.
-- This function performs a database modification and does not return the updated
-  record.
+- Filter validation is performed using `validate_filters`.
+- SQL filter clauses and parameters are generated using `concat_filters`.
+- Table and destination-field names are explicitly validated using
+  `check_illegal_strings` before SQL construction.
+- Updates are performed using parameterised SQL statements.
+- The operation is wrapped in a transaction using `BEGIN`, `COMMIT`, and
+  `ROLLBACK`.
+- Exactly one row must be updated for the operation to succeed.
+- Updates affecting zero rows typically indicate that no record matched the
+  supplied filters.
+- Updates affecting multiple rows typically indicate that the supplied filters
+  were insufficiently specific.
+- This function is intended for targeted record updates rather than bulk
+  modifications.
 
 # Examples
 
@@ -101,7 +108,8 @@ function update_table!(
     # verbose = true
     validate_filters(filters)
     table = filters[1].table
-    filter_cat, par = concat_filters(filters, verbose = verbose)
+    filter_cat, par = concat_filters(filters, verbose = verbose) # checks for illegal strings via early check(...) calls
+    check_illegal_strings([table, destination_field]) # redundant but explicit checks for illegal strings before string interpolation below just to be extra safe
     sql = join(vcat(String["UPDATE $table SET $(destination_field) = \$$(length(par)+1) WHERE 1=1"], filter_cat), " ")
     execute(conn, "BEGIN")
     res = execute(conn, sql, vcat(par, value))

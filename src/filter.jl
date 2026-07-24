@@ -180,7 +180,7 @@ struct Filter
         # table = "entries"; field = "name"; filter_in = String["entry_100"]; # table = "phenotype_data"; field = "entries"; filter_in = String["entry_100"]; # table = "phenotype_data"; field = "site"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "site_id"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "WQRERWE"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "site"; filter_like = "site"; # table = "phenotype_data"; field = "site"; # table = "phenotype_data"; field = "entry"; filter_in = String["entry_010", "entry_020"]; # table = "phenotype_data"; field = "entry"; filter_in = String["entry_010"]; # table = "phenotype_data"; field = "entry";
         # execute(conn, "SELECT id,value FROM phenotype_data") |> DataFrame
         # table = "phenotype_data"; field = "value"; filter_in = Float64[10.515928568077884]; # table = "phenotype_data"; field = "value"; filter_between = (10, 12); # table = "phenotype_data"; field = "value"; filter_equal_to = 10.515928568077884; # table = "phenotype_data"; field = "value"; filter_less_than = 10; # table = "phenotype_data"; field = "value"; filter_greater_than = 100
-        check(conn, table)
+        check(conn, table) # checks for illegal strings
         sum([
             !isnothing(filter_like),
             !isnothing(filter_in),
@@ -190,7 +190,7 @@ struct Filter
             !isnothing(filter_greater_than),
         ]) != 1 ? error("We expect one and only one `filter_*` argument!") : nothing
         field = try
-            check(conn, table, field)
+            check(conn, table, field) # checks for illegal strings
             field
         catch
             if field == "entries"

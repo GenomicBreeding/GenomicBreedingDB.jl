@@ -86,8 +86,8 @@ function insert_names!(
     # table = "entries"
     # df_col = "entries"
     # verbose::Bool = true
-    check(conn, table)
-    check(conn, table, "name")
+    check(conn, table) # checks for illegal strings in $table
+    check(conn, table, "name") # checks for illegal strings in $table
     if df_col∉names(df)
         error(
             "The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
