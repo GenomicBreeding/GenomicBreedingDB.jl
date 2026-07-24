@@ -56,6 +56,7 @@ re-raised.
 
 - `ErrorException`: If the database connection has been closed.
 - `ErrorException`: If `table` is not a valid relationship table.
+- `ErrorException`: If `table`, `id_1`, or `id_2` contain illegal characters.
 - `ErrorException`: If the supplied JLD2 file does not exist.
 - `ErrorException`: If the supplied file does not appear to contain the expected
   object type.
@@ -175,6 +176,7 @@ function define_relationships!(
     # link_value_parser::Function = x -> String(split(x, '|')[1])
     # verbose = true
     check(conn)
+    check_illegal_strings([table])
     valid_table_names =
         extract_all_tables(conn) |>
         df ->
@@ -193,6 +195,7 @@ function define_relationships!(
     end
     id_1 = replace(table_1, Regex("s\$") => "_id")
     id_2 = table_2 == "entries" ? "entry_id" : replace(table_2, Regex("s\$") => "_id")
+    check_illegal_strings([id_1, id_2])
     check(type, fname = fname_jld2)
     df_record_1 = query_table(
         conn,

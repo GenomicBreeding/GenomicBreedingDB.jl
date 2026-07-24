@@ -130,44 +130,60 @@ end
         verbose::Bool=false,
     )::DataFrame
 
-Query a database table using a collection of `Filter` objects and return the
-results as a `DataFrame`.
+Query a database table using one or more validated filters and return the results
+as a `DataFrame`.
 
-The target table is inferred from the first filter in `filters`. All supplied
-filters are validated and combined into a parameterised SQL `WHERE` clause. The
-resulting query is executed and returned as a `DataFrame`.
+The function executes a parameterised SQL query constructed from a collection of
+`Filter` objects. All filters must reference the same table and are combined into
+a single query expression. Selected records are returned as a `DataFrame`, with
+foreign-key identifier fields automatically translated into their corresponding
+human-readable names.
 
-Columns whose names end with `_id` are automatically resolved to their
-corresponding entity names by querying the associated lookup table. Identifier
-columns are replaced with the resolved names and renamed accordingly. For example,
-`entry_id` becomes `entry`.
+By default, all columns are returned. A subset of columns may be requested using
+the `output_fields` argument.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `filters::Vector{Filter}`: Collection of filters used to construct the `WHERE`
-  clause.
-- `output_fields::Vector{String}=["*"]`: Columns to include in the `SELECT`
-  statement.
-- `verbose::Bool=false`: If `true`, display progress information while resolving
-  foreign-key fields.
+- `filters::Vector{Filter}`: Collection of filters describing the query
+  criteria.
+- `output_fields::Vector{String}=["*"]`: Fields to return in the query result.
+  Use `["*"]` to return all fields.
+- `verbose::Bool=false`: If `true`, display progress information whilst
+  processing query results.
 
 # Returns
 
-- `DataFrame`: Query results with foreign-key identifiers resolved to their
-  corresponding names.
+- `DataFrame`: Records matching the supplied filters.
+
+# Throws
+
+- `ErrorException`: If the database connection has been closed.
+- `ErrorException`: If the supplied filters reference multiple tables.
+- `ErrorException`: If an inferred lookup table name contains illegal
+  characters.
+- Any database exception raised whilst constructing or executing the query.
 
 # Notes
 
 - Connection validation is performed using `check(conn)`.
-- All filters must reference the same table.
-- SQL parameters are supplied separately from the query text to support safe,
-  parameterised execution.
-- Foreign-key fields are identified using the `_id` suffix convention.
-- Associated lookup tables are inferred automatically from field names, for
-  example `site_id` → `sites`.
-- The special case `entry_id` is resolved using the `entries` table.
-- Progress reporting is available when `verbose=true`.
+- Filter consistency is validated using `validate_filters`.
+- SQL clauses and query parameters are generated using `concat_filters`.
+- All filtering is performed using parameterised SQL statements.
+- Multiple filters are combined using logical `AND` conditions.
+- By default, all columns are returned using `SELECT *`.
+- Foreign-key fields ending in `_id` are automatically converted into the
+  corresponding entity names.
+- Identifier translation is performed by querying the corresponding lookup
+  tables:
+  - `entry_id` → `entries`
+  - `species_id` → `species`
+  - `<name>_id` → `<name>s`
+- Converted fields are renamed by removing the `_id` suffix.
+- The resulting `DataFrame` contains human-readable values rather than internal
+  database identifiers wherever possible.
+- When `verbose=true`, progress information is displayed while identifier fields
+  are being resolved.
 
 # Examples
 
@@ -247,6 +263,7 @@ function query_table(
         isnothing(match(Regex("_id\$"), f)) ? continue : nothing
         f = replace(f, Regex("_id\$") => "")
         metatable = f == "entry" ? "entries" : f == "species" ? "species" : "$(f)s"
+        check_illegal_strings([metatable])
         values = df[!, "$(f)_id"]
         df_tmp =
             execute(conn, "SELECT id,name FROM $metatable WHERE id = ANY(\$1)", [string.(unique(values))]) |> DataFrame
