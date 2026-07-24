@@ -8,18 +8,16 @@
 
 Upload a reference genome file to the database and register its metadata.
 
-The function validates that the supplied reference genome file exists, is
-specified using an absolute path, and appears to contain valid FASTA-formatted
-DNA sequence data. Once validated, metadata describing the reference genome are
-inserted into the `reference_genomes` table.
+The function validates that the supplied file path is absolute and that the file
+appears to be a valid reference genome FASTA file. Following validation, the
+reference genome metadata are inserted into the `reference_genomes` table unless
+the file has already been registered.
 
-Before insertion, the database is queried to determine whether the same file path
-has already been registered. If the file has already been uploaded, a warning
-containing details of the existing record is displayed and the function exits
-without modifying the database. An additional integrity check ensures that a
-single file path is not associated with multiple database records.
-
-Both uncompressed FASTA files and gzip-compressed FASTA files are supported.
+Before insertion, the database is queried to determine whether the supplied file
+path already exists in the `reference_genomes` table. If exactly one matching
+record is found, a warning containing the existing record information is emitted
+and the function exits without modifying the database. An additional integrity
+check ensures that multiple records cannot reference the same file path.
 
 # Arguments
 
@@ -35,38 +33,36 @@ Both uncompressed FASTA files and gzip-compressed FASTA files are supported.
 
 # Throws
 
-- `ErrorException`: If the specified file does not exist.
 - `ErrorException`: If the file path is not absolute.
-- `ErrorException`: If the file does not appear to contain valid FASTA-formatted
-  sequence data.
+- `ErrorException`: If the reference genome file does not exist.
+- `ErrorException`: If the file does not appear to be a valid FASTA file.
 - `ErrorException`: If multiple database records reference the same file path,
   indicating database corruption or an inconsistent database state.
 - Any database exception raised during insertion.
 
 # Warnings
 
-- A warning is emitted and the function returns immediately if the supplied file
-  path has already been registered in the database.
+- A warning is emitted and the function returns immediately when the supplied
+  file path has already been registered in the database.
 - A warning is emitted when a reference genome with the same name already exists
-  in the database and the insert operation is ignored by
+  and the insert operation is ignored by
   `ON CONFLICT (name) DO NOTHING`.
 
 # Notes
 
 - Only absolute file paths are accepted.
-- Both plain-text FASTA files and gzip-compressed FASTA files are supported.
-- FASTA validation is based on inspection of the first detected sequence record.
-- The function checks for the presence of the canonical DNA bases `A`, `T`, `C`,
-  and `G` in the sequence data.
-- Existing file registrations are detected using `query_table`.
-- If a matching file path is found in the database, the function reports the
-  existing record and exits without error.
+- Reference genome validation is delegated to
+  `check_reference_genome(fname)`.
+- Existing registrations are identified using the stored `file_path` field.
+- Duplicate file registrations are not permitted.
 - Metadata are inserted into the `reference_genomes` table using the supplied
   name, file path, and notes.
 - Existing records with the same name are preserved through the use of
   `ON CONFLICT (name) DO NOTHING`.
 - The reference genome file itself is not stored in the database; only its
   metadata and file location are recorded.
+- If an existing record is found for the supplied file path, information about
+  that record is reported to assist with provenance tracking and debugging.
 
 # Examples
 
@@ -87,33 +83,10 @@ julia> close(conn);
 """
 function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
     # conn = dbconnect(); fname = string(pwd(), "/simulated_reference_genome-", Dates.now(), ".fa"); simulate_reference_genome(fname_reference_genome=fname); name = "Milnesium tardigradum"; notes = "Simulated reference genome";
-    if !isfile(fname)
-        error("The reference genome file: \"$fname\" does not exist!")
-    end
     if !isabspath(fname)
         error("The path to the reference genome file is not absolute: \"$fname\"!")
     end
-    line = String[""]
-    try
-        open(fname, "r") do io
-            line[1] = readline(io)
-            while line[1][1] != '>'
-                line[1] = readline(io)
-            end
-            line[1] = readline(io)
-        end
-    catch
-        open(CodecZlib.GzipDecompressorStream, fname, "r") do io
-            line[1] = readline(io)
-            while line[1][1] != '>'
-                line[1] = readline(io)
-            end
-            line[1] = readline(io)
-        end
-    end
-    if sum([x ∈ unique(collect(line[1])) for x in ['A', 'T', 'C', 'G']]) < 4
-        error("The \"$fname\" may not be a fasta file!")
-    end
+    check_reference_genome(fname)
     # Check if the file path has already been uploaded
     df_tmp = query_table(
         conn,
@@ -247,9 +220,6 @@ function upload_genotype_vcf!(
     fname_reference_genome::String,
 )::Nothing
     # conn = dbconnect(); fname_reference_genome = string(pwd(), "/simulated_reference_genome.fa"); fname = string(pwd(), "/simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname); name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome";
-    if !isfile(fname)
-        error("The VCF file: \"$fname\" does not exist!")
-    end
     if !isabspath(fname)
         error("The path to the VCF file is not absolute: \"$fname\"!")
     end
@@ -267,28 +237,7 @@ function upload_genotype_vcf!(
         end
         df_reference_genome.id[1]
     end
-    line = [String[""]]
-    open(fname, "r") do io
-        while line[1][1] != "#CHROM"
-            line[1] = split(readline(io), "\t")
-            if collect(line[1][1])[1] != '#'
-                break
-            end
-        end
-    end
-    if line[1][1] != "#CHROM"
-        open(CodecZlib.GzipDecompressorStream, fname, "r") do io
-            while line[1][1] != "#CHROM"
-                line[1] = split(readline(io), "\t")
-                if collect(line[1][1])[1] != '#'
-                    break
-                end
-            end
-        end
-    end
-    if line[1][1] != "#CHROM"
-        error("The \"$fname\" may not be a VCF file!")
-    end
+    check_vcf(fname)
     res = execute(
         conn,
         """
