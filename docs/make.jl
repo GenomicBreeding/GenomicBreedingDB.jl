@@ -13,6 +13,7 @@ makedocs(;
         canonical = "https://GenomicBreeding.github.io/GenomicBreedingDB.jl",
         edit_link = "main",
         assets = String[],
+        size_threshold_ignore = ["index.md"],
     ),
     pages = ["Home" => "index.md"],
     doctest = false,
