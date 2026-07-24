@@ -56,6 +56,15 @@ upload("siumulated_fit.jld2")
     + [Phenomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Phenomes) (e.g. ["simulated_phenomes.jld2"](./res/simulated_phenomes.jld2))
     + [Fit struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Fit) (e.g. ["simulated_fit.jld2"](./res/simulated_fit.jld2))
 
+### Output file format
+
+Since only the trial and environmental data are stored in the database, 
+with only the file paths and corresponding metadata of the genomic, phenomic and model data are stored,
+we only output tabular data and write them out as tab-delimited files.
+
+**--- TODO ---**
+**... more details ...**
+
 ## Database schema
 
 ### Core Design Principles
