@@ -115,7 +115,7 @@ julia> conn = dbconnect();
 
 julia> n = execute(conn, "SELECT * FROM genomes_entries") |> DataFrame |> nrow;
 
-julia> simulate_genomes(n=n+1, fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2) |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname_phenomes_jld2);
+julia> simulate_genomes(n=maximum([100, n+1]), fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname_genomes_jld2) |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname_phenomes_jld2);
 
 julia> upload_trial_data!(conn, fname="simulated_trials.tsv", species="Acacia neglecta", experiment="some-exp", treatment="some_trt", entry_type="family", population_type="population", relationship_type="member_of");
 

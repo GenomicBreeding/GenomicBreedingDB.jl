@@ -74,7 +74,13 @@ function upload(
         error("Unable to determine the type of \"$fname\"! Please refer to #link to file formats..(TODO...)")
     end
     if sum(values(data_type_checks)) > 1
-        error(string("Multiple format matches for \"$fname\"!\n\t- \"", join(keys(filter(x -> x.second, data_type_checks)), "\"\n\t- \""), "\""))
+        error(
+            string(
+                "Multiple format matches for \"$fname\"!\n\t- \"",
+                join(keys(filter(x -> x.second, data_type_checks)), "\"\n\t- \""),
+                "\"",
+            ),
+        )
     end
 
     conn = dbconnect()
@@ -94,7 +100,7 @@ function upload(
     elseif data_type == "Fit"
         # TODO
     else
-    end        
+    end
 
 
     nothing

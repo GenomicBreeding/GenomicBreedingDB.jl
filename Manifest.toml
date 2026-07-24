@@ -833,9 +833,9 @@ weakdeps = ["ArrowTypes"]
 
 [[deps.JuliaFormatter]]
 deps = ["CommonMark", "Glob", "JuliaSyntax", "PrecompileTools", "TOML", "Test"]
-git-tree-sha1 = "79d52bec5a9d40454bba47c1d239beac0e36cf0e"
+git-tree-sha1 = "003c8b937098f526d11499e419871e43030c0f6c"
 uuid = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
-version = "2.11.1"
+version = "2.11.2"
 
 [[deps.JuliaSyntax]]
 git-tree-sha1 = "0d4b3dab95018bcf3925204475693d9f09dc45b8"
