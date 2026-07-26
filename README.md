@@ -173,6 +173,243 @@ cd GenomicBreedingDB.jl
 pixi run eralchemy -i postgresql://himynamejeff@localhost:5432/gbdb -o db/graph.svg
 ```
 
+## PostgreSQL backup/archiving setup
+
+### (1/5) `config.sh`
+
+```shell
+#!/usr/bin/env bash
+
+# PostgreSQL
+
+export PGHOST="localhost"
+export PGPORT="5432"
+export PGDATABASE="breeding_db"
+export PGUSER="backup_user"
+
+# Storage locations
+
+export BACKUP_ROOT="/pg_backups"
+export BASE_BACKUP_DIR="${BACKUP_ROOT}/base"
+export WAL_ARCHIVE_DIR="/pg_archive"
+
+# Restore
+
+export PGDATA="/var/lib/postgresql/17/main"
+
+# Retention
+
+export KEEP_WEEKLY_DAYS=365
+export KEEP_WAL_DAYS=90
+
+# Logging
+
+export LOG_DIR="${BACKUP_ROOT}/logs"
+
+mkdir -p "$BASE_BACKUP_DIR"
+mkdir -p "$LOG_DIR"
+mkdir -p "$WAL_ARCHIVE_DIR"
+
+```
+
+### (2/5) `backup-base.sh`
+
+```shell
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source ./config.sh
+
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+
+BACKUP_DIR="${BASE_BACKUP_DIR}/${TIMESTAMP}"
+
+echo "Creating backup: ${BACKUP_DIR}"
+
+pg_basebackup \
+    -U "$PGUSER" \
+    -D "$BACKUP_DIR" \
+    -Ft \
+    -z \
+    -Xs \
+    -P
+
+echo "Backup completed."
+
+echo "$TIMESTAMP" > "${BACKUP_DIR}/backup.timestamp"
+
+cat <<EOF > "${BACKUP_DIR}/metadata.txt"
+Database: ${PGDATABASE}
+Backup Time: $(date)
+Host: $(hostname)
+EOF
+
+# crontab -e 0 2 * * 0 /opt/postgres-backup/backup-base.sh
+
+# ##############################
+# ### MISC: list all backups
+# source ./config.sh
+# echo "================"
+# echo "Base Backups"
+# echo "============"
+# ls -lh "$BASE_BACKUP_DIR"
+# echo "================"
+# echo "Latest WAL files"
+# echo "================"
+# ls -ltr "$WAL_ARCHIVE_DIR" | tail -20
+```
+
+### (3/5) `cleanup.sh`
+
+```shell
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source ./config.sh
+
+echo "Removing old base backups..."
+
+find "$BASE_BACKUP_DIR" \
+    -mindepth 1 \
+    -maxdepth 1 \
+    -type d \
+    -mtime +${KEEP_WEEKLY_DAYS} \
+    -exec rm -rf {} \;
+
+echo "Removing old WAL files..."
+
+find "$WAL_ARCHIVE_DIR" \
+    -type f \
+    -mtime +${KEEP_WAL_DAYS} \
+    -delete
+
+echo "Cleanup complete."
+
+# crontab -e 0 3 1 * * /opt/postgres-backup/cleanup.sh
+```
+
+### (4/5) `create-restore-point.sh`
+
+```shell
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+LABEL="${1}"
+
+if [[ -z "$LABEL" ]]; then
+    echo "Usage:"
+    echo "create-restore-point.sh label"
+    exit 1
+fi
+
+psql <<EOF
+SELECT pg_create_restore_point('${LABEL}');
+EOF
+
+echo "Restore point created:"
+echo "$LABEL"
+
+# ./create-restore-point.sh before_genotype_import_20260724
+```
+
+### (5/5) `restore-pitr.sh`
+
+```shell
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source ./config.sh
+
+TARGET_TIME="$1"
+
+if [[ -z "${TARGET_TIME}" ]]; then
+    echo "Usage:"
+    echo "restore-pitr.sh 'YYYY-MM-DD HH:MM:SS'"
+    exit 1
+fi
+
+LATEST_BACKUP=$(
+    ls -dt ${BASE_BACKUP_DIR}/* |
+    head -n1
+)
+
+echo "Using backup:"
+echo "$LATEST_BACKUP"
+
+###############################################################################
+# SAFETY BACKUP CURRENT DATABASE
+###############################################################################
+
+SAFETY_DIR="${BACKUP_ROOT}/emergency"
+
+mkdir -p "$SAFETY_DIR"
+
+SAFETY_FILE="${SAFETY_DIR}/pre_restore_$(date +%Y%m%d_%H%M%S).tar.gz"
+
+echo "Stopping PostgreSQL..."
+
+systemctl stop postgresql
+
+echo "Saving current live cluster..."
+
+tar -czf \
+    "$SAFETY_FILE" \
+    "$PGDATA"
+
+echo "Saved:"
+echo "$SAFETY_FILE"
+
+###############################################################################
+# RESTORE BASE BACKUP
+###############################################################################
+
+rm -rf "$PGDATA"
+
+mkdir -p "$PGDATA"
+
+echo "Locating backup archive..."
+
+BASE_TAR=$(find "$LATEST_BACKUP" -name "*.tar.gz" | head -n1)
+
+tar -xzf "$BASE_TAR" \
+    -C "$PGDATA"
+
+chown -R postgres:postgres "$PGDATA"
+
+###############################################################################
+# CONFIGURE PITR
+###############################################################################
+
+touch "${PGDATA}/recovery.signal"
+
+cat >> "${PGDATA}/postgresql.auto.conf" <<EOF
+
+restore_command = 'cp ${WAL_ARCHIVE_DIR}/%f %p'
+recovery_target_time = '${TARGET_TIME}'
+recovery_target_action = 'promote'
+
+EOF
+
+###############################################################################
+# START RECOVERY
+###############################################################################
+
+echo "Starting PostgreSQL..."
+
+systemctl start postgresql
+
+echo
+echo "Recovery initiated."
+echo "Target timestamp:"
+echo "$TARGET_TIME"
+
+# sudo ./restore-pitr.sh "2026-07-24 16:02:13"
+```
+
 ## Dev stuff:
 
 ### REPL prelude

@@ -307,3 +307,17 @@ function update_table_field_by_name!(
     end
     nothing
 end
+
+
+# TODO: update a table: parameters: 
+#   1. UIDs of the records to be updated --> i imagine if there is a correction on the data uploaded to the database,
+#       we first must download the dta from the database and perform the corrections there! The information in the database
+#       should be treated as the central source of truth and once data has been uploaded there all other data transactions must originate from there!
+#   2. The data to be replaced in table format with the UID column/s included matching exactly each record to be updated...
+function update_table!(
+    conn::LibPQ.Connection,
+    fname::String,
+
+)::Nothing
+# TODO: continue working on this once download functions/methods are minimally workable...
+end

@@ -325,8 +325,9 @@ function upload_trial_data!(
     verbose::Bool = false,
 )::Nothing
     # conn = dbconnect()
-    # fname = simulate_trial()
-    # missing_strings::Union{String, Char, Vector{String}, Vector{Char}} = ["missing", "NA", "na", "N/A", "n/a", ""]
+    # simulate_genomes() |> simulate_trials
+	# fname = "simulated_trials.tsv"
+    # missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]
     # species::String = "Lolium multiflorum"
     # experiment::String = "STR_trial-2026"
     # treatment::String = "control"; verbose::Bool = true
@@ -336,26 +337,14 @@ function upload_trial_data!(
     # measurement_dates::Union{Nothing, Dict{String, String}} = nothing
     # # measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); df = CSV.read(fname, DataFrame); [measurement_dates[x] = x for x in ["$x" for x in unique(df.measurements)]]
     # verbose::Bool = true
-    if entry_type∉["cultivar", "population", "individual", "family"]
-        error(
-            "Invalid entry_type: \"$entry_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\"].",
-        )
-    end
-    if population_type∉["cultivar", "population", "individual", "family"]
-        error(
-            "Invalid population_type: \"$population_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\"].",
-        )
-    end
-    if relationship_type∉["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"]
-        error(
-            "Invalid relationship_type: \"$relationship_type\". Choose from: [\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\"].",
-        )
-    end
     # Load the trial data which assumed by default to be in Trial struct delimited file format (see: https://genomicbreeding.github.io/GenomicBreedingIO.jl/stable/#GenomicBreedingIO.readdelimited-Tuple{Type{GenomicBreedingCore.Trials}})
     df = load_trial_df(fname, missing_strings = missing_strings)
     # Make sure we have all the required columns
     validate_trials(df)
-    parse_layouts!(df)
+	validate_field_values(df, field="entry_types", expected_names=["cultivar", "population", "individual", "family"], proposed_name=entry_type)
+	validate_field_values(df, field="population_types", expected_names=["cultivar", "population", "individual", "family"], proposed_name=population_type)
+	validate_field_values(df, field="relationship_types", expected_names=["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"], proposed_name=relationship_type)
+	parse_layouts!(df)
     add_col!(df, col = "species", value = species)
     add_col!(df, col = "experiments", value = experiment)
     add_col!(df, col = "treatments", value = treatment)

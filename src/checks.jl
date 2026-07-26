@@ -771,6 +771,118 @@ function validate_data_table(df::DataFrame)::Nothing
 end
 
 """
+    validate_field_values(
+        df::DataFrame;
+        field::String,
+        expected_names::Vector{String},
+        proposed_name::Union{Nothing,String}=nothing,
+    )::Nothing
+
+Validate that observed values for a field belong to a predefined set of allowed
+names.
+
+The function checks that all observed values associated with a field are present
+within a supplied list of valid values. Values may be obtained either from a
+column in a `DataFrame` or from a single value supplied via `proposed_name`.
+
+If the specified field is present in the DataFrame, all unique values from that
+column are validated. Otherwise, if `proposed_name` is provided, that value is
+validated directly. If neither source is available, an informative error is
+raised describing how the missing information should be supplied.
+
+Any values not found in `expected_names` are collected and reported together in a
+single error message.
+
+# Arguments
+
+- `df::DataFrame`: DataFrame containing values to validate.
+- `field::String`: Name of the field to validate.
+- `expected_names::Vector{String}`: Collection of permitted values.
+- `proposed_name::Union{Nothing,String}=nothing`: Optional value to validate when
+  the specified field is not present in the DataFrame.
+
+# Returns
+
+- `Nothing`: Returned when all observed values match the allowed values.
+
+# Throws
+
+- `ErrorException`: If neither `field` exists in the DataFrame nor
+  `proposed_name` is supplied.
+- `ErrorException`: If one or more observed values are not present in
+  `expected_names`.
+
+# Notes
+
+- Validation is performed against unique observed values only.
+- DataFrame values take precedence over `proposed_name` when both are supplied.
+- If the field is not present in the DataFrame, the function expects an
+  appropriate singular parameter value (derived from the field name) to be
+  supplied via `proposed_name`.
+- All invalid values are reported simultaneously to simplify data correction.
+- The error message includes the complete list of valid values.
+- This function is useful for validating controlled vocabularies, categorical
+  variables, ontology terms, configuration values, and user-supplied metadata.
+- The function performs validation only and does not modify the input DataFrame.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> simulate_genomes() |> simulate_trials;
+
+julia> df = load_trial_df("simulated_trials.tsv");
+
+julia> try isnothing(validate_field_values(df, field="entry_types", expected_names=["cultivar", "population", "individual", "family"], proposed_name="family")); catch; false; end
+true
+
+julia> try isnothing(validate_field_values(df, field="entry_types", expected_names=["cultivar", "population", "individual", "family"], proposed_name="clone")); catch; false; end
+false
+```
+"""
+function validate_field_values(
+    df::DataFrame;
+    field::String,
+    expected_names::Vector{String},
+    proposed_name::Union{Nothing,String}=nothing,
+)::Nothing
+    # simulate_genomes() |> simulate_trials
+    # df = load_trial_df("simulated_trials.tsv", missing_strings=["missing", "NA", "na", "N/A", "n/a", ""])
+	# field::String = "entry_types"
+	# expected_names = ["cultivar", "population", "individual", "family"]
+	# proposed_name::Union{Nothing,String} = "family"
+    observed_names = if field ∈ names(df)
+        unique(df[!, field])
+    elseif !isnothing(proposed_name)
+        [proposed_name]
+    else
+        error(string(
+            "Please define the `$field` as either a column in the DataFrame (or input file) or ", 
+            "supply it as `", 
+            replace(field, Regex("s\$")=>""), 
+            "` parameter!"
+        ))
+    end
+	errors = String[]
+    for name in observed_names
+		# name = observed_names[1]
+		if name ∉ expected_names
+			push!(errors, name)
+		end
+	end
+    if length(errors) > 0
+        error(string(
+            "Invalid value/s in `df.$field` or `proposed_name`:\n\t- \"",
+            join(errors, "\"\n\t- \""),
+            "\"\n",
+            "Choose from: [\"", 
+                join(expected_names, "\", \""), 
+            "\"].",
+        ))
+    end
+    nothing
+end
+
+"""
     validate_filters(
         filters::Vector{Filter},
     )::Nothing
@@ -993,4 +1105,78 @@ function check_vcf(fname::String)::Nothing
         error("The \"$fname\" may not be a VCF file!")
     end
     nothing
+end
+
+"""
+    check_is_table(
+        fname::String,
+        delims::Vector{String}=["\\t", ",", ";", " "],
+    )::Nothing
+
+Validate that a file exists and appears to contain tabular data.
+
+The function performs a lightweight inspection of the supplied file by examining
+the first ten lines and testing whether they can be consistently split into the
+same number of columns using one of the supplied delimiters. Validation succeeds
+when at least one delimiter produces a consistent multi-column structure across
+all inspected lines.
+
+This function is intended as a simple heuristic for detecting delimited text
+files such as TSV, CSV, space-delimited, or semicolon-delimited tables.
+
+# Arguments
+
+- `fname::String`: Path to the file to validate.
+- `delims::Vector{String}=["\\t", ",", ";", " "]`: Candidate delimiters to test
+  when assessing whether the file contains tabular data.
+
+# Returns
+
+- `Nothing`: Returned when the file exists and appears to contain tabular data.
+
+# Throws
+
+- `ErrorException`: If the specified file does not exist.
+- `ErrorException`: If the file does not appear to contain a valid tabular
+  structure.
+- Any exception raised whilst opening or reading the file.
+
+# Notes
+
+- File existence is verified before content validation is performed.
+- Validation is based on inspection of the first ten lines of the file.
+- A delimiter is considered valid when all inspected lines split into the same
+  number of fields and that number exceeds one.
+- Multiple candidate delimiters may be evaluated before validation succeeds.
+- Supported delimiters include tab, comma, semicolon, and space by default.
+- This is a lightweight heuristic validation and does not guarantee that the
+  entire file is a correctly formatted table.
+- Files containing non-tabular header sections may fail validation even if later
+  lines contain valid tabular data.
+- The function performs validation only and does not modify the file.
+
+# Examples
+
+"""
+function check_is_table(fname::String, delims::Vector{String}=["\t", ",", ";", " "])::Nothing
+    # fname = "simulated_trials.tsv"; simulate_genomes() |> simulate_trials
+    # # fname = "simulated_genomes.vcf"; simulate_genomes()
+    # delims::Vector{String}=["\t", ",", ";", " "]
+    if !isfile(fname)
+        error("The file: \"$fname\" does not exist!")
+    end
+    lines = String[]
+    open(fname, "r") do io
+        for i in 1:10
+            push!(lines, readline(io))
+        end
+    end
+    for delim in delims
+        # delim = delims[1]
+        x = [length(split(line, delim)) for line in lines] |> unique
+        if (length(x) == 1) && (x[1] > 1)
+            return nothing
+        end
+    end
+    error("The file: \"$fname\" may not be a table or has non-tabular header line/s!")
 end

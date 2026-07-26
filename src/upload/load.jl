@@ -57,6 +57,7 @@ function load_trial_df(fname::String; missing_strings::Vector{String} = String[]
     if !isfile(fname)
         error("The trial data file: \"$fname\" does not exist!")
     end
+    check_is_table(fname)
     if length(missing_strings) == 0
         try
             trials = GenomicBreedingIO.readdelimited(Trials, fname = fname, sep = "\t")
@@ -256,6 +257,7 @@ function load_environments_df(
     if !isfile(fname)
         error("The environmental data file: \"$fname\" does not exist!")
     end
+    check_is_table(fname)
     CSV.read(fname, DataFrame, missingstring = missing_strings)
 end
 

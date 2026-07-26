@@ -307,6 +307,6 @@ function upload_environment_data!(
         df_col = "environment_variables",
         verbose = verbose,
     )
-    insert_environment_data!(conn, df = df, environment_variables = environment_variables)
+    insert_environment_data!(conn, df = df, environment_variables = environment_variables, verbose = verbose)
     nothing
 end

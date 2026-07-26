@@ -15,7 +15,10 @@ include("filter.jl")
 export Filter, hash, ==, concat_filters
 include("checks.jl")
 export check_illegal_strings,
-    check, validate_trials, validate_date, validate_data_table, validate_filters, check_reference_genome, check_vcf
+    check, 
+    validate_trials, validate_field_values, validate_date, validate_data_table, 
+    validate_filters, 
+    check_reference_genome, check_vcf, check_is_table
 include("delete.jl")
 export delete_names!
 # Uploads
