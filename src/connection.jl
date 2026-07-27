@@ -129,7 +129,7 @@ fail.
 - The function is intended for schema creation and maintenance rather than
   routine database operations.
 """
-function dbinit(schema_path::String = "db/schema.sql")::Nothing
+function dbinit(schema_path::String = joinpath(@__DIR__, "..", "db", "schema.sql"))::Nothing
     # schema_path = "db/schema.sql"
     conn = dbconnect()
     sql = read(schema_path, String)
