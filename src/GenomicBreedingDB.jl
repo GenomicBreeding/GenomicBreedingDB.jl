@@ -13,21 +13,27 @@ include("connection.jl")
 export dbconnect, dbinit
 include("filter.jl")
 export Filter, hash, ==, concat_filters
-include("checks.jl")
-export check_illegal_strings,
-    check, 
-    validate_trials, validate_field_values, validate_date, validate_data_table, 
-    validate_filters, 
-    check_reference_genome, check_vcf, check_is_table
+include("checks/check_db.jl")
+include("checks/check_df.jl")
+include("checks/check_filters.jl")
+export check
+include("checks/check_strings.jl")
+export check_illegal_strings
+include("checks/check_dates.jl")
+export check_date
+include("checks/check_trials.jl")
+export check_trials
+include("checks/check_files.jl")
+export check_reference_genome, check_vcf, check_dsv
 include("delete.jl")
 export delete_names!
 # Uploads
 include("upload/simulate.jl")
 export simulate_reference_genome,
     simulate_genomes, simulate_trials, simulate_environments, simulate_phenomes, simulate_fit
-include("upload/load.jl")
+include("upload/df_load.jl")
 export load_trial_df, extract_traits, load_environments_df, extract_environment_variables
-include("upload/mutate.jl")
+include("upload/df_mutate.jl")
 export add_col!, parse_layouts!, add_measurement_dates!
 include("upload/insert.jl")
 export insert_names!, insert_layouts!, insert_entry_relationships!

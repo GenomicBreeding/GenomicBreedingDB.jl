@@ -17,6 +17,54 @@ This separation enables:
 - improved reproducibility, and
 - broad applicability across species and breeding programs.
 
+## Quickstart
+
+Assuming PostgreSQL has been setup ([see below for details](#postgresql-setup)):
+
+### Uploads and downloads using simulated data
+
+```julia
+using GenomicBreedingDB.jl
+# Simulate
+genomes = simulate_genomes()
+trials = simulate_trials(genomes)
+phenomes = simulate_phenomes(trials)
+fit = simulate_fit(genomes, phenomes)
+# Uploads
+upload("siumulated_trials.tsv")
+upload("siumulated_environments.tsv")
+upload("siumulated_reference_genome.fa")
+upload("siumulated_genomes.vcf", fname_reference_genome="siumulated_reference_genome.fa")
+upload("siumulated_genomes.jld2", fname_reference_genome="siumulated_reference_genome.fa")
+upload("siumulated_phenomes.jld2")
+upload("siumulated_fit.jld2")
+# Downloads
+# TODO....
+```
+
+### Input file formats
+
+- Tab-delimited files (comma and other delimiters can also be used):
+    + trial data (e.g. ["simulated_trials.tsv"](./res/simulated_trials.tsv))
+    + environmental data (e.g. ["simulated_environments.tsv"](./res/simulated_environments.tsv))
+- FASTA ([see specifications for details](https://en.wikipedia.org/wiki/FASTA_format))
+    + reference genome file (e.g. ["simulated_reference_genome.fa"](./res/simulated_reference_genome.fa))
+- VCF ([see specifications for details](https://samtools.github.io/hts-specs/VCFv4.2.pdf))
+    + genotype data file (e.g. ["simulated_genomes.vcf"](./res/simulated_genomes.vcf))
+- JLD2
+    + [Genomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Genomes) (e.g. ["simulated_genomes.jld2"](./res/simulated_genomes.jld2))
+    + [Phenomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Phenomes) (e.g. ["simulated_phenomes.jld2"](./res/simulated_phenomes.jld2))
+    + [Fit struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Fit) (e.g. ["simulated_fit.jld2"](./res/simulated_fit.jld2))
+
+### Output file format
+
+Since only the trial and environmental data are stored in the database, 
+with only the file paths and corresponding metadata of the genomic, phenomic and model data are stored,
+we only output tabular data and write them out as tab-delimited files.
+
+**--- TODO ---**
+**... more details ...**
+
 ## Database schema
 
 ### Core Design Principles
@@ -146,24 +194,23 @@ pixi run pg_ctl -D ./pgsql_data -l ./pgsql_data/logfile.txt start
 
 #### Initialise the tables
 
-1. Open julia and load GenomicBreedingDB.jl:
+1. Open julia, initialise GenomicBreedingDB.jl, and start an interactive Julia session:
 
 ```shell
 cd GenomicBreedingDB.jl/
-julia --project=. --threads=2,1 --load test/interactive_prelude.jl
+pixi run julia --project=. --threads=2,1 -e "using Pkg; Pkg.instantiate()"
+pixi run julia --project=. --threads=2,1 --load test/interactive_prelude.jl
 ```
 
 2. Initialise tables using the `./db/schema.sql`:
 
 ```julia
-dbinit()
-# Test
-conn = dbconnect()
-close(conn)
 # Initialise the database
 dbinit()
-# Test query
-querytable("entries")
+# Open a connection to the database, list all the tables initialised, and close the connection
+conn = dbconnect()
+extract_all_tables(conn)
+close(conn)
 ```
 
 ## Database schema visualisation

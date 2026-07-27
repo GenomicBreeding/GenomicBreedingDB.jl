@@ -253,7 +253,7 @@ associated metadata fields are updated using name-based lookups.
   `member_of`, `clone_of`, `parent_is`, `maternal_parent_is`, and
   `paternal_parent_is`.
 - Trial data are loaded using `load_trial_df` and validated using
-  `validate_trials`.
+  `check_trials`.
 - Layout information is standardised using `parse_layouts!`.
 - Missing metadata columns may be added automatically using `add_col!`.
 - Measurement dates are validated or generated using
@@ -326,7 +326,7 @@ function upload_trial_data!(
 )::Nothing
     # conn = dbconnect()
     # simulate_genomes() |> simulate_trials
-	# fname = "simulated_trials.tsv"
+    # fname = "simulated_trials.tsv"
     # missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]
     # species::String = "Lolium multiflorum"
     # experiment::String = "STR_trial-2026"
@@ -340,11 +340,16 @@ function upload_trial_data!(
     # Load the trial data which assumed by default to be in Trial struct delimited file format (see: https://genomicbreeding.github.io/GenomicBreedingIO.jl/stable/#GenomicBreedingIO.readdelimited-Tuple{Type{GenomicBreedingCore.Trials}})
     df = load_trial_df(fname, missing_strings = missing_strings)
     # Make sure we have all the required columns
-    validate_trials(df)
-	validate_field_values(df, field="entry_types", expected_names=["cultivar", "population", "individual", "family"], proposed_name=entry_type)
-	validate_field_values(df, field="population_types", expected_names=["cultivar", "population", "individual", "family"], proposed_name=population_type)
-	validate_field_values(df, field="relationship_types", expected_names=["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"], proposed_name=relationship_type)
-	parse_layouts!(df)
+    check_trials(df)
+    check(df, "entry_types", ["cultivar", "population", "individual", "family"], proposed_name = entry_type)
+    check(df, "population_types", ["cultivar", "population", "individual", "family"], proposed_name = population_type)
+    check(
+        df,
+        "relationship_types",
+        ["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"],
+        proposed_name = relationship_type,
+    )
+    parse_layouts!(df)
     add_col!(df, col = "species", value = species)
     add_col!(df, col = "experiments", value = experiment)
     add_col!(df, col = "treatments", value = treatment)
