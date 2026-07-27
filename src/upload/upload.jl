@@ -110,8 +110,6 @@ successful type identification.
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> try dbinit(); catch; nothing; end;
-
 julia> conn = dbconnect();
 
 julia> # Trial data upload;
