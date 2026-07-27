@@ -69,7 +69,7 @@ julia> conn = dbconnect();
 
 julia> upload_fit!(conn, fname=abspath(fname_fit_jld2), name=fname_fit_jld2, notes="simulated");
 
-julia> query_table(conn, filters=[Filter(conn, table="fits", field="name", filter_in=[fname_fit_jld2])]) |> nrow == 1
+julia> query(conn, [Filter(conn, table="fits", field="name", filter_in=[fname_fit_jld2])]) |> nrow == 1
 true
 
 julia> close(conn);

@@ -75,7 +75,7 @@ julia> conn = dbconnect();
 
 julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, notes="simulated");
 
-julia> query_table(conn, filters=[Filter(conn, table="reference_genomes", field="name", filter_in=[fname_reference_genome])]) |> nrow == 1
+julia> query(conn, [Filter(conn, table="reference_genomes", field="name", filter_in=[fname_reference_genome])]) |> nrow == 1
 true
 
 julia> close(conn);
@@ -88,10 +88,7 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
     end
     check_reference_genome(fname)
     # Check if the file path has already been uploaded
-    df_tmp = query_table(
-        conn,
-        filters = [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname])],
-    )
+    df_tmp = query(conn, [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname])])
     if nrow(df_tmp) == 1
         info = string.(names(df_tmp), ": ", collect(df_tmp[1, :]))
         @warn string(
@@ -206,7 +203,7 @@ julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), nam
 julia> try isnothing(upload_genotype_vcf!(conn, fname=abspath(fname_genomes_vcf), name=fname_genomes_vcf, notes="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
 true
 
-julia> query_table(conn, filters=[Filter(conn, table="genotype_vcfs", field="name", filter_in=[fname_genomes_vcf])]) |> nrow == 1
+julia> query(conn, [Filter(conn, table="genotype_vcfs", field="name", filter_in=[fname_genomes_vcf])]) |> nrow == 1
 true
 
 julia> close(conn);
@@ -224,11 +221,9 @@ function upload_genotype_vcf!(
         error("The path to the VCF file is not absolute: \"$fname\"!")
     end
     reference_genome_id = let
-        df_reference_genome = query_table(
+        df_reference_genome = query(
             conn,
-            filters = [
-                Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome]),
-            ],
+            [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome])],
         )
         if nrow(df_reference_genome) == 0
             throw(
@@ -349,7 +344,7 @@ julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), nam
 julia> try isnothing(upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, notes="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
 true
 
-julia> query_table(conn, filters=[Filter(conn, table="genomes", field="name", filter_in=[fname_genomes_jld2])]) |> nrow == 1
+julia> query(conn, [Filter(conn, table="genomes", field="name", filter_in=[fname_genomes_jld2])]) |> nrow == 1
 true
 
 julia> close(conn);
@@ -368,11 +363,9 @@ function upload_genomes!(
         error("The path to the Genomes file is not absolute: \"$fname\"!")
     end
     reference_genome_id = let
-        df_reference_genome = query_table(
+        df_reference_genome = query(
             conn,
-            filters = [
-                Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome]),
-            ],
+            [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome])],
         )
         if nrow(df_reference_genome) == 0
             throw(

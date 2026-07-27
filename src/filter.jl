@@ -100,7 +100,7 @@ internal database keys.
   not already supplied.
 - Underscore characters are escaped to prevent unintended SQL wildcard matching.
 - The resulting `Filter` object contains fully resolved values and is ready for
-  use by functions such as `query_table`, `concat_filters`, `update_table!`, and
+  use by functions such as `query`, `concat_filters`, `update_table!`, and
   `delete_names!`.
 
 # Examples

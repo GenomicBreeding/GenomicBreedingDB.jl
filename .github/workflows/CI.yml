@@ -42,6 +42,12 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+    run: |
+      touch .env
+      echo 'DB_USER="himynamejeff"' >> .env
+      echo 'DB_PASSWORD="qwerty12345"' >> .env
+      echo 'DB_NAME="gbdb"' >> .env
+      echo 'DB_HOST="localhost"' >> .env
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2

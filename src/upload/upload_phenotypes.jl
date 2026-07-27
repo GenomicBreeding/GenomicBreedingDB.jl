@@ -492,7 +492,7 @@ julia> conn = dbconnect();
 
 julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, notes="simulated");
 
-julia> query_table(conn, filters=[Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2])]) |> nrow == 1
+julia> query(conn, [Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2])]) |> nrow == 1
 true
 
 julia> close(conn);
