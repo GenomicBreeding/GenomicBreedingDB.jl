@@ -121,7 +121,7 @@ function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::V
     if length(errors) > 0
         error(join(string.("\n\t- ", errors)))
     end
-    pb = ProgressMeter.Progress(nrow(df)*length(traits), "Importing phenotype data...")
+    pb = ProgressMeter.Progress(nrow(df)*length(traits), desc="Importing phenotype data...")
     execute(conn, "BEGIN")
     try
         for i = 1:nrow(df)

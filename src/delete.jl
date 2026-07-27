@@ -109,7 +109,7 @@ function delete_names!(
     check_illegal_strings([table])
     check_illegal_strings(uploaded_names)
     counter = 0
-    pb = ProgressMeter.Progress(length(uploaded_names), "Deleting names listed in \"$df_col\" from \"$table\" table...")
+    pb = ProgressMeter.Progress(length(uploaded_names), desc="Deleting names listed in \"$df_col\" from \"$table\" table...")
     execute(conn, "BEGIN")
     try
         for x in uploaded_names

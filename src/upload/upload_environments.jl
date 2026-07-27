@@ -127,7 +127,7 @@ function insert_environment_data!(
     if length(errors) > 0
         error(join(string.("\n\t- ", errors)))
     end
-    pb = ProgressMeter.Progress(nrow(df)*length(environment_variables), "Importing environment data...")
+    pb = ProgressMeter.Progress(nrow(df)*length(environment_variables), desc="Importing environment data...")
     execute(conn, "BEGIN")
     try
         for i = 1:nrow(df)
