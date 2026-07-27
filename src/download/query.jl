@@ -1,131 +1,7 @@
 """
-    extract_all_tables(
+    query(
         conn::LibPQ.Connection,
-    )::DataFrame
-
-List all user-defined database tables together with their estimated row counts.
-
-The function validates that the supplied database connection is open and then
-queries PostgreSQL system statistics to retrieve the names of all user tables and
-their corresponding estimated number of live rows. Results are returned as a
-sorted `DataFrame`.
-
-This function is useful for inspecting the current database contents, verifying
-that expected tables exist, and obtaining a quick overview of table sizes without
-executing potentially expensive row-count queries.
-
-# Arguments
-
-- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-
-# Returns
-
-- `DataFrame`: Table containing the fields `table_name` and
-  `estimated_row_count`.
-
-# Throws
-
-- `ErrorException`: If the database connection has been closed.
-- Any database exception raised while querying PostgreSQL system statistics.
-
-# Notes
-
-- Connection validation is performed using `check(conn)`.
-- Table information is obtained from PostgreSQL's `pg_stat_user_tables`
-  system view.
-- Row counts are estimates based on database statistics and may not exactly match
-  the result of `COUNT(*)`.
-- Only user-defined tables are included in the output.
-- Results are sorted prior to being returned.
-- The function performs a read-only query and does not modify the database.
-
-# Examples
-
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> conn = dbconnect();
-
-julia> extract_all_tables(conn) |> nrow > 0
-true
-
-julia> close(conn);
-```
-"""
-function extract_all_tables(conn::LibPQ.Connection)::DataFrame
-    # conn = dbconnect()
-    check(conn)
-    execute(
-        conn,
-        """
-        SELECT 
-            relname AS table_name, 
-            n_live_tup AS estimated_row_count
-        FROM 
-            pg_stat_user_tables
-        """,
-    ) |> DataFrame |> sort
-end
-
-"""
-    extract_table_contents(
-        conn::LibPQ.Connection,
-        table::String,
-    )::DataFrame
-
-Extract all records from a database table and return them as a `DataFrame`.
-
-The function validates that the supplied database connection is open and confirms
-that the specified table exists before executing a `SELECT *` query. All rows and
-columns from the table are retrieved and returned without modification.
-
-This function provides a convenient way to inspect, export, or explore the
-contents of a database table in tabular form.
-
-# Arguments
-
-- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `table::String`: Name of the table to extract.
-
-# Returns
-
-- `DataFrame`: Complete contents of the specified database table.
-
-# Throws
-
-- `ErrorException`: If the database connection has been closed.
-- `ErrorException`: If the specified table does not exist.
-- Any database exception raised whilst executing the query.
-
-# Notes
-
-- Connection validation is performed using `check(conn)`.
-- Table validation is performed using `check(conn, table)`.
-- The query retrieves all rows and all columns using `SELECT *`.
-- No filtering, sorting, or column selection is applied.
-- The function performs a read-only operation and does not modify the database.
-- Large tables may require substantial memory to load into a `DataFrame`.
-
-# Examples
-
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> conn = dbconnect();
-
-julia> extract_table_contents(conn, "entries") |> nrow > 0
-true
-
-julia> close(conn);
-```
-"""
-function extract_table_contents(conn::LibPQ.Connection, table::String)::DataFrame
-    # conn = dbconnect(); table = "entries"
-    check(conn)
-    check(conn, table)
-    execute(conn, "SELECT * FROM $table") |> DataFrame
-end
-
-"""
-    query_table(
-        conn::LibPQ.Connection;
-        filters::Vector{Filter},
+        filters::Vector{Filter};
         output_fields::Vector{String}=["*"],
         verbose::Bool=false,
     )::DataFrame
@@ -137,16 +13,20 @@ The function executes a parameterised SQL query constructed from a collection of
 `Filter` objects. All filters must reference the same table and are combined into
 a single query expression. Selected records are returned as a `DataFrame`, with
 foreign-key identifier fields automatically translated into their corresponding
-human-readable names.
+human-readable names wherever possible.
 
 By default, all columns are returned. A subset of columns may be requested using
 the `output_fields` argument.
 
+Missing foreign-key values are preserved as missing values in the output and are
+excluded from identifier lookups, allowing queries to operate correctly on
+tables containing incomplete relationships.
+
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `filters::Vector{Filter}`: Collection of filters describing the query
-  criteria.
+- `filters::Vector{Filter}`: Collection of filters defining the query
+  criteria. All filters must reference the same database table.
 - `output_fields::Vector{String}=["*"]`: Fields to return in the query result.
   Use `["*"]` to return all fields.
 - `verbose::Bool=false`: If `true`, display progress information whilst
@@ -159,7 +39,7 @@ the `output_fields` argument.
 # Throws
 
 - `ErrorException`: If the database connection has been closed.
-- `ErrorException`: If the supplied filters reference multiple tables.
+- `ErrorException`: If the supplied filters fail validation.
 - `ErrorException`: If an inferred lookup table name contains illegal
   characters.
 - Any database exception raised whilst constructing or executing the query.
@@ -167,7 +47,7 @@ the `output_fields` argument.
 # Notes
 
 - Connection validation is performed using `check(conn)`.
-- Filter consistency is validated using `check`.
+- Filter validation is performed using `check(filters)`.
 - SQL clauses and query parameters are generated using `concat_filters`.
 - All filtering is performed using parameterised SQL statements.
 - Multiple filters are combined using logical `AND` conditions.
@@ -179,6 +59,8 @@ the `output_fields` argument.
   - `entry_id` → `entries`
   - `species_id` → `species`
   - `<name>_id` → `<name>s`
+- Missing identifier values are excluded from lookup queries and remain missing
+  in the returned `DataFrame`.
 - Converted fields are renamed by removing the `_id` suffix.
 - The resulting `DataFrame` contains human-readable values rather than internal
   database identifiers wherever possible.
@@ -200,7 +82,7 @@ julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1
 
 julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(10, 20)));
 
-julia> df = query_table(conn, filters=filters);
+julia> df = query(conn, filters);
 
 julia> prod(.!isnothing.(match.(Regex("1"), df.entry))) == 1
 true
@@ -221,7 +103,7 @@ julia> push!(filters, Filter(conn, table=table, field="site", filter_in=["site_1
 
 julia> push!(filters, Filter(conn, table=table, field="value", filter_between=(10, 20)));
 
-julia> df = query_table(conn, filters=filters);
+julia> df = query(conn, filters);
 
 julia> prod(.!isnothing.(match.(Regex("site_1|site_2"), df.site))) == 1
 true
@@ -229,15 +111,15 @@ true
 julia> prod((df.value .>= 10) .&& (df.value .<= 20))
 true
 
-julia> df == query_table(conn, filters=unique(filters))
+julia> df == query(conn, unique(filters))
 true
 
 julia> close(conn);
 ```
 """
-function query_table(
-    conn::LibPQ.Connection;
-    filters::Vector{Filter},
+function query(
+    conn::LibPQ.Connection,
+    filters::Vector{Filter};
     output_fields::Vector{String} = ["*"],
     verbose::Bool = false,
 )::DataFrame
@@ -258,16 +140,24 @@ function query_table(
     df = execute(conn, sql, par) |> DataFrame
     pb = ProgressMeter.Progress(ncol(df), desc = "Converting *_id fields into names...")
     for f in names(df)
-        # f = names(df)[6]
-        # f == "id" ? continue : nothing
+        # f = names(df)[3]
+        # println(f)
         isnothing(match(Regex("_id\$"), f)) ? continue : nothing
         f = replace(f, Regex("_id\$") => "")
         metatable = f == "entry" ? "entries" : f == "species" ? "species" : "$(f)s"
         check_illegal_strings([metatable])
         values = df[!, "$(f)_id"]
         df_tmp =
-            execute(conn, "SELECT id,name FROM $metatable WHERE id = ANY(\$1)", [string.(unique(values))]) |> DataFrame
-        df[!, "$(f)_id"] = [df_tmp.name[findfirst(df_tmp.id .== x)] for x in values]
+            execute(
+                conn,
+                "SELECT id,name FROM $metatable WHERE id = ANY(\$1)",
+                [filter(xi -> !ismissing(xi), unique(values))],
+            ) |> DataFrame
+        for i = 1:nrow(df_tmp)
+            # i = 1
+            idx = findall(.!ismissing.(values) .&& (values .== df_tmp.id[i]))
+            df[idx, "$(f)_id"] .= df_tmp.name[i]
+        end
         rename!(df, "$(f)_id" => f)
         verbose ? ProgressMeter.next!(pb) : nothing
     end

@@ -479,7 +479,7 @@ function simulate_environments(
         "humidity_perc_per_day" => collect(15.0:100.0),
     )
     n_missing = Int64(round(sparsity * nrow(df_environments)))
-    pb = ProgressMeter.Progress(length(environment_variables), "Simulation environmental data...")
+    pb = ProgressMeter.Progress(length(environment_variables), desc="Simulation environmental data...")
     for (k, v) in environment_variables
         # k = "rainfall_mm_per_day"; v = environment_variables[k]
         y::Vector{Union{Missing,Float64}} = rand(v, nrow(df_environments))

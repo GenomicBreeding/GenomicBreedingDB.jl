@@ -52,10 +52,12 @@ export define_relationships!
 include("upload/upload.jl")
 export upload
 # Downloads
-include("download/extract_ids_names.jl")
-export extract_ids, extract_names
-include("download/download.jl")
-export extract_all_tables, extract_table_contents, query_table
+include("download/extract.jl")
+export extract_all_tables, extract_table_contents, extract_ids, extract_names
+include("download/query.jl")
+export query
+
+
 include("download/transform.jl")
 export unstack_data_table
 

@@ -121,7 +121,7 @@ function update_table!(
     end
     execute(conn, "COMMIT")
     # execute(conn, "SELECT * FROM $table") |> DataFrame
-    # query_table(conn, filters=filters)
+    # query(conn, filters)
     nothing
 end
 

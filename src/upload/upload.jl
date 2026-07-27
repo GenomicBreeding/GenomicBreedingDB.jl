@@ -120,7 +120,7 @@ julia> simulate_genomes() |> x -> simulate_trials(x, fname_trials_tsv = fname);
 
 julia> df_trials_before = execute(conn, "SELECT * FROM phenotype_data") |> DataFrame;
 
-julia> upload(fname, species="Zea mays", experiment=string(Int(ceil(1e7*rand()))), treatment="control", entry_type="family", population_type="cultivar", relationship_type="member_of");
+julia> upload(fname, species="Zea mays", experiment=replace(replace(string(Dates.now()), ":"=>""), "."=>""), treatment="control", entry_type="family", population_type="cultivar", relationship_type="member_of");
 
 julia> df_trials_after = execute(conn, "SELECT * FROM phenotype_data") |> DataFrame;
 
@@ -150,7 +150,7 @@ julia> simulate_genomes() |> simulate_trials |> x -> simulate_environments(x, fn
 
 julia> df_environments_before = execute(conn, "SELECT * FROM environment_data") |> DataFrame;
 
-julia> upload(fname, experiment=string(Int(ceil(1e7*rand()))), treatment="control");
+julia> upload(fname, experiment=replace(replace(string(Dates.now()), ":"=>""), "."=>""), treatment="control");
 
 julia> df_environments_after = execute(conn, "SELECT * FROM environment_data") |> DataFrame;
 

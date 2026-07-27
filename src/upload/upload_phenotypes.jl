@@ -121,7 +121,7 @@ function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::V
     if length(errors) > 0
         error(join(string.("\n\t- ", errors)))
     end
-    pb = ProgressMeter.Progress(nrow(df)*length(traits), "Importing phenotype data...")
+    pb = ProgressMeter.Progress(nrow(df)*length(traits), desc="Importing phenotype data...")
     execute(conn, "BEGIN")
     try
         for i = 1:nrow(df)
@@ -492,7 +492,7 @@ julia> conn = dbconnect();
 
 julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, notes="simulated");
 
-julia> query_table(conn, filters=[Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2])]) |> nrow == 1
+julia> query(conn, [Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2])]) |> nrow == 1
 true
 
 julia> close(conn);

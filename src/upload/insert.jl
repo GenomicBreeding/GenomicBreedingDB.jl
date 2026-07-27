@@ -102,7 +102,7 @@ function insert_names!(
     uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
     counter = 0
     pb =
-        ProgressMeter.Progress(length(uploaded_names), "Inserting names listed in \"$df_col\" into \"$table\" table...")
+        ProgressMeter.Progress(length(uploaded_names), desc="Inserting names listed in \"$df_col\" into \"$table\" table...")
     execute(conn, "BEGIN")
     try
         for x in uploaded_names
@@ -214,7 +214,7 @@ function insert_layouts!(conn::LibPQ.Connection; df::DataFrame, is_trial::Bool =
     ids = split.(unique(df.layouts), "-")
     execute(conn, "BEGIN")
     counter = 0
-    pb = ProgressMeter.Progress(length(ids), "Inserting layout information...")
+    pb = ProgressMeter.Progress(length(ids), desc="Inserting layout information...")
     try
         for i = 1:length(ids)
             # i = 1

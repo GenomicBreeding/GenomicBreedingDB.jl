@@ -30,13 +30,13 @@ jobs:
           - x64
     services:
       postgres:
-        image: postgres
+        image: postgres:18
         env:
-          POSTGRES_PASSWORD: qwerty12345
-          POSTGRES_USER: himynamejeff
-          POSTGRES_DB: gbdb
+          POSTGRES_PASSWORD: postgres_password
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -44,13 +44,38 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Create database and user
+        env:
+          PGPASSWORD: postgres_password
+        run: |
+          psql -h localhost -U postgres -d postgres -c "
+            CREATE USER himynamejeff WITH PASSWORD 'qwerty12345';
+          " || true
+
+          psql -h localhost -U postgres -d postgres -c "
+            ALTER USER himynamejeff CREATEDB;
+          "
+
+          psql -h localhost -U postgres -d postgres -c "
+            CREATE DATABASE gbdb OWNER himynamejeff;
+          " || true
+      - name: Create .env
+        run: |
+          cat > ~/.env << EOF
+          DB_USER=himynamejeff
+          DB_PASSWORD=qwerty12345
+          DB_NAME=gbdb
+          DB_HOST=localhost
+          EOF
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
-      # - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-runtest@v1
   docs:
     name: Documentation
     runs-on: ubuntu-latest

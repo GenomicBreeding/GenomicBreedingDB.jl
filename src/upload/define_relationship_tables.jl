@@ -197,10 +197,7 @@ function define_relationships!(
     id_2 = table_2 == "entries" ? "entry_id" : replace(table_2, Regex("s\$") => "_id")
     check_illegal_strings([id_1, id_2])
     check(type, fname = fname_jld2)
-    df_record_1 = query_table(
-        conn,
-        filters = [Filter(conn, table = table_1, field = "file_path", filter_in = [abspath(fname_jld2)])],
-    )
+    df_record_1 = query(conn, [Filter(conn, table = table_1, field = "file_path", filter_in = [abspath(fname_jld2)])])
     if nrow(df_record_1) == 0
         throw(
             string(
@@ -218,10 +215,10 @@ function define_relationships!(
     n_old = 0
     execute(conn, "BEGIN")
     try
-        pb = ProgressMeter.Progress(length(link_values), "Inserting records into \"$table\" table...")
+        pb = ProgressMeter.Progress(length(link_values), desc="Inserting records into \"$table\" table...")
         for x in link_values
             # x = link_values[1]
-            df_record_2 = query_table(conn, filters = [Filter(conn, table = table_2, field = "name", filter_in = [x])])
+            df_record_2 = query(conn, [Filter(conn, table = table_2, field = "name", filter_in = [x])])
             if nrow(df_record_2) == 0
                 push!(unregistered_node_2, x)
                 continue

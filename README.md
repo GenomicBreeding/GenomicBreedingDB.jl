@@ -155,16 +155,16 @@ pixi run psql postgres
 Create a new database:
 
 ```sql
-CREATE DATABASE gbdb;
 \l
+CREATE USER himynamejeff WITH PASSWORD 'qwerty12345';
+-- DROP DATABASE gbdb;
+CREATE DATABASE gbdb OWNER himynamejeff;
 \c gbdb
 \dt
-CREATE USER himynamejeff WITH PASSWORD 'qwerty12345';
-GRANT ALL PRIVILEGES ON SCHEMA public TO himynamejeff;
-GRANT ALL PRIVILEGES ON DATABASE gbdb TO himynamejeff;
+-- GRANT ALL PRIVILEGES ON SCHEMA public TO himynamejeff;
+-- GRANT ALL PRIVILEGES ON DATABASE gbdb TO himynamejeff;
 -- GRANT SELECT ON ALL TABLES IN SCHEMA public TO other_user;
 -- \c postgres
--- DROP DATABASE gbdb;
 -- \l
 -- SELECT * FROM pg_database;
 \q
