@@ -42,12 +42,51 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    run: |
-      touch .env
-      echo 'DB_USER="himynamejeff"' >> .env
-      echo 'DB_PASSWORD="qwerty12345"' >> .env
-      echo 'DB_NAME="gbdb"' >> .env
-      echo 'DB_HOST="localhost"' >> .env
+
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+
+    permissions:
+      actions: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '1.12'
+        os:
+          - ubuntu-latest
+        arch:
+          - x64
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: qwerty12345
+          POSTGRES_USER: himynamejeff
+          POSTGRES_DB: gbdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create .env
+        run: |
+          cat > .env << EOF
+          DB_USER=himynamejeff
+          DB_PASSWORD=qwerty12345
+          DB_NAME=gbdb
+          DB_HOST=localhost
+          EOF
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
