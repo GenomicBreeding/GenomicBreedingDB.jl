@@ -23,10 +23,19 @@ data types. The supplied file is inspected using a series of validation and
 parsing routines to determine its type before dispatching to the appropriate
 specialised upload function.
 
-Supported uploads include trial data, environmental data, reference genomes,
-VCF files, `Genomes` objects, `Phenomes` objects, and `Fit` objects. Once the
-file type has been determined, a database connection is established and the
-corresponding upload workflow is executed automatically.
+Supported file types for upload are:
+
+1. Tab-delimited files (comma and other delimiters can also be used):
+   - trial data (e.g. ["simulated_trials.tsv"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_trials.tsv))
+   - environmental data (e.g. ["simulated_environments.tsv"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_environments.tsv))
+2. FASTA ([see specifications for details](https://en.wikipedia.org/wiki/FASTA_format))
+   - reference genome file (e.g. ["simulated_reference_genome.fa"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_reference_genome.fa))
+3. VCF ([see specifications for details](https://samtools.github.io/hts-specs/VCFv4.2.pdf))
+   - genotype data file (e.g. ["simulated_genomes.vcf"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_genomes.vcf))
+4. JLD2
+   - [Genomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Genomes) (e.g. ["simulated_genomes.jld2"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_genomes.jld2))
+   - [Phenomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Phenomes) (e.g. ["simulated_phenomes.jld2"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_phenomes.jld2))
+   - [Fit struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Fit) (e.g. ["simulated_fit.jld2"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_fit.jld2))
 
 The function requires different optional arguments depending on the detected file
 type. These parameters are forwarded to the underlying upload function after
@@ -50,7 +59,7 @@ successful type identification.
 - `relationship_type::Union{Nothing,String}=nothing`: Relationship type used
   when importing trial data.
 - `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Mapping of
-  measurement names to dates used during tabular-data imports.
+  measurement names to dates used when importing trial or environmental data.
 - `name::Union{Nothing,String}=nothing`: Name assigned to uploaded datasets such
   as reference genomes, VCFs, `Genomes`, `Phenomes`, and `Fit` objects.
 - `notes::Union{Nothing,String}=nothing`: Descriptive notes associated with the
@@ -73,17 +82,21 @@ successful type identification.
 - Any exception raised by the underlying upload function.
 - Any exception raised whilst connecting to the database.
 
-# Notes
+# Details
 
 - File-type detection is performed before opening a database connection.
 - Supported file types include:
-  - Trial data (`Trials`)
-  - Environmental data
-  - Reference genome FASTA files
-  - VCF files
-  - `Genomes` JLD2 files
-  - `Phenomes` JLD2 files
-  - `Fit` JLD2 files
+    + Delimiter-separated value or tabular data files:
+        - trial phenotype data
+        - environmental data
+    + FASTA files:
+        - reference genome
+    + VCF files
+        - genotype data
+    + JLD2 files (containing GenomicBreedingCore.jl structs)
+        - `Genomes` structs
+        - `Phenomes` structs
+        - `Fit` structs
 - Type detection is performed using the same validation routines used by the
   dedicated upload functions.
 - Exactly one file type must match; ambiguous matches are treated as errors.
@@ -105,9 +118,14 @@ julia> fname = abspath(string("simulated_trials-", Dates.now(), ".tsv"));
 
 julia> simulate_genomes() |> x -> simulate_trials(x, fname_trials_tsv = fname);
 
-julia> df_before = execute(conn, "SELECT * FROM phenotype_data") |> DataFrame
+julia> df_trials_before = execute(conn, "SELECT * FROM phenotype_data") |> DataFrame;
 
-julia> upload(fname, species="Zea mays", experiment=basename(fname), treatment="control", entry_type="family", population_type="cultivar", relationship_type="member_of");
+julia> upload(fname, species="Zea mays", experiment=string(Int(ceil(1e7*rand()))), treatment="control", entry_type="family", population_type="cultivar", relationship_type="member_of");
+
+julia> df_trials_after = execute(conn, "SELECT * FROM phenotype_data") |> DataFrame;
+
+julia> nrow(df_trials_before) < nrow(df_trials_after)
+true
 
 julia> # Phenomes file upload;
 
@@ -115,9 +133,14 @@ julia> fname = abspath(string("simulated_phenomes-", Dates.now(), ".jld2"));
 
 julia> simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2 = fname);
 
-julia> name = isnothing(name) ? basename(fname) : name;
+julia> df_phenomes_before = execute(conn, "SELECT * FROM phenomes") |> DataFrame;
 
-julia> notes = isnothing(notes) ? "simulated data" : notes;
+julia> upload(fname, name=basename(fname), notes="simulated data");
+
+julia> df_phenomes_after = execute(conn, "SELECT * FROM phenomes") |> DataFrame;
+
+julia> nrow(df_phenomes_before) < nrow(df_phenomes_after)
+true
 
 julia> # Environmental data upload;
 
@@ -125,9 +148,14 @@ julia> fname = abspath(string("simulated_environments-", Dates.now(), ".tsv"));
 
 julia> simulate_genomes() |> simulate_trials |> x -> simulate_environments(x, fname_environments_tsv = fname);
 
-julia> experiment::Union{Nothing,String} = "sim-exp";
+julia> df_environments_before = execute(conn, "SELECT * FROM environment_data") |> DataFrame;
 
-julia> treatment::Union{Nothing,String} = "control";
+julia> upload(fname, experiment=string(Int(ceil(1e7*rand()))), treatment="control");
+
+julia> df_environments_after = execute(conn, "SELECT * FROM environment_data") |> DataFrame;
+
+julia> nrow(df_environments_before) < nrow(df_environments_after)
+true
 
 julia> # Upload reference genome;
 
@@ -135,9 +163,14 @@ julia> fname = abspath(string("simulated_reference_genome-", Dates.now(), ".fa")
 
 julia> simulate_genomes(fname_reference_genome = fname);
 
-julia> name = isnothing(name) ? basename(fname) : name;
+julia> df_reference_genome_before = execute(conn, "SELECT * FROM reference_genomes") |> DataFrame;
 
-julia> notes = isnothing(notes) ? "simulated data" : notes;
+julia> upload(fname, name=basename(fname), notes="simulated data");
+
+julia> df_reference_genome_after = execute(conn, "SELECT * FROM reference_genomes") |> DataFrame;
+
+julia> nrow(df_reference_genome_before) < nrow(df_reference_genome_after)
+true
 
 julia> # Upload VCF;
 
@@ -147,11 +180,16 @@ julia> fname_reference_genome = abspath(string("simulated_reference_genome-", Da
 
 julia> simulate_genomes(fname_genomes_vcf = fname, fname_reference_genome = fname_reference_genome);
 
-julia> upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, notes = isnothing(notes) ? "simulated data" : notes);
+julia> upload(fname_reference_genome, name=basename(fname_reference_genome), notes="simulated data");
 
-julia> name = isnothing(name) ? basename(fname) : name;
+julia> df_vcf_before = execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame;
 
-julia> notes = isnothing(notes) ? "simulated data" : notes;
+julia> upload(fname, name=basename(fname), notes="simulated data", fname_reference_genome=fname_reference_genome);
+
+julia> df_vcf_after = execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame;
+
+julia> nrow(df_vcf_before) < nrow(df_vcf_after)
+true
 
 julia> # Upload Genomes;
 
@@ -161,11 +199,16 @@ julia> fname_reference_genome = abspath(string("simulated_reference_genome-", Da
 
 julia> simulate_genomes(fname_genomes_jld2 = fname, fname_reference_genome = fname_reference_genome);
 
-julia> upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, notes = isnothing(notes) ? "simulated data" : notes);
+julia> upload(fname_reference_genome, name=basename(fname_reference_genome), notes="simulated data");
 
-julia> name = isnothing(name) ? basename(fname) : name;
+julia> df_genomes_before = execute(conn, "SELECT * FROM genomes") |> DataFrame;
 
-julia> notes = isnothing(notes) ? "simulated data" : notes;
+julia> upload(fname, name=basename(fname), notes="simulated data", fname_reference_genome=fname_reference_genome);
+
+julia> df_genomes_after = execute(conn, "SELECT * FROM genomes") |> DataFrame;
+
+julia> nrow(df_genomes_before) < nrow(df_genomes_after)
+true
 
 julia> # Upload Fit;
 
@@ -177,9 +220,16 @@ julia> phenomes = simulate_trials(genomes) |> simulate_phenomes;
 
 julia> simulate_fit(genomes, phenomes, fname_fit_jld2 = fname);
 
-julia> name = isnothing(name) ? basename(fname) : name;
+julia> df_fit_before = execute(conn, "SELECT * FROM fits") |> DataFrame;
 
-julia> notes = isnothing(notes) ? "simulated data" : notes;
+julia> upload(fname, name=basename(fname), notes="simulated data");
+
+julia> df_fit_after = execute(conn, "SELECT * FROM fits") |> DataFrame;
+
+julia> nrow(df_fit_before) < nrow(df_fit_after)
+true
+
+julia> close(conn);
 ```
 """
 function upload(
@@ -366,12 +416,7 @@ function upload(
             fname_reference_genome = fname_reference_genome,
         )
     elseif data_type == "Fit"
-        upload_fit!(
-            conn, 
-            fname = fname, 
-            name = name, 
-            notes = notes,
-        )
+        upload_fit!(conn, fname = fname, name = name, notes = notes)
     else
         error("Totally unexpected error as we expect the previous data type checks to catch all possible errors!")
     end
