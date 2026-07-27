@@ -52,7 +52,6 @@ jobs:
           DB_NAME=gbdb
           DB_HOST=localhost
           EOF
-    steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
