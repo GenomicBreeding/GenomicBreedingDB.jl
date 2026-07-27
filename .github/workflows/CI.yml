@@ -63,13 +63,12 @@ jobs:
           " || true
       - name: Create .env
         run: |
-          cat > .env << EOF
+          cat > ~/.env << EOF
           DB_USER=himynamejeff
           DB_PASSWORD=qwerty12345
           DB_NAME=gbdb
           DB_HOST=localhost
           EOF
-      - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
