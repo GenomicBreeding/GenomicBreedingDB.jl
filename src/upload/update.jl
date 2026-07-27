@@ -45,7 +45,7 @@ prevent unintended modifications.
 
 # Notes
 
-- Filter validation is performed using `validate_filters`.
+- Filter validation is performed using `check`.
 - SQL filter clauses and parameters are generated using `concat_filters`.
 - Table and destination-field names are explicitly validated using
   `check_illegal_strings` before SQL construction.
@@ -106,7 +106,7 @@ function update_table!(
     # destination_field = "name"
     # value::Union{String, AbstractFloat, Int} = "some_new_name"
     # verbose = true
-    validate_filters(filters)
+    check(filters)
     table = filters[1].table
     filter_cat, par = concat_filters(filters, verbose = verbose) # checks for illegal strings via early check(...) calls
     check_illegal_strings([table, destination_field]) # redundant but explicit checks for illegal strings before string interpolation below just to be extra safe
@@ -314,4 +314,14 @@ function update_table_field_by_name!(
         println("Updated $counter rows in the \"$table\" table.")
     end
     nothing
+end
+
+
+# TODO: update a table: parameters: 
+#   1. UIDs of the records to be updated --> i imagine if there is a correction on the data uploaded to the database,
+#       we first must download the dta from the database and perform the corrections there! The information in the database
+#       should be treated as the central source of truth and once data has been uploaded there all other data transactions must originate from there!
+#   2. The data to be replaced in table format with the UID column/s included matching exactly each record to be updated...
+function update_table!(conn::LibPQ.Connection, fname::String)::Nothing
+    # TODO: continue working on this once download functions/methods are minimally workable...
 end

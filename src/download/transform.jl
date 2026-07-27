@@ -23,7 +23,7 @@ environmental variables become separate columns.
 
 # Notes
 
-- The input is validated using `validate_data_table` before reshaping.
+- The input is validated using `check` before reshaping.
 - Exactly one of `trait` or `environmental_variable` is used as the column key.
 - All remaining columns, excluding the key and value columns, are used to define
   unique rows in the output.
@@ -66,7 +66,7 @@ function unstack_data_table(df::DataFrame)::DataFrame
     #     Filter(conn, table=table, field="value", filter_between=(220, 250)),
     # ]
     # df = query_table(conn, table=table, filters=filters)
-    validate_data_table(df)
+    check(df)
     rowkeys = filter(x -> x∉["trait", "environmental_variable", "value"], names(df))
     colkey = filter(x -> x ∈ ["trait", "environmental_variable"], names(df))[1]
     unstack(df, rowkeys, colkey, "value")

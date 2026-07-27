@@ -167,7 +167,7 @@ the `output_fields` argument.
 # Notes
 
 - Connection validation is performed using `check(conn)`.
-- Filter consistency is validated using `validate_filters`.
+- Filter consistency is validated using `check`.
 - SQL clauses and query parameters are generated using `concat_filters`.
 - All filtering is performed using parameterised SQL statements.
 - Multiple filters are combined using logical `AND` conditions.
@@ -251,7 +251,7 @@ function query_table(
     # output_fields = String["*"]
     # verbose = true
     check(conn)
-    validate_filters(filters)
+    check(filters)
     table = filters[1].table
     filter_cat, par = concat_filters(filters, verbose = verbose)
     sql = join(vcat(String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"], filter_cat), " ")

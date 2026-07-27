@@ -416,12 +416,12 @@ function simulate_environments(
         rm(fname_environments_tsv)
     end
     df_trial = tabularise(trials)
-    validate_trials(df_trial)
+    check_trials(df_trial)
     if "measurements"∉names(df_trial)
         error("Missing required measurement dates!")
     end
     measurements = sort([String("$x") for x in unique(df_trial.measurements)])
-    validate_date.(measurements)
+    check_date.(measurements)
     # Define multiple measurement days
     measurement_dates = String[]
     if length(measurements) == 1

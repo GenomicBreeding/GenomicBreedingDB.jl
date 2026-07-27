@@ -104,7 +104,7 @@ replication, block, row, and column values using the format
 # Arguments
 
 - `df::DataFrame`: DataFrame containing layout-related columns.
-- `is_trial::Bool=true`: If `true`, validate the input using `validate_trials`
+- `is_trial::Bool=true`: If `true`, validate the input using `check_trials`
   before parsing.
 
 # Returns
@@ -153,7 +153,7 @@ true
 ```
 """
 function parse_layouts!(df::DataFrame; is_trial::Bool = true)::Nothing
-    is_trial ? validate_trials(df) : nothing
+    is_trial ? check_trials(df) : nothing
     for f in [:replications, :blocks, :rows, :cols]
         # f = :replications
         isa(df[!, f], Vector{Int64}) ? continue : nothing
@@ -256,7 +256,7 @@ function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,
             @warn("Using the \"dates\" col in the dataframe.")
         end
         dates = unique(df.dates) # dates[1] = "2025/JA/01"
-        if !isa(dates, Vector{DateTime}) && (sum(.!validate_date.(dates)) > 0)
+        if !isa(dates, Vector{DateTime}) && (sum(.!check_date.(dates)) > 0)
             error(
                 "Invalid date format/s: [\"$(join(dates, "\", \""))\"]. We expect \"yyyy-mm-dd\" format, where all values are integers.",
             )
@@ -276,7 +276,7 @@ function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,
                 df[!, "dates"] .= Dates.now()
                 for m in measurements
                     # m = measurements[1]
-                    validate_date(m)
+                    check_date(m)
                     idx = findall(df.measurements .== m)
                     length(idx) == 0 ? error("Measurement \"$m\" not found in the dataframe!") : nothing
                     df.dates[idx] .= Date(m, dateformat"yyyy-mm-dd")
@@ -295,7 +295,7 @@ function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,
                     # k = string.(keys(measurement_dates))[1]; v = measurement_dates[k]
                     # v = "10062026"
                     # v = "2025/03/dd"
-                    validate_date(v)
+                    check_date(v)
                     idx = findall(df.measurements .== k)
                     # println("k=$k; v=$v; length(idx)=$(length(idx))")
                     length(idx) == 0 ? error("Measurement \"$k\" not found in the dataframe!") : nothing

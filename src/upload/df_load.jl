@@ -57,6 +57,7 @@ function load_trial_df(fname::String; missing_strings::Vector{String} = String[]
     if !isfile(fname)
         error("The trial data file: \"$fname\" does not exist!")
     end
+    check_dsv(fname)
     if length(missing_strings) == 0
         try
             trials = GenomicBreedingIO.readdelimited(Trials, fname = fname, sep = "\t")
@@ -64,20 +65,20 @@ function load_trial_df(fname::String; missing_strings::Vector{String} = String[]
         catch
             df = CSV.read(fname, DataFrame, missingstring = ["missing", "NA", "na", "N/A", "n/a", ""]) # same as the missing strings in `GenomicBreedingIO.readdelimited(Trials, ...)`
             try
-                rename!(df, "#years" => "years");
+                rename!(df, "#years" => "years")
             catch
-                ;
-                nothing;
+
+                nothing
             end
             return df
         end
     else
         df = CSV.read(fname, DataFrame, missingstring = missing_strings)
         try
-            rename!(df, "#years" => "years");
+            rename!(df, "#years" => "years")
         catch
-            ;
-            nothing;
+
+            nothing
         end
         return df
     end
@@ -176,15 +177,15 @@ function extract_traits(df::DataFrame; verbose::Bool = false)::Vector{String}
             x ->
                 filter(xi -> !ismissing(xi), x) |>
                 x -> filter(xi -> try
-                    !isnan(xi);
+                    !isnan(xi)
                 catch
-                    ;
-                    false;
+
+                    false
                 end, x) |> x -> filter(xi -> try
-                    !isinf(xi);
+                    !isinf(xi)
                 catch
-                    ;
-                    false;
+
+                    false
                 end, x)
         if length(y) < 1
             filter!(x -> x != trait, trait_names)
@@ -256,6 +257,7 @@ function load_environments_df(
     if !isfile(fname)
         error("The environmental data file: \"$fname\" does not exist!")
     end
+    check_dsv(fname)
     CSV.read(fname, DataFrame, missingstring = missing_strings)
 end
 
@@ -342,15 +344,15 @@ function extract_environment_variables(df::DataFrame; verbose::Bool = false)::Ve
             x ->
                 filter(xi -> !ismissing(xi), x) |>
                 x -> filter(xi -> try
-                    !isnan(xi);
+                    !isnan(xi)
                 catch
-                    ;
-                    false;
+
+                    false
                 end, x) |> x -> filter(xi -> try
-                    !isinf(xi);
+                    !isinf(xi)
                 catch
-                    ;
-                    false;
+
+                    false
                 end, x)
         if length(y) < 1
             filter!(x -> x != env, env_names)

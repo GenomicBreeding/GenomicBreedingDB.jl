@@ -253,7 +253,7 @@ associated metadata fields are updated using name-based lookups.
   `member_of`, `clone_of`, `parent_is`, `maternal_parent_is`, and
   `paternal_parent_is`.
 - Trial data are loaded using `load_trial_df` and validated using
-  `validate_trials`.
+  `check_trials`.
 - Layout information is standardised using `parse_layouts!`.
 - Missing metadata columns may be added automatically using `add_col!`.
 - Measurement dates are validated or generated using
@@ -325,8 +325,9 @@ function upload_trial_data!(
     verbose::Bool = false,
 )::Nothing
     # conn = dbconnect()
-    # fname = simulate_trial()
-    # missing_strings::Union{String, Char, Vector{String}, Vector{Char}} = ["missing", "NA", "na", "N/A", "n/a", ""]
+    # simulate_genomes() |> simulate_trials
+    # fname = "simulated_trials.tsv"
+    # missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]
     # species::String = "Lolium multiflorum"
     # experiment::String = "STR_trial-2026"
     # treatment::String = "control"; verbose::Bool = true
@@ -336,25 +337,18 @@ function upload_trial_data!(
     # measurement_dates::Union{Nothing, Dict{String, String}} = nothing
     # # measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); df = CSV.read(fname, DataFrame); [measurement_dates[x] = x for x in ["$x" for x in unique(df.measurements)]]
     # verbose::Bool = true
-    if entry_type∉["cultivar", "population", "individual", "family"]
-        error(
-            "Invalid entry_type: \"$entry_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\"].",
-        )
-    end
-    if population_type∉["cultivar", "population", "individual", "family"]
-        error(
-            "Invalid population_type: \"$population_type\". Choose from: [\"cultivar\", \"population\", \"individual\", \"family\"].",
-        )
-    end
-    if relationship_type∉["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"]
-        error(
-            "Invalid relationship_type: \"$relationship_type\". Choose from: [\"member_of\", \"clone_of\", \"parent_is\", \"maternal_parent_is\", \"paternal_parent_is\"].",
-        )
-    end
     # Load the trial data which assumed by default to be in Trial struct delimited file format (see: https://genomicbreeding.github.io/GenomicBreedingIO.jl/stable/#GenomicBreedingIO.readdelimited-Tuple{Type{GenomicBreedingCore.Trials}})
     df = load_trial_df(fname, missing_strings = missing_strings)
     # Make sure we have all the required columns
-    validate_trials(df)
+    check_trials(df)
+    check(df, "entry_types", ["cultivar", "population", "individual", "family"], proposed_name = entry_type)
+    check(df, "population_types", ["cultivar", "population", "individual", "family"], proposed_name = population_type)
+    check(
+        df,
+        "relationship_types",
+        ["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"],
+        proposed_name = relationship_type,
+    )
     parse_layouts!(df)
     add_col!(df, col = "species", value = species)
     add_col!(df, col = "experiments", value = experiment)
