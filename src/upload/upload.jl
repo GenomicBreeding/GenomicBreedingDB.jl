@@ -421,5 +421,8 @@ function upload(
         error("Totally unexpected error as we expect the previous data type checks to catch all possible errors!")
     end
     close(conn)
+    if verbose
+        println("Success!")
+    end
     nothing
 end

@@ -215,7 +215,7 @@ function define_relationships!(
     n_old = 0
     execute(conn, "BEGIN")
     try
-        pb = ProgressMeter.Progress(length(link_values), desc="Inserting records into \"$table\" table...")
+        pb = ProgressMeter.Progress(length(link_values), desc = "Inserting records into \"$table\" table...")
         for x in link_values
             # x = link_values[1]
             df_record_2 = query(conn, [Filter(conn, table = table_2, field = "name", filter_in = [x])])

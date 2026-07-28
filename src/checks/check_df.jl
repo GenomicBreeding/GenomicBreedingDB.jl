@@ -154,7 +154,7 @@ function check(df::DataFrame)::Nothing
         )
     )
     if !okay
-        error("Unexpected field/s:\n\t- $(join(missing_fields, "\n\t- "))")
+        error("Missing field/s:\n\t- $(join(missing_fields, "\n\t- "))")
     end
     nothing
 end

@@ -227,7 +227,7 @@ function upload_genotype_vcf!(
         )
         if nrow(df_reference_genome) == 0
             throw(
-                "The reference genome file \"$fname\" is not found in the database. Please check the path or use `upload_reference_genome!(...)` first!",
+                "The reference genome file \"$fname_reference_genome\" is not found in the database. Please check the path or use `upload_reference_genome!(...)` first!",
             )
         end
         df_reference_genome.id[1]
@@ -368,8 +368,13 @@ function upload_genomes!(
             [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome])],
         )
         if nrow(df_reference_genome) == 0
-            throw(
-                "The reference genome file \"$fname_reference_genome\" is not found in the database. Please check the path or use `upload_reference_genome!(...)` first!",
+            error(
+                string(
+                    "The reference genome file \"$fname_reference_genome\" is not found in the database. ",
+                    "Please:",
+                    "\n\t- check the path (make sure it is the absolute path), or ",
+                    "\n\t- use `upload_reference_genome!(...)` to upload the reference genome first.",
+                ),
             )
         end
         df_reference_genome.id[1]
