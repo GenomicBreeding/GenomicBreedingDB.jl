@@ -259,6 +259,13 @@ struct Filter
         # !isnothing(filter_equal_to) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field = \$1", [filter_equal_to]) |> DataFrame : nothing
         # !isnothing(filter_less_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field < \$1", [filter_less_than]) |> DataFrame : nothing
         # !isnothing(filter_greater_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field > \$1", [filter_greater_than]) |> DataFrame : nothing
+        # Type checks
+        !isnothing(filter_like) ? check(conn, table, field, String) : nothing
+        !isnothing(filter_in) ? check(conn, table, field, String) : nothing
+        !isnothing(filter_between) ? check(conn, table, field, Float64) : nothing
+        !isnothing(filter_equal_to) ? check(conn, table, field, Float64) : nothing
+        !isnothing(filter_less_than) ? check(conn, table, field, Float64) : nothing
+        !isnothing(filter_greater_than) ? check(conn, table, field, Float64) : nothing
         new(
             table,
             field,
