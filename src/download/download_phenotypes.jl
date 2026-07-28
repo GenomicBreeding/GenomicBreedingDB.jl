@@ -110,6 +110,19 @@ columns and each row corresponds to a unique observational unit.
 
 # Examples
 
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> df_all = download_phenotype_data();
+
+julia> df_exp = download_phenotype_data(experiments=[df_all.experiment[1]], like_experiments=["exp"]);
+
+julia> df_ent = download_phenotype_data(entry_types=[df_all.entry_type[1]], like_entry_types=["fam"]);
+
+julia> nrow(df_all) > nrow(df_exp)
+true
+
+julia> nrow(df_all) > nrow(df_ent)
+true
+```
 """
 function download_phenotype_data(;
     experiments::Vector{String} = String[],
@@ -241,6 +254,11 @@ function download_phenotype_data(;
             push!(filters, Filter(conn, table = "entries", field = field, filter_in = v))
         end
     end
+    filters = if length(filters) == 0
+        push!(filters, Filter(conn, table = "entries", field = "species", filter_like = "%"))
+    else
+        filters
+    end
     df_entries = query(conn, filters, verbose = verbose)
     rename!(df_entries, "name" => "entry")
     select!(df_entries, Not([:id, :notes, :created_at, :updated_at]))
@@ -268,6 +286,11 @@ function download_phenotype_data(;
         else
             push!(filters, Filter(conn, table = "layouts", field = field, filter_in = v))
         end
+    end
+    filters = if length(filters) == 0
+        push!(filters, Filter(conn, table = "layouts", field = "replication", filter_greater_than = -1000))
+    else
+        filters
     end
     df_layouts = query(conn, filters, verbose = verbose)
     rename!(df_layouts, "name" => "layout")

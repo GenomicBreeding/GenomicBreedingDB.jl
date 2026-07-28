@@ -530,13 +530,13 @@ function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{V
             append!(par, string.([f.between[1], f.between[2]]))
         elseif !isnothing(f.equal_to)
             push!(sql, "$(f.field) = \$$(n+1)")
-            append!(par, String(f.equal_to))
+            append!(par, string(f.equal_to))
         elseif !isnothing(f.less_than)
             push!(sql, "$(f.field) < \$$(n+1)")
-            append!(par, String(f.less_than))
+            append!(par, string(f.less_than))
         elseif !isnothing(f.greater_than)
             push!(sql, "$(f.field) > \$$(n+1)")
-            append!(par, String(f.greater_than))
+            append!(par, string(f.greater_than))
         else
             error("No filtering defined in $f.")
         end

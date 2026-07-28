@@ -209,3 +209,146 @@ function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
     end
     nothing
 end
+
+"""
+    check(
+        conn::LibPQ.Connection,
+        table::String,
+        field::String,
+        T::Type,
+    )::Nothing
+
+Validate that a database field exists and is compatible with an expected Julia
+type.
+
+The function verifies that the specified field exists in the target table and
+then queries PostgreSQL to determine the underlying database type of that field.
+The detected database type is compared against an expected Julia type category,
+allowing validation of string, numeric, date, and datetime fields before they
+are used in filtering, updating, or other operations.
+
+This function is primarily intended for defensive schema validation and helps
+ensure that downstream operations are applied to fields of the appropriate type.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table containing the field.
+- `field::String`: Name of the field to validate.
+- `T::Type`: Expected Julia type category.
+
+# Returns
+
+- `Nothing`: Returned when the field exists and its database type is compatible
+  with the expected Julia type.
+
+# Throws
+
+- `ErrorException`: If the specified table does not exist.
+- `ErrorException`: If the specified field does not exist.
+- `ErrorException`: If a string type is requested but the field is not stored as
+  PostgreSQL `text`.
+- `ErrorException`: If a numeric type is requested but the field is not a
+  supported numeric PostgreSQL type.
+- `ErrorException`: If a date or datetime type is requested but the field is not
+  a supported temporal PostgreSQL type.
+- Any database exception raised whilst retrieving schema information.
+
+# Notes
+
+- Table and field validation are performed using `check(conn, table, field)`.
+- PostgreSQL field types are determined using `pg_typeof(...)`.
+- String validation (`T <: AbstractString`) currently requires the PostgreSQL
+  type to be `text`.
+- Numeric validation (`T <: Number`) supports:
+  - `smallint`
+  - `int`
+  - `integer`
+  - `numeric`
+  - `decimal`
+  - `real`
+  - `double precision`
+  - `smallserial`
+  - `serial`
+  - `bigserial`
+- Temporal validation (`T <: Date` or `T <: DateTime`) supports:
+  - `timestamp`
+  - `timestamptz`
+  - `date`
+  - `time`
+  - `timetz`
+  - `interval`
+- The function validates compatibility with broad type categories rather than
+  exact Julia types.
+- No database contents are modified.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> try isnothing(check(conn, "entries", "name", String)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "entries", "name", Int)); catch; false; end
+false
+
+julia> try isnothing(check(conn, "layouts", "replication", Int)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "layouts", "row", Int)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "layouts", "col", Int)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "phenotype_data", "value", Float64)); catch; false; end
+true
+
+julia> close(conn);
+```
+"""
+function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::Nothing
+    check(conn, table, field)
+    t = execute(
+        conn,
+        """
+        SELECT pg_typeof($field) 
+        FROM $table 
+        LIMIT 1;
+        """
+    ) |> DataFrame |> x -> x.pg_typeof[1]
+    if (T <: AbstractString) && (t != "text")
+        error("The \"$field\" field in table \"$table\" is not string!")
+    end
+    if (
+        (T <: Number) && 
+        (t != "smallint") && 
+        (t != "int") && 
+        (t != "integer") && 
+        (t != "numeric") && 
+        (t != "decimal") && 
+        (t != "real") && 
+        (t != "double precision") && 
+        (t != "smallserial") && 
+        (t != "serial") && 
+        (t != "bigserial")
+    )
+        error("The \"$field\" field in table \"$table\" is not numeric!")
+    end
+    if (
+        (
+            (T <: Date) ||
+            (T <: DateTime)
+        ) && 
+        (t != "timestamp") && 
+        (t != "timestamptz") && 
+        (t != "date") && 
+        (t != "time") && 
+        (t != "timetz") && 
+        (t != "interval")
+    )
+        error("The \"$field\" field in table \"$table\" is not date or datetime!")
+    end
+    nothing
+end
