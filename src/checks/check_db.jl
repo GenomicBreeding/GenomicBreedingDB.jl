@@ -222,13 +222,14 @@ Validate that a database field exists and is compatible with an expected Julia
 type.
 
 The function verifies that the specified field exists in the target table and
-then queries PostgreSQL to determine the underlying database type of that field.
-The detected database type is compared against an expected Julia type category,
-allowing validation of string, numeric, date, and datetime fields before they
-are used in filtering, updating, or other operations.
+queries PostgreSQL to determine the underlying database type associated with the
+field. The detected database type is then compared against an expected Julia
+type category, allowing validation of string, numeric, and temporal fields
+before they are used in filtering, querying, or update operations.
 
 This function is primarily intended for defensive schema validation and helps
-ensure that downstream operations are applied to fields of the appropriate type.
+ensure that higher-level database operations are applied only to fields whose
+types are compatible with the requested operation.
 
 # Arguments
 
@@ -246,20 +247,26 @@ ensure that downstream operations are applied to fields of the appropriate type.
 
 - `ErrorException`: If the specified table does not exist.
 - `ErrorException`: If the specified field does not exist.
-- `ErrorException`: If a string type is requested but the field is not stored as
-  PostgreSQL `text`.
+- `ErrorException`: If a string type is requested but the field is not a
+  supported string-compatible database type.
 - `ErrorException`: If a numeric type is requested but the field is not a
-  supported numeric PostgreSQL type.
-- `ErrorException`: If a date or datetime type is requested but the field is not
-  a supported temporal PostgreSQL type.
+  supported numeric database type.
+- `ErrorException`: If a date or datetime type is requested but the field is
+  not a supported temporal database type.
 - Any database exception raised whilst retrieving schema information.
 
 # Notes
 
-- Table and field validation are performed using `check(conn, table, field)`.
+- Table and field validation are performed using
+  `check(conn, table, field)`.
 - PostgreSQL field types are determined using `pg_typeof(...)`.
-- String validation (`T <: AbstractString`) currently requires the PostgreSQL
-  type to be `text`.
+- String validation (`T <: AbstractString`) supports:
+  - `text`
+  - `entry_type`
+  - `relationship_type`
+- Enum fields such as `entry_type` and `relationship_type` are treated as
+  string-compatible types and may be used with string-based filtering
+  operations.
 - Numeric validation (`T <: Number`) supports:
   - `smallint`
   - `int`
@@ -309,6 +316,7 @@ julia> close(conn);
 ```
 """
 function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::Nothing
+    # conn = dbconnect(); table = "entries"; field = "entry_type"; T = String
     check(conn, table, field)
     t = execute(
         conn,
@@ -318,7 +326,12 @@ function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::N
         LIMIT 1;
         """
     ) |> DataFrame |> x -> x.pg_typeof[1]
-    if (T <: AbstractString) && (t != "text")
+    if (
+        (T <: AbstractString) && 
+        (t != "text") &&
+        (t != "entry_type)") &&
+        (t != "relationship_type")
+    )
         error("The \"$field\" field in table \"$table\" is not string!")
     end
     if (

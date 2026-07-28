@@ -145,6 +145,7 @@ function download_phenotype_data(;
     blocks::Vector{Int64} = Int64[],
     rows::Vector{Int64} = Int64[],
     cols::Vector{Int64} = Int64[],
+    values_between::Tuple{Float64, Float64} = (-Inf, +Inf),
     keep_id_and_do_not_unstack::Bool = false,
     verbose::Bool = false,
 )::DataFrame
@@ -168,6 +169,7 @@ function download_phenotype_data(;
     # blocks::Vector{Int64} = Int64[]
     # rows::Vector{Int64} = Int64[]
     # cols::Vector{Int64} = Int64[1]
+    # values_between::Tuple{Float64, Float64} = (-Inf, +Inf)
     # keep_id_and_do_not_unstack::Bool = false
     # verbose::Bool = true
     args = Dict(
