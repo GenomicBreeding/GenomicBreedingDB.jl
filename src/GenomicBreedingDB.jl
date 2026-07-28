@@ -58,22 +58,7 @@ include("download/query.jl")
 export query
 include("download/transform.jl")
 export unstack_data_table
-include("download/download.jl")
+include("download/download_phenotypes.jl")
 export download_phenotype_data
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 end

@@ -11,9 +11,10 @@ The function reshapes a data table by converting values stored in either the
 remaining fields are treated as row identifiers and are used to define unique
 records in the resulting wide-format table.
 
-Prior to reshaping, database bookkeeping fields (`id`, `created_at`, and
-`updated_at`) are removed, as these fields are not useful for the unstacking
-operation and would otherwise interfere with identification of unique rows.
+Prior to reshaping, common database bookkeeping fields (`id`, `created_at`, and
+`updated_at`) are removed when present. Missing bookkeeping fields are ignored,
+allowing the function to operate on both raw database query results and
+previously processed DataFrames.
 
 The function automatically determines whether the input represents phenotype or
 environmental data by detecting the presence of either a `trait` or
@@ -40,8 +41,8 @@ environmental data by detecting the presence of either a `trait` or
 # Notes
 
 - Input validation is performed using `check(df)`.
-- The columns `id`, `created_at`, and `updated_at` are removed prior to
-  reshaping.
+- The columns `id`, `created_at`, and `updated_at` are removed if present.
+- Missing bookkeeping columns are silently ignored.
 - The function expects a long-format table containing a `value` column.
 - The column key is automatically inferred from the first matching field among:
   - `trait`
@@ -58,6 +59,8 @@ environmental data by detecting the presence of either a `trait` or
   `site × variable_1 × variable_2 × ...`.
 - The function is intended for transforming query results into formats suitable
   for statistical analysis, modelling, visualization, and export.
+- The input DataFrame is modified in-place prior to unstacking because
+  bookkeeping columns are removed using `select!`.
 
 # Examples
 

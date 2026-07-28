@@ -1,3 +1,116 @@
+"""
+    download_phenotype_data(;
+        experiments::Vector{String}=String[],
+        sites::Vector{String}=String[],
+        treatments::Vector{String}=String[],
+        measurements::Vector{String}=String[],
+        entries::Vector{String}=String[],
+        species::Vector{String}=String[],
+        entry_types::Vector{String}=String[],
+        traits::Vector{String}=String[],
+        like_experiments::Vector{String}=String[],
+        like_sites::Vector{String}=String[],
+        like_treatments::Vector{String}=String[],
+        like_measurements::Vector{String}=String[],
+        like_entries::Vector{String}=String[],
+        like_species::Vector{String}=String[],
+        like_entry_types::Vector{String}=String[],
+        like_traits::Vector{String}=String[],
+        replications::Vector{Int64}=Int64[],
+        blocks::Vector{Int64}=Int64[],
+        rows::Vector{Int64}=Int64[],
+        cols::Vector{Int64}=Int64[],
+        keep_id_and_do_not_unstack::Bool=false,
+        verbose::Bool=false,
+    )::DataFrame
+
+Download phenotype data from the database using a flexible collection of exact
+and partial-match filters.
+
+The function retrieves data from the `phenotype_data` table and automatically
+applies additional filtering using metadata stored in the related `entries` and
+`layouts` tables. Filters may be specified using exact matches (`entries`,
+`sites`, `traits`, etc.) or pattern-matching searches (`like_entries`,
+`like_sites`, `like_traits`, etc.).
+
+Data retrieval is performed in three stages. The function first queries the
+`phenotype_data` table, then augments and filters the result using the
+associated `entries` table, and finally incorporates information from the
+`layouts` table. The resulting dataset is optionally reshaped into a wide-format
+table suitable for downstream analysis.
+
+By default, phenotype measurements are unstacked such that trait names become
+columns and each row corresponds to a unique observational unit.
+
+# Arguments
+
+- `experiments::Vector{String}=String[]`: Experiment names to match exactly.
+- `sites::Vector{String}=String[]`: Site names to match exactly.
+- `treatments::Vector{String}=String[]`: Treatment names to match exactly.
+- `measurements::Vector{String}=String[]`: Measurement names to match exactly.
+- `entries::Vector{String}=String[]`: Entry names to match exactly.
+- `species::Vector{String}=String[]`: Species names to match exactly.
+- `entry_types::Vector{String}=String[]`: Entry types to match exactly.
+- `traits::Vector{String}=String[]`: Trait names to match exactly.
+- `like_experiments::Vector{String}=String[]`: Experiment patterns for
+  partial matching.
+- `like_sites::Vector{String}=String[]`: Site patterns for partial matching.
+- `like_treatments::Vector{String}=String[]`: Treatment patterns for partial
+  matching.
+- `like_measurements::Vector{String}=String[]`: Measurement patterns for
+  partial matching.
+- `like_entries::Vector{String}=String[]`: Entry patterns for partial matching.
+- `like_species::Vector{String}=String[]`: Species patterns for partial
+  matching.
+- `like_entry_types::Vector{String}=String[]`: Entry-type patterns for partial
+  matching.
+- `like_traits::Vector{String}=String[]`: Trait patterns for partial matching.
+- `replications::Vector{Int64}=Int64[]`: Replication identifiers to match.
+- `blocks::Vector{Int64}=Int64[]`: Block identifiers to match.
+- `rows::Vector{Int64}=Int64[]`: Plot-row identifiers to match.
+- `cols::Vector{Int64}=Int64[]`: Plot-column identifiers to match.
+- `keep_id_and_do_not_unstack::Bool=false`: If `true`, return the long-format
+  table without reshaping.
+- `verbose::Bool=false`: If `true`, display progress messages throughout the
+  download and processing workflow.
+
+# Returns
+
+- `DataFrame`: Phenotype data matching the supplied filters.
+
+# Throws
+
+- `ErrorException`: If one or more filters fail validation.
+- `ErrorException`: If a referenced table, field, or filter value is invalid.
+- Any database exception raised during querying.
+- Any exception raised whilst reshaping or joining intermediate tables.
+
+# Notes
+
+- A database connection is opened automatically and closed before returning.
+- Exact-match filters are translated into `IN` clauses.
+- Partial-match filters are translated into SQL `ILIKE` clauses.
+- Filtering is performed using metadata from three related tables:
+  - `phenotype_data`
+  - `entries`
+  - `layouts`
+- Filters are applied only to tables containing the corresponding fields.
+- If no phenotype-data filters are supplied, a default catch-all filter is used
+  to retrieve phenotype records.
+- Entry metadata are joined onto phenotype records using the `entry` field.
+- Layout metadata are joined onto phenotype records using the `layout` field.
+- By default, the returned table is reshaped using `unstack_data_table`,
+  producing a wide-format phenotype matrix.
+- When `keep_id_and_do_not_unstack=true`, the long-format database representation
+  is returned unchanged.
+- The resulting DataFrame may contain columns originating from the phenotype,
+  entries, and layouts tables.
+- Progress messages describing each query stage are displayed when
+  `verbose=true`.
+
+# Examples
+
+"""
 function download_phenotype_data(;
     experiments::Vector{String} = String[],
     sites::Vector{String} = String[],
