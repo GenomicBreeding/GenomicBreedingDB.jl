@@ -329,7 +329,7 @@ function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::N
     if (
         (T <: AbstractString) && 
         (t != "text") &&
-        (t != "entry_type)") &&
+        (t != "entry_type") &&
         (t != "relationship_type")
     )
         error("The \"$field\" field in table \"$table\" is not string!")
