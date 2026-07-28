@@ -53,13 +53,13 @@ include("upload/upload.jl")
 export upload
 # Downloads
 include("download/extract.jl")
-export extract_all_tables, extract_table_contents, extract_ids, extract_names
+export extract_all_tables, extract_table_fields, extract_table_contents, extract_ids, extract_names
 include("download/query.jl")
 export query
-
-
 include("download/transform.jl")
 export unstack_data_table
+include("download/download.jl")
+export download_phenotype_data
 
 
 

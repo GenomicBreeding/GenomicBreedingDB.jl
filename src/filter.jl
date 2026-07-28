@@ -414,22 +414,27 @@ end
         verbose::Bool=false,
     )::Tuple{Vector{String},Vector{String}}
 
-Convert a collection of `Filter` objects into SQL filter clauses and their
-associated query parameters.
+Convert a collection of `Filter` objects into parameterised SQL filter clauses
+and their associated query parameters.
 
-The function translates validated `Filter` instances into parameterised SQL
-fragments suitable for inclusion in a `WHERE` clause. SQL expressions and query
-parameters are accumulated in the order supplied, ensuring that parameter indices
-remain aligned with the generated placeholders.
+The function translates validated `Filter` instances into SQL fragments suitable
+for inclusion in a `WHERE` clause. SQL expressions and query parameters are
+generated simultaneously, ensuring that parameter indices remain correctly
+aligned with their corresponding placeholders.
 
 The resulting SQL fragments and parameter vector can be used directly in
-subsequent database queries or update statements.
+parameterised database queries, updates, and delete operations.
+
+Special handling is provided for PostgreSQL enum fields, i.e.
+`entry_type` and `relationship_type`, which are explicitly cast to text before
+applying string-based filtering operations.
 
 # Arguments
 
-- `filters::Vector{Filter}`: Collection of filters to convert into SQL clauses.
+- `filters::Vector{Filter}`: Collection of validated filters to convert into SQL
+  clauses.
 - `verbose::Bool=false`: If `true`, display progress information whilst
-  processing the filters.
+  processing filters.
 
 # Returns
 
@@ -456,9 +461,13 @@ subsequent database queries or update statements.
 - Parameter numbering is generated dynamically based on the number of previously
   accumulated parameters.
 - All parameter values are converted to strings before being returned.
+- The PostgreSQL enum fields `entry_type` and `relationship_type` are cast to
+  text when using `LIKE` or `IN` filters to support string-based comparisons.
+- Multiple filters are intended to be combined using logical `AND`
+  expressions.
 - Progress reporting is available when `verbose=true`.
-- The generated SQL fragments are intended to be concatenated with an existing
-  query rather than executed directly.
+- The generated SQL fragments are intended to be incorporated into larger SQL
+  statements and are not executed directly.
 
 # Examples
 
@@ -478,6 +487,19 @@ julia> filters_cat, par = concat_filters(filters);
 julia> (length(filters_cat) == 2) && (length(par) == 4)
 true
 
+julia> table = "entries";
+
+julia> filters = Filter[];
+
+julia> push!(filters, Filter(conn, table=table, field="name", filter_like="10"));
+
+julia> push!(filters, Filter(conn, table=table, field="entry_type", filter_in=["family"]));
+
+julia> filters_cat, par = concat_filters(filters);
+
+julia> (length(filters_cat) == 2) && (length(par) == 2)
+true
+
 julia> close(conn);
 ```
 """
@@ -489,11 +511,19 @@ function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{V
         # f = filters[1]
         n = length(par)
         if !isnothing(f.like)
-            push!(sql, "AND $(f.field) ILIKE \$$(n+1)")
+            if (f.field == "entry_type") || (f.field == "relationship_type")
+                push!(sql, "AND $(f.field)::text ILIKE \$$(n+1)")
+            else
+                push!(sql, "AND $(f.field) ILIKE \$$(n+1)")
+            end
             append!(par, [String(f.like)])
         elseif !isnothing(f.in)
             s = "($(join(string.("\$", (n+1):(n+length(f.in))), ',')))"
-            push!(sql, "AND $(f.field) IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
+            if (f.field == "entry_type") || (f.field == "relationship_type")
+                push!(sql, "AND $(f.field)::text IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
+            else
+                push!(sql, "AND $(f.field) IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
+            end
             append!(par, string.(f.in))
         elseif !isnothing(f.between)
             push!(sql, "AND $(f.field) BETWEEN \$$(n+1) AND \$$(n+2)")
