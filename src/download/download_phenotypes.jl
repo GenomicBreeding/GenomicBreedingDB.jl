@@ -262,6 +262,8 @@ function download_phenotype_data(;
     df_entries = query(conn, filters, verbose = verbose)
     rename!(df_entries, "name" => "entry")
     select!(df_entries, Not([:id, :notes, :created_at, :updated_at]))
+    entries = unique(df_entries.entry)
+    filter!(x -> x.entry ∈ entries, df)
     df = leftjoin(df_entries, df, on = :entry)
     # Filter df using layouts table filters
     if verbose
@@ -295,6 +297,9 @@ function download_phenotype_data(;
     df_layouts = query(conn, filters, verbose = verbose)
     rename!(df_layouts, "name" => "layout")
     select!(df_layouts, Not([:id, :created_at, :updated_at]))
+    layouts = unique(df_layouts.layout)
+    filter!(x -> !ismissing(x.layout), df)
+    filter!(x -> x.layout ∈ layouts, df)
     df = leftjoin(df_layouts, df, on = :layout)
     # Prepare the final dataframe
     if verbose

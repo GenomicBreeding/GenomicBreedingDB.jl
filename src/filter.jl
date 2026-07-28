@@ -24,30 +24,34 @@ Construct a validated database filter for querying, updating, or deleting
 records.
 
 A `Filter` encapsulates a single filtering criterion applied to a database table.
-The constructor validates the target table and field, ensures that exactly one
-filter condition has been supplied, and automatically resolves human-readable
-entity names into database identifiers when filtering on foreign-key fields.
+The constructor validates the target table and field, verifies that the selected
+filter type is compatible with the database field type, and automatically
+resolves human-readable entity names into database identifiers when filtering on
+foreign-key fields.
 
-If a supplied field does not exist in the target table, the constructor attempts
-to infer a related foreign-key field. For example, fields such as `entry`,
-`entries`, `species`, `site`, or `trait` may be mapped automatically to their
-corresponding identifier fields (`entry_id`, `species_id`, `site_id`,
-`trait_id`, etc.) when those fields exist in the database schema.
+If the supplied field does not exist directly in the specified table, the
+constructor attempts to infer the corresponding foreign-key field. For example,
+fields such as `entry`, `entries`, `species`, `site`, or `trait` may be mapped
+to their associated identifier fields (`entry_id`, `species_id`, `site_id`,
+`trait_id`, etc.).
 
-When filtering on identifier fields, supplied names are automatically translated
-into their corresponding database ids using `extract_ids`. This allows filters to
-be expressed using meaningful biological or experimental identifiers rather than
-internal database keys.
+When filtering on foreign-key fields, supplied names are automatically converted
+into their corresponding database identifiers using `extract_ids`. This allows
+queries to be expressed using biological or experimental names rather than
+internal database ids.
+
+The constructor additionally validates that string-based filters are applied only
+to string-compatible fields and that numeric filters are applied only to numeric
+fields.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `table::String`: Name of the table to filter.
+- `table::String`: Name of the target table.
 - `field::String`: Name of the field on which filtering will be applied.
-- `filter_like::Union{Nothing,String}=nothing`: Pattern-matching filter using SQL
-  `ILIKE` semantics.
+- `filter_like::Union{Nothing,String}=nothing`: Pattern-matching filter.
 - `filter_in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}=nothing`:
-  Filter matching any value in the supplied collection.
+  Collection-based filter.
 - `filter_between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}=nothing`:
   Inclusive range filter.
 - `filter_equal_to::Union{Nothing,Int,AbstractFloat}=nothing`: Exact numeric
@@ -60,7 +64,7 @@ internal database keys.
 # Fields
 
 - `table::String`: Target database table.
-- `field::String`: Database field used in the filter expression.
+- `field::String`: Database field used for filtering.
 - `like::Union{Nothing,String}`: Pattern-matching filter value.
 - `in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}`:
   Collection-based filter values.
@@ -74,33 +78,41 @@ internal database keys.
 
 - `ErrorException`: If the target table does not exist.
 - `ErrorException`: If the specified field cannot be resolved to a valid field.
-- `ErrorException`: If zero or multiple filter criteria are supplied.
-- `ErrorException`: If supplied names cannot be resolved to database ids.
-- `ErrorException`: If no database records match a relational filter value.
-- Any exception raised during database validation or identifier resolution.
+- `ErrorException`: If zero or multiple filtering criteria are supplied.
+- `ErrorException`: If a string filter is applied to a non-string field.
+- `ErrorException`: If a numeric filter is applied to a non-numeric field.
+- `ErrorException`: If no matching identifiers can be found when resolving
+  foreign-key names.
+- Any exception raised during schema validation or identifier resolution.
 
 # Notes
 
 - Exactly one filtering criterion must be supplied.
-- Connection and schema validation are performed using `check`.
-- If the supplied field is not present in the table, the constructor attempts to
-  infer a suitable foreign-key field by appending `_id`.
+- Table validation is performed using `check(conn, table)`.
+- Field validation is performed using `check(conn, table, field)`.
+- If the supplied field is absent, the constructor attempts to infer a matching
+  foreign-key field automatically.
 - Special handling is provided for:
   - `entries` → `entry_id`
   - `species` → `species_id`
+- String-based filters (`filter_like` and string-valued `filter_in`) are
+  validated against the underlying database field type.
+- Numeric filters (`filter_between`, `filter_equal_to`,
+  `filter_less_than`, and `filter_greater_than`) are validated against the
+  underlying database field type.
 - Name-based filters applied to foreign-key fields are automatically translated
-  into numeric identifiers using `extract_ids`.
-- Foreign-key mappings are resolved through the corresponding lookup tables:
+  into numeric ids using `extract_ids`.
+- Foreign-key mappings are resolved through corresponding lookup tables:
   - `entry_id` ↔ `entries`
   - `species_id` ↔ `species`
   - `<name>_id` ↔ `<name>s`
-- `filter_like` searches on foreign-key fields are resolved to matching ids and
-  subsequently converted into `IN` filters.
-- Pattern-matching filters automatically receive surrounding `%` wildcards when
-  not already supplied.
-- Underscore characters are escaped to prevent unintended SQL wildcard matching.
-- The resulting `Filter` object contains fully resolved values and is ready for
-  use by functions such as `query`, `concat_filters`, `update_table!`, and
+- `filter_like` searches applied to foreign-key fields are resolved to matching
+  ids and subsequently converted into an `IN` filter.
+- Pattern-matching filters automatically receive `%` wildcards when not already
+  supplied.
+- Underscore characters are escaped to avoid unintended wildcard matching.
+- The resulting `Filter` object contains fully validated and resolved values and
+  is ready for use with functions such as `query`, `update_table!`, and
   `delete_names!`.
 
 # Examples
@@ -208,6 +220,9 @@ struct Filter
         end
         check(conn, table, field)
         filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
+            # String type checks
+            !isnothing(filter_in) ? check(conn, table, field, String) : nothing
+            !isnothing(filter_like) ? check(conn, table, field, String) : nothing
             filter_in, filter_like
         else
             metatable = if field == "entry_id"
@@ -253,19 +268,17 @@ struct Filter
         else
             filter_like
         end
+        # Numeric type checks
+        !isnothing(filter_between) ? check(conn, table, field, Float64) : nothing
+        !isnothing(filter_equal_to) ? check(conn, table, field, Float64) : nothing
+        !isnothing(filter_less_than) ? check(conn, table, field, Float64) : nothing
+        !isnothing(filter_greater_than) ? check(conn, table, field, Float64) : nothing
         # !isnothing(filter_like) ? let sql = "SELECT * FROM $table WHERE $field LIKE ($(join(string.("\$", 1:length(filter_like)), ',')))"; execute(conn, sql, filter_like) |> DataFrame; end : nothing
         # !isnothing(filter_in) ? let sql = "SELECT * FROM $table WHERE $field IN ($(join(string.("\$", 1:length(filter_in)), ',')))"; execute(conn, sql, filter_in) |> DataFrame; end : nothing
         # !isnothing(filter_between) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field BETWEEN \$1 AND \$2", [filter_between[1], filter_between[2]]) |> DataFrame : nothing
         # !isnothing(filter_equal_to) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field = \$1", [filter_equal_to]) |> DataFrame : nothing
         # !isnothing(filter_less_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field < \$1", [filter_less_than]) |> DataFrame : nothing
         # !isnothing(filter_greater_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field > \$1", [filter_greater_than]) |> DataFrame : nothing
-        # Type checks
-        !isnothing(filter_like) ? check(conn, table, field, String) : nothing
-        !isnothing(filter_in) ? check(conn, table, field, String) : nothing
-        !isnothing(filter_between) ? check(conn, table, field, Float64) : nothing
-        !isnothing(filter_equal_to) ? check(conn, table, field, Float64) : nothing
-        !isnothing(filter_less_than) ? check(conn, table, field, Float64) : nothing
-        !isnothing(filter_greater_than) ? check(conn, table, field, Float64) : nothing
         new(
             table,
             field,
@@ -426,13 +439,13 @@ and their associated query parameters.
 
 The function translates validated `Filter` instances into SQL fragments suitable
 for inclusion in a `WHERE` clause. SQL expressions and query parameters are
-generated simultaneously, ensuring that parameter indices remain correctly
-aligned with their corresponding placeholders.
+generated simultaneously, ensuring that placeholder numbering remains consistent
+across multiple filters.
 
-The resulting SQL fragments and parameter vector can be used directly in
-parameterised database queries, updates, and delete operations.
+The resulting SQL fragments and parameter vector can be incorporated directly
+into parameterised SQL queries, update statements, and delete operations.
 
-Special handling is provided for PostgreSQL enum fields, i.e.
+Special handling is provided for PostgreSQL enum fields such as
 `entry_type` and `relationship_type`, which are explicitly cast to text before
 applying string-based filtering operations.
 
@@ -446,7 +459,8 @@ applying string-based filtering operations.
 # Returns
 
 - `Tuple{Vector{String},Vector{String}}`:
-  - `sql`: Vector of SQL filter expressions.
+  - `sql`: Vector of SQL filter expressions suitable for appending to a
+    `WHERE` clause.
   - `par`: Vector of parameter values corresponding to the generated SQL
     placeholders.
 
@@ -456,25 +470,28 @@ applying string-based filtering operations.
 
 # Notes
 
-- SQL fragments are generated using parameter placeholders rather than embedding
-  values directly into query strings.
+- SQL fragments are generated using parameter placeholders (`$1`, `$2`, ...)
+  rather than embedding values directly into query strings.
 - The function supports the following filter types:
   - `like` → `ILIKE`
   - `in` → `IN (...)`
   - `between` → `BETWEEN ... AND ...`
-  - `equal_to` → equality comparison
-  - `less_than` → less-than comparison
-  - `greater_than` → greater-than comparison
-- Parameter numbering is generated dynamically based on the number of previously
-  accumulated parameters.
+  - `equal_to` → `=`
+  - `less_than` → `<`
+  - `greater_than` → `>`
+- Parameter numbering is generated dynamically based on the number of
+  previously accumulated parameters.
 - All parameter values are converted to strings before being returned.
 - The PostgreSQL enum fields `entry_type` and `relationship_type` are cast to
-  text when using `LIKE` or `IN` filters to support string-based comparisons.
-- Multiple filters are intended to be combined using logical `AND`
-  expressions.
+  text when using `ILIKE` or `IN` filters.
+- All generated clauses begin with `AND`, allowing them to be concatenated
+  directly after a base condition such as `WHERE 1=1`.
+- Filters using `IN` generate one SQL placeholder per supplied value.
 - Progress reporting is available when `verbose=true`.
 - The generated SQL fragments are intended to be incorporated into larger SQL
   statements and are not executed directly.
+- This function is used internally by higher-level database operations such as
+  `query`, `update_table!`, and `delete_names!`.
 
 # Examples
 
@@ -536,14 +553,14 @@ function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{V
             push!(sql, "AND $(f.field) BETWEEN \$$(n+1) AND \$$(n+2)")
             append!(par, string.([f.between[1], f.between[2]]))
         elseif !isnothing(f.equal_to)
-            push!(sql, "$(f.field) = \$$(n+1)")
-            append!(par, string(f.equal_to))
+            push!(sql, "AND $(f.field) = \$$(n+1)")
+            append!(par, string.([f.equal_to]))
         elseif !isnothing(f.less_than)
-            push!(sql, "$(f.field) < \$$(n+1)")
-            append!(par, string(f.less_than))
+            push!(sql, "AND $(f.field) < \$$(n+1)")
+            append!(par, string.([f.less_than]))
         elseif !isnothing(f.greater_than)
-            push!(sql, "$(f.field) > \$$(n+1)")
-            append!(par, string(f.greater_than))
+            push!(sql, "AND $(f.field) > \$$(n+1)")
+            append!(par, string.([f.greater_than]))
         else
             error("No filtering defined in $f.")
         end
