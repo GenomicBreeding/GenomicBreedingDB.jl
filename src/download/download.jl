@@ -68,18 +68,12 @@ function download_phenotype_data(;
     )
     conn = dbconnect()
     fields_to_ignore = String["id", "name", "created_at", "updated_at"]
-    fields_expected_phenotype_data = replace.(
-        filter(x -> x ∉ fields_to_ignore, extract_table_fields(conn, "phenotype_data")),
-        Regex("_id\$")=>"",
-    )
-    fields_expected_entries = replace.(
-        filter(x -> x ∉ fields_to_ignore, extract_table_fields(conn, "entries")),
-        Regex("_id\$")=>"",
-    )
-    fields_expected_layouts = replace.(
-        filter(x -> x ∉ fields_to_ignore, extract_table_fields(conn, "layouts")),
-        Regex("_id\$")=>"",
-    )
+    fields_expected_phenotype_data =
+        replace.(filter(x -> x ∉ fields_to_ignore, extract_table_fields(conn, "phenotype_data")), Regex("_id\$")=>"")
+    fields_expected_entries =
+        replace.(filter(x -> x ∉ fields_to_ignore, extract_table_fields(conn, "entries")), Regex("_id\$")=>"")
+    fields_expected_layouts =
+        replace.(filter(x -> x ∉ fields_to_ignore, extract_table_fields(conn, "layouts")), Regex("_id\$")=>"")
     # Query using phenotype_data filters only (we'll filter using entries and layouts later)
     if verbose
         println("(1/4) Querying using `phenotype_data` table filters...")
@@ -92,30 +86,20 @@ function download_phenotype_data(;
         end
         is_like = !isnothing(match(Regex("^like_"), k))
         field =
-            replace(k, Regex("ies\$")=>"y") |>
-            x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
+            replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
         if field ∉ fields_expected_phenotype_data
             continue
         end
         if is_like
             for vi in v
-                push!(
-                    filters,
-                    Filter(conn, table = "phenotype_data", field = field, filter_like = vi),
-                )
+                push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_like = vi))
             end
         else
-            push!(
-                filters,
-                Filter(conn, table = "phenotype_data", field = field, filter_in = v),
-            )
+            push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_in = v))
         end
     end
     filters = if length(filters) == 0
-        push!(
-            filters,
-            Filter(conn, table = "phenotype_data", field = "experiment", filter_like = "%"),
-        )
+        push!(filters, Filter(conn, table = "phenotype_data", field = "experiment", filter_like = "%"))
     else
         filters
     end
@@ -132,17 +116,13 @@ function download_phenotype_data(;
         end
         is_like = !isnothing(match(Regex("^like_"), k))
         field =
-            replace(k, Regex("ies\$")=>"y") |>
-            x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
+            replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
         if field ∉ fields_expected_entries
             continue
         end
         if is_like
             for vi in v
-                push!(
-                    filters,
-                    Filter(conn, table = "entries", field = field, filter_like = vi),
-                )
+                push!(filters, Filter(conn, table = "entries", field = field, filter_like = vi))
             end
         else
             push!(filters, Filter(conn, table = "entries", field = field, filter_in = v))
@@ -164,17 +144,13 @@ function download_phenotype_data(;
         end
         is_like = !isnothing(match(Regex("^like_"), k))
         field =
-            replace(k, Regex("ies\$")=>"y") |>
-            x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
+            replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
         if field ∉ fields_expected_layouts
             continue
         end
         if is_like
             for vi in v
-                push!(
-                    filters,
-                    Filter(conn, table = "layouts", field = field, filter_like = vi),
-                )
+                push!(filters, Filter(conn, table = "layouts", field = field, filter_like = vi))
             end
         else
             push!(filters, Filter(conn, table = "layouts", field = field, filter_in = v))

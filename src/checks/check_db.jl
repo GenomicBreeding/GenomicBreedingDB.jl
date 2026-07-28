@@ -192,21 +192,18 @@ function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
     check(conn)
     check_illegal_strings([table])
     check_illegal_strings([field])
-    bool =
-        execute(
-            conn,
-            """
-            SELECT EXISTS (
-                SELECT 1 
-                FROM pg_attribute 
-                WHERE attrelid = 'public.$table'::regclass 
-                AND attname = '$field'
-                AND NOT attisdropped
-            );
-            """,
-        ) |>
-        DataFrame |>
-        x -> x.exists[1]
+    bool = execute(
+        conn,
+        """
+        SELECT EXISTS (
+            SELECT 1 
+            FROM pg_attribute 
+            WHERE attrelid = 'public.$table'::regclass 
+            AND attname = '$field'
+            AND NOT attisdropped
+        );
+        """,
+    ) |> DataFrame |> x -> x.exists[1]
     if !bool
         error("The \"$field\" field does not exist in the\"$table\" table!")
     end

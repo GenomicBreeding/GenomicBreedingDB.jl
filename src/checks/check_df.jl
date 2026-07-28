@@ -62,8 +62,7 @@ function check(df::DataFrame, col::String)
         try
             check_illegal_strings(String.(unique(df[!, col])))
         catch e
-            new_error =
-                join(["Illegal string in the \"$col\" column!\n", sprint(showerror, e)])
+            new_error = join(["Illegal string in the \"$col\" column!\n", sprint(showerror, e)])
             error(new_error)
         end
     end

@@ -252,12 +252,7 @@ true
 julia> close(conn);
 ```
 """
-function extract_ids(
-    conn::LibPQ.Connection;
-    names::Vector{String},
-    table::String,
-    is_like::Bool = false,
-)::DataFrame
+function extract_ids(conn::LibPQ.Connection; names::Vector{String}, table::String, is_like::Bool = false)::DataFrame
     # conn = dbconnect(); names = String["entry_001", "entry_004"]; table = "entries"; is_like = true
     check(conn, table)
     check(conn, table, "id")
@@ -269,11 +264,7 @@ function extract_ids(
         for name in names
             # name = names[1]
             df_tmp = DataFrame(
-                execute(
-                    conn,
-                    "SELECT id,name FROM $table WHERE name ILIKE \$1",
-                    ["%$(replace(name, "_" => "\\_"))%"],
-                ),
+                execute(conn, "SELECT id,name FROM $table WHERE name ILIKE \$1", ["%$(replace(name, "_" => "\\_"))%"]),
             )
             df = vcat(df, df_tmp)
         end
@@ -343,11 +334,7 @@ julia> df_entries_0 == df_entries_1
 true
 ```
 """
-function extract_names(
-    conn::LibPQ.Connection;
-    ids::Vector{String},
-    table::String,
-)::DataFrame
+function extract_names(conn::LibPQ.Connection; ids::Vector{String}, table::String)::DataFrame
     # conn = dbconnect(); table = "entries"; ids = extract_ids(conn, names=String["entry_001", "entry_100"], table=table).id;
     check(conn, table)
     check(conn, table, "id")

@@ -30,11 +30,7 @@ export delete_names!
 # Uploads
 include("upload/simulate.jl")
 export simulate_reference_genome,
-    simulate_genomes,
-    simulate_trials,
-    simulate_environments,
-    simulate_phenomes,
-    simulate_fit
+    simulate_genomes, simulate_trials, simulate_environments, simulate_phenomes, simulate_fit
 include("upload/df_load.jl")
 export load_trial_df, extract_traits, load_environments_df, extract_environment_variables
 include("upload/df_mutate.jl")
@@ -57,8 +53,7 @@ include("upload/upload.jl")
 export upload
 # Downloads
 include("download/extract.jl")
-export extract_all_tables,
-    extract_table_fields, extract_table_contents, extract_ids, extract_names
+export extract_all_tables, extract_table_fields, extract_table_contents, extract_ids, extract_names
 include("download/query.jl")
 export query
 include("download/transform.jl")

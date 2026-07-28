@@ -108,14 +108,7 @@ function insert_environment_data!(
     # environment_variables = extract_environment_variables(df, verbose = verbose)
     # insert_names!(conn, df = DataFrame(environment_variables = environment_variables), table = "environment_variables", df_col = "environment_variables", verbose = verbose)
     check(conn, "environment_data")
-    tables = [
-        "experiments",
-        "sites",
-        "treatments",
-        "layouts",
-        "measurements",
-        "environment_variables",
-    ]
+    tables = ["experiments", "sites", "treatments", "layouts", "measurements", "environment_variables"]
     names_in_db::Dict{String,DataFrame} = Dict()
     errors = String[]
     for table in tables
@@ -134,33 +127,23 @@ function insert_environment_data!(
     if length(errors) > 0
         error(join(string.("\n\t- ", errors)))
     end
-    pb = ProgressMeter.Progress(
-        nrow(df)*length(environment_variables),
-        desc = "Importing environment data...",
-    )
+    pb = ProgressMeter.Progress(nrow(df)*length(environment_variables), desc = "Importing environment data...")
     execute(conn, "BEGIN")
     try
         for i = 1:nrow(df)
             # i = 1
             # println(i)
-            experiment_id =
-                filter(x->x.name==df.experiments[i], names_in_db["experiments"]).id[1]
+            experiment_id = filter(x->x.name==df.experiments[i], names_in_db["experiments"]).id[1]
             site_id = filter(x->x.name==df.sites[i], names_in_db["sites"]).id[1]
-            treatment_id =
-                filter(x->x.name==df.treatments[i], names_in_db["treatments"]).id[1]
+            treatment_id = filter(x->x.name==df.treatments[i], names_in_db["treatments"]).id[1]
             layout_id = filter(x->x.name==df.layouts[i], names_in_db["layouts"]).id[1]
-            measurement_id =
-                filter(x->x.name==df.measurements[i], names_in_db["measurements"]).id[1]
+            measurement_id = filter(x->x.name==df.measurements[i], names_in_db["measurements"]).id[1]
             for environment_variable in environment_variables
                 # environment_variable = environment_variables[2]
                 # println(environment_variable)
-                environment_variable_id = filter(
-                    x->x.name==environment_variable,
-                    names_in_db["environment_variables"],
-                ).id[1]
-                y =
-                    !ismissing(df[i, environment_variable]) ? df[i, environment_variable] :
-                    NaN
+                environment_variable_id =
+                    filter(x->x.name==environment_variable, names_in_db["environment_variables"]).id[1]
+                y = !ismissing(df[i, environment_variable]) ? df[i, environment_variable] : NaN
                 # y = NaN
                 execute(
                     conn,
@@ -186,15 +169,7 @@ function insert_environment_data!(
                         environment_variable_id
                     ) DO NOTHING
                     """,
-                    [
-                        experiment_id,
-                        site_id,
-                        treatment_id,
-                        layout_id,
-                        measurement_id,
-                        environment_variable_id,
-                        y,
-                    ],
+                    [experiment_id, site_id, treatment_id, layout_id, measurement_id, environment_variable_id, y],
                 )
                 verbose ? ProgressMeter.next!(pb) : nothing
             end
@@ -321,28 +296,10 @@ function upload_environment_data!(
     environment_variables = extract_environment_variables(df, verbose = verbose)
     # Upload/update the database
     insert_layouts!(conn, df = df, is_trial = false)
-    insert_names!(
-        conn,
-        df = df,
-        table = "experiments",
-        df_col = "experiments",
-        verbose = verbose,
-    )
-    insert_names!(
-        conn,
-        df = df,
-        table = "treatments",
-        df_col = "treatments",
-        verbose = verbose,
-    )
+    insert_names!(conn, df = df, table = "experiments", df_col = "experiments", verbose = verbose)
+    insert_names!(conn, df = df, table = "treatments", df_col = "treatments", verbose = verbose)
     insert_names!(conn, df = df, table = "sites", df_col = "sites", verbose = verbose)
-    insert_names!(
-        conn,
-        df = df,
-        table = "measurements",
-        df_col = "measurements",
-        verbose = verbose,
-    )
+    insert_names!(conn, df = df, table = "measurements", df_col = "measurements", verbose = verbose)
     insert_names!(
         conn,
         df = DataFrame(environment_variables = environment_variables),
@@ -350,11 +307,6 @@ function upload_environment_data!(
         df_col = "environment_variables",
         verbose = verbose,
     )
-    insert_environment_data!(
-        conn,
-        df = df,
-        environment_variables = environment_variables,
-        verbose = verbose,
-    )
+    insert_environment_data!(conn, df = df, environment_variables = environment_variables, verbose = verbose)
     nothing
 end

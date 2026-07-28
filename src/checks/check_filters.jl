@@ -59,9 +59,7 @@ true
 function check(filters::Vector{Filter})::Nothing
     tables = unique([f.table for f in filters])
     if length(tables) > 1
-        error(
-            "We expect one and only one table in the filters! See:\n\t- $(join(filters, "\n\t- "))",
-        )
+        error("We expect one and only one table in the filters! See:\n\t- $(join(filters, "\n\t- "))")
     end
     nothing
 end

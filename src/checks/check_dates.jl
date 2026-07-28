@@ -72,9 +72,7 @@ function check_date(date::String)::Nothing
         ((length(date_split[3]) < 1) && (length(date_split[3]) > 2)) ||
         sum(isnothing.(tryparse.(Int64, date_split))) > 0
     )
-        error(
-            "Invalid date format: \"$date\". We expect \"yyyy-mm-dd\" format, where all values are integers.",
-        )
+        error("Invalid date format: \"$date\". We expect \"yyyy-mm-dd\" format, where all values are integers.")
     end
     try
         Date(date, dateformat"yyyy-mm-dd")

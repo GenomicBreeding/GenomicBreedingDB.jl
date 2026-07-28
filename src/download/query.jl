@@ -158,35 +158,23 @@ function query(
     check(filters)
     table = filters[1].table
     output_fields != ["*"] ? check_illegal_strings(output_fields) : nothing
-    output_fields =
-        if (output_fields != ["*"]) &&
-           ((table == "phenotype_data") || (table == "environment_data"))
-            tmp = deepcopy(output_fields)
-            for i = 1:length(output_fields)
-                # i = 1
-                f = output_fields[i]
-                if (f == "id") ||
-                   (f == "value") ||
-                   (f == "created_at") ||
-                   (f == "updated_at")
-                    continue
-                end
-                tmp[i] = string(f, "_id")
+    output_fields = if (output_fields != ["*"]) && ((table == "phenotype_data") || (table == "environment_data"))
+        tmp = deepcopy(output_fields)
+        for i = 1:length(output_fields)
+            # i = 1
+            f = output_fields[i]
+            if (f == "id") || (f == "value") || (f == "created_at") || (f == "updated_at")
+                continue
             end
-            tmp
-        else
-            output_fields
+            tmp[i] = string(f, "_id")
         end
-    verbose ? println("Concatenating the filters and buidling the query statement...") :
-    nothing
+        tmp
+    else
+        output_fields
+    end
+    verbose ? println("Concatenating the filters and buidling the query statement...") : nothing
     filter_cat, par = concat_filters(filters, verbose = verbose)
-    sql = join(
-        vcat(
-            String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"],
-            filter_cat,
-        ),
-        " ",
-    )
+    sql = join(vcat(String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"], filter_cat), " ")
     verbose ? println("Querying the database...") : nothing
     df = execute(conn, sql, par) |> DataFrame
     pb = ProgressMeter.Progress(ncol(df), desc = "Converting *_id fields into names...")
