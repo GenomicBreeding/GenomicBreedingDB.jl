@@ -109,7 +109,10 @@ function check_illegal_strings(
         if !isascii(xi)
             xi_chars = collect(xi)
             idx_non_ascii = findall([!isascii(c) for c in xi_chars])
-            push!(errors, "Non-ASCII character/s [$(join(xi_chars[idx_non_ascii], ", "))] in $xi.")
+            push!(
+                errors,
+                "Non-ASCII character/s [$(join(xi_chars[idx_non_ascii], ", "))] in $xi.",
+            )
         end
         illegal_matches = collect(xi) ∩ illegal_characters
         if length(illegal_matches) > 0

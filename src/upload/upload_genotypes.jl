@@ -81,14 +81,29 @@ true
 julia> close(conn);
 ```
 """
-function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
+function upload_reference_genome!(
+    conn::LibPQ.Connection;
+    fname::String,
+    name::String,
+    notes::String,
+)::Nothing
     # conn = dbconnect(); fname = string(pwd(), "/simulated_reference_genome-", Dates.now(), ".fa"); simulate_reference_genome(fname_reference_genome=fname); name = "Milnesium tardigradum"; notes = "Simulated reference genome";
     if !isabspath(fname)
         error("The path to the reference genome file is not absolute: \"$fname\"!")
     end
     check_reference_genome(fname)
     # Check if the file path has already been uploaded
-    df_tmp = query(conn, [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname])])
+    df_tmp = query(
+        conn,
+        [
+            Filter(
+                conn,
+                table = "reference_genomes",
+                field = "file_path",
+                filter_in = [fname],
+            ),
+        ],
+    )
     if nrow(df_tmp) == 1
         info = string.(names(df_tmp), ": ", collect(df_tmp[1, :]))
         @warn string(
@@ -99,7 +114,9 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
         return nothing
     end
     if nrow(df_tmp) > 1
-        error("Catastropic error! We do not expect the same file (\"$fname\") to be in the database multiple times!")
+        error(
+            "Catastropic error! We do not expect the same file (\"$fname\") to be in the database multiple times!",
+        )
     end
     res = execute(
         conn,
@@ -223,7 +240,14 @@ function upload_genotype_vcf!(
     reference_genome_id = let
         df_reference_genome = query(
             conn,
-            [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome])],
+            [
+                Filter(
+                    conn,
+                    table = "reference_genomes",
+                    field = "file_path",
+                    filter_in = [fname_reference_genome],
+                ),
+            ],
         )
         if nrow(df_reference_genome) == 0
             throw(
@@ -365,7 +389,14 @@ function upload_genomes!(
     reference_genome_id = let
         df_reference_genome = query(
             conn,
-            [Filter(conn, table = "reference_genomes", field = "file_path", filter_in = [fname_reference_genome])],
+            [
+                Filter(
+                    conn,
+                    table = "reference_genomes",
+                    field = "file_path",
+                    filter_in = [fname_reference_genome],
+                ),
+            ],
         )
         if nrow(df_reference_genome) == 0
             error(

@@ -75,7 +75,12 @@ true
 julia> close(conn);
 ```
 """
-function upload_fit!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
+function upload_fit!(
+    conn::LibPQ.Connection;
+    fname::String,
+    name::String,
+    notes::String,
+)::Nothing
     # conn = dbconnect(); fname = string(pwd(), "/simulated_fit-", Dates.now(), ".jld2"); genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> simulate_phenomes; simulate_fit(genomes, phenomes, fname_fit_jld2=fname); name = replace(fname, ".tsv" => ""); notes = "simulated fit";
     check(Fit, fname = fname)
     if !isabspath(fname)

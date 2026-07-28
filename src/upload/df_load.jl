@@ -63,7 +63,11 @@ function load_trial_df(fname::String; missing_strings::Vector{String} = String[]
             trials = GenomicBreedingIO.readdelimited(Trials, fname = fname, sep = "\t")
             return GenomicBreedingCore.tabularise(trials)
         catch
-            df = CSV.read(fname, DataFrame, missingstring = ["missing", "NA", "na", "N/A", "n/a", ""]) # same as the missing strings in `GenomicBreedingIO.readdelimited(Trials, ...)`
+            df = CSV.read(
+                fname,
+                DataFrame,
+                missingstring = ["missing", "NA", "na", "N/A", "n/a", ""],
+            ) # same as the missing strings in `GenomicBreedingIO.readdelimited(Trials, ...)`
             try
                 rename!(df, "#years" => "years")
             catch
@@ -144,7 +148,10 @@ true
 """
 function extract_traits(df::DataFrame; verbose::Bool = false)::Vector{String}
     trial_columns = sort(
-        filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))),
+        filter(
+            x -> isnothing(match(Regex("phenotypes|traits"), x)),
+            String.(string.(collect(fieldnames(Trials)))),
+        ),
     )
     additional_columns = [
         "dates",
@@ -162,7 +169,10 @@ function extract_traits(df::DataFrame; verbose::Bool = false)::Vector{String}
     try
         check_illegal_strings(String.(trait_names))
     catch e
-        new_error = join(["Illegal string/s in the list of \"$trait_names\"!\n", sprint(showerror, e)])
+        new_error = join([
+            "Illegal string/s in the list of \"$trait_names\"!\n",
+            sprint(showerror, e),
+        ])
         error(new_error)
     end
     for trait in trait_names
@@ -198,7 +208,9 @@ function extract_traits(df::DataFrame; verbose::Bool = false)::Vector{String}
         )
     end
     if verbose
-        println("Found $(length(trait_names)) traits: [\"$(join(trait_names, "\", \""))\"].")
+        println(
+            "Found $(length(trait_names)) traits: [\"$(join(trait_names, "\", \""))\"].",
+        )
     end
     String.(trait_names)
 end
@@ -334,7 +346,10 @@ function extract_environment_variables(df::DataFrame; verbose::Bool = false)::Ve
     try
         check_illegal_strings(String.(env_names))
     catch e
-        new_error = join(["Illegal string/s in the list of \"$env_names\"!\n", sprint(showerror, e)])
+        new_error = join([
+            "Illegal string/s in the list of \"$env_names\"!\n",
+            sprint(showerror, e),
+        ])
         error(new_error)
     end
     for env in env_names
@@ -360,7 +375,9 @@ function extract_environment_variables(df::DataFrame; verbose::Bool = false)::Ve
     end
     if length(env_names) < 1
         env_names = setdiff(names(df), id_cols)
-        error("Found $(length(env_names)) candidate envs but were all non-numeric: [\"$(join(env_names, "\", \""))\"].")
+        error(
+            "Found $(length(env_names)) candidate envs but were all non-numeric: [\"$(join(env_names, "\", \""))\"].",
+        )
     end
     if verbose
         println("Found $(length(env_names)) envs: [\"$(join(env_names, "\", \""))\"].")

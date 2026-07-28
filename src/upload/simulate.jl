@@ -323,7 +323,11 @@ function simulate_trials(
         sparsity = sparsity,
         verbose = verbose,
     )
-    GenomicBreedingIO.writedelimited(trials, fname = fname_trials_tsv, overwrite = overwrite)
+    GenomicBreedingIO.writedelimited(
+        trials,
+        fname = fname_trials_tsv,
+        overwrite = overwrite,
+    )
     trials
 end
 
@@ -430,7 +434,10 @@ function simulate_environments(
             d = Date(x, dateformat"yyyy-mm-dd")
             append!(
                 measurement_dates,
-                [String("$x") for x in collect(d:Day(1):(d+Day(n_measurements_in_between_phenotypings)))],
+                [
+                    String("$x") for
+                    x in collect(d:Day(1):(d+Day(n_measurements_in_between_phenotypings)))
+                ],
             )
         end
     else
@@ -438,7 +445,8 @@ function simulate_environments(
             # i = 2
             d_ini = Date(measurements[i-1], dateformat"yyyy-mm-dd")
             d_fin = Date(measurements[i], dateformat"yyyy-mm-dd")
-            d_step = Day(ceil((d_fin - d_ini) / Day(n_measurements_in_between_phenotypings)))
+            d_step =
+                Day(ceil((d_fin - d_ini) / Day(n_measurements_in_between_phenotypings)))
             append!(measurement_dates, [String("$x") for x in collect(d_ini:d_step:d_fin)])
         end
     end
@@ -468,7 +476,8 @@ function simulate_environments(
     df_environments = DataFrame()
     for j = 1:length(existing_id_columns)
         # j = 1
-        df_environments[!, existing_id_columns[j]] = [String(x[j]) for x in ids_concat_split]
+        df_environments[!, existing_id_columns[j]] =
+            [String(x[j]) for x in ids_concat_split]
     end
     # Simulate roughly environment data
     environment_variables = Dict(
@@ -479,7 +488,10 @@ function simulate_environments(
         "humidity_perc_per_day" => collect(15.0:100.0),
     )
     n_missing = Int64(round(sparsity * nrow(df_environments)))
-    pb = ProgressMeter.Progress(length(environment_variables), desc = "Simulation environmental data...")
+    pb = ProgressMeter.Progress(
+        length(environment_variables),
+        desc = "Simulation environmental data...",
+    )
     for (k, v) in environment_variables
         # k = "rainfall_mm_per_day"; v = environment_variables[k]
         y::Vector{Union{Missing,Float64}} = rand(v, nrow(df_environments))
@@ -567,7 +579,11 @@ function simulate_phenomes(
     end
     phenomes = extractphenomes(trials)
     # tabularise(phenomes)
-    GenomicBreedingIO.writejld2(phenomes, fname = fname_phenomes_jld2, overwrite = overwrite)
+    GenomicBreedingIO.writejld2(
+        phenomes,
+        fname = fname_phenomes_jld2,
+        overwrite = overwrite,
+    )
     phenomes
 end
 
@@ -645,7 +661,9 @@ function simulate_fit(
 )::Fit
     # genomes = simulate_genomes(); trials = simulate_trials(genomes); phenomes = simulate_phenomes(trials); fname_fit_jld2::String = "simulated_fit.jld2"; overwrite = true; genomes = genomes; phenomes = sim_phenomes["phenomes"]
     if genomes.entries != phenomes.entries
-        error("The Genomes and Phenomes are not compatible, i.e. the entries do not align perfectly!")
+        error(
+            "The Genomes and Phenomes are not compatible, i.e. the entries do not align perfectly!",
+        )
     end
     X = genomes.allele_frequencies
     X[ismissing.(X)] .= 0.0

@@ -222,14 +222,21 @@ struct Filter
             else
                 tmp = extract_ids(conn, names = filter_in, table = metatable).id
                 if length(tmp) == 0
-                    error("No matches for \"$(join(filter_in, "\", \""))\" in \"$metatable\" table!")
+                    error(
+                        "No matches for \"$(join(filter_in, "\", \""))\" in \"$metatable\" table!",
+                    )
                 end
                 tmp
             end
             filter_like = if isnothing(filter_like)
                 nothing
             else
-                tmp = extract_ids(conn, names = [filter_like], table = metatable, is_like = true).id
+                tmp = extract_ids(
+                    conn,
+                    names = [filter_like],
+                    table = metatable,
+                    is_like = true,
+                ).id
                 if length(tmp) == 0
                     error("No matches for \"%$filter_like%\" in \"$metatable\" table!")
                 end
@@ -503,7 +510,10 @@ true
 julia> close(conn);
 ```
 """
-function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{Vector{String},Vector{String}}
+function concat_filters(
+    filters::Vector{Filter};
+    verbose::Bool = false,
+)::Tuple{Vector{String},Vector{String}}
     sql = String[]
     par = String[]
     pb = ProgressMeter.Progress(length(filters), desc = "Concatenating the filters...")

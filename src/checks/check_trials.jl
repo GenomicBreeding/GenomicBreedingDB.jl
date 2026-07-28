@@ -55,7 +55,10 @@ true
 """
 function check_trials(df::DataFrame)::Nothing
     required_columns = sort(
-        filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))),
+        filter(
+            x -> isnothing(match(Regex("phenotypes|traits"), x)),
+            String.(string.(collect(fieldnames(Trials)))),
+        ),
     )
     missing_columns = filter(x -> x∉names(df), required_columns)
     if length(missing_columns) > 0
@@ -68,17 +71,22 @@ function check_trials(df::DataFrame)::Nothing
             try
                 check_illegal_strings(String.(unique(df[!, x])))
             catch e
-                new_error = join(["Illegal string in the \"$x\" column!\n", sprint(showerror, e)])
+                new_error =
+                    join(["Illegal string in the \"$x\" column!\n", sprint(showerror, e)])
                 error(new_error)
             end
         else
             push!(numeric_columns, x)
         end
     end
-    unexpected_numeric_columns =
-        filter(x -> x∉["years", "measurements", "replications", "blocks", "rows", "cols"], numeric_columns)
+    unexpected_numeric_columns = filter(
+        x -> x∉["years", "measurements", "replications", "blocks", "rows", "cols"],
+        numeric_columns,
+    )
     if length(unexpected_numeric_columns) > 0
-        error("Unexpected numeric column/s: [\"$(join(unexpected_numeric_columns, "\", \""))\"]")
+        error(
+            "Unexpected numeric column/s: [\"$(join(unexpected_numeric_columns, "\", \""))\"]",
+        )
     end
     nothing
 end

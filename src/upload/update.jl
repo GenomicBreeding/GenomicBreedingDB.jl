@@ -110,7 +110,13 @@ function update_table!(
     table = filters[1].table
     filter_cat, par = concat_filters(filters, verbose = verbose) # checks for illegal strings via early check(...) calls
     check_illegal_strings([table, destination_field]) # redundant but explicit checks for illegal strings before string interpolation below just to be extra safe
-    sql = join(vcat(String["UPDATE $table SET $(destination_field) = \$$(length(par)+1) WHERE 1=1"], filter_cat), " ")
+    sql = join(
+        vcat(
+            String["UPDATE $table SET $(destination_field) = \$$(length(par)+1) WHERE 1=1"],
+            filter_cat,
+        ),
+        " ",
+    )
     execute(conn, "BEGIN")
     res = execute(conn, sql, vcat(par, value))
     if LibPQ.num_affected_rows(res) != 1
@@ -286,7 +292,10 @@ function update_table_field_by_name!(
         nrow(df_tmp),
         desc = "Updating $(nrow(df_tmp)) values of the \"$table_destination_field\" field in the \"$table\" table at ...",
     )
-    bool = execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |> DataFrame |> x -> x.exists[1]
+    bool =
+        execute(conn, "SELECT EXISTS ( SELECT 1 FROM $table)") |>
+        DataFrame |>
+        x -> x.exists[1]
     if !bool
         error(
             "The \"$table\" table is empty! Please populate the \"name\" field first before updating the other fields using the \"name\" field.",
@@ -294,14 +303,23 @@ function update_table_field_by_name!(
     end # Making this explicit here, although this error is covered in update_table!(...), because I like it to be explicit here in this specific-use-case function...
     for i = 1:nrow(df_tmp)
         # i = 1
-        value = if isa(df_tmp[i, df_source_col], Date) || isa(df_tmp[i, df_source_col], DateTime)
-            String(string(df_tmp[i, df_source_col]))
-        else
-            df_tmp[i, df_source_col]
-        end
+        value =
+            if isa(df_tmp[i, df_source_col], Date) ||
+               isa(df_tmp[i, df_source_col], DateTime)
+                String(string(df_tmp[i, df_source_col]))
+            else
+                df_tmp[i, df_source_col]
+            end
         update_table!(
             conn,
-            filters = [Filter(conn, table = table, field = "name", filter_in = String[df_tmp[i, df_name_col]])],
+            filters = [
+                Filter(
+                    conn,
+                    table = table,
+                    field = "name",
+                    filter_in = String[df_tmp[i, df_name_col]],
+                ),
+            ],
             destination_field = table_destination_field,
             value = value,
             verbose = verbose,

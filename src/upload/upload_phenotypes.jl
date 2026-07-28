@@ -100,9 +100,22 @@ true
 julia> close(conn);
 ```
 """
-function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::Vector{String}, verbose::Bool = false)
+function insert_phenotype_data!(
+    conn::LibPQ.Connection;
+    df::DataFrame,
+    traits::Vector{String},
+    verbose::Bool = false,
+)
     check(conn, "phenotype_data")
-    tables = ["entries", "experiments", "sites", "treatments", "layouts", "measurements", "traits"]
+    tables = [
+        "entries",
+        "experiments",
+        "sites",
+        "treatments",
+        "layouts",
+        "measurements",
+        "traits",
+    ]
     names_in_db::Dict{String,DataFrame} = Dict()
     errors = String[]
     for table in tables
@@ -121,18 +134,24 @@ function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::V
     if length(errors) > 0
         error(join(string.("\n\t- ", errors)))
     end
-    pb = ProgressMeter.Progress(nrow(df)*length(traits), desc = "Importing phenotype data...")
+    pb = ProgressMeter.Progress(
+        nrow(df)*length(traits),
+        desc = "Importing phenotype data...",
+    )
     execute(conn, "BEGIN")
     try
         for i = 1:nrow(df)
             # i = 7
             # println(i)
             entry_id = filter(x->x.name==df.entries[i], names_in_db["entries"]).id[1]
-            experiment_id = filter(x->x.name==df.experiments[i], names_in_db["experiments"]).id[1]
+            experiment_id =
+                filter(x->x.name==df.experiments[i], names_in_db["experiments"]).id[1]
             site_id = filter(x->x.name==df.sites[i], names_in_db["sites"]).id[1]
-            treatment_id = filter(x->x.name==df.treatments[i], names_in_db["treatments"]).id[1]
+            treatment_id =
+                filter(x->x.name==df.treatments[i], names_in_db["treatments"]).id[1]
             layout_id = filter(x->x.name==df.layouts[i], names_in_db["layouts"]).id[1]
-            measurement_id = filter(x->x.name==df.measurements[i], names_in_db["measurements"]).id[1]
+            measurement_id =
+                filter(x->x.name==df.measurements[i], names_in_db["measurements"]).id[1]
             for trait in traits
                 # trait = traits[2]
                 # println(trait)
@@ -165,7 +184,16 @@ function insert_phenotype_data!(conn::LibPQ.Connection; df::DataFrame, traits::V
                         trait_id
                     ) DO NOTHING
                     """,
-                    [entry_id, experiment_id, site_id, treatment_id, layout_id, measurement_id, trait_id, y],
+                    [
+                        entry_id,
+                        experiment_id,
+                        site_id,
+                        treatment_id,
+                        layout_id,
+                        measurement_id,
+                        trait_id,
+                        y,
+                    ],
                 )
                 verbose ? ProgressMeter.next!(pb) : nothing
             end
@@ -341,8 +369,18 @@ function upload_trial_data!(
     df = load_trial_df(fname, missing_strings = missing_strings)
     # Make sure we have all the required columns
     check_trials(df)
-    check(df, "entry_types", ["cultivar", "population", "individual", "family"], proposed_name = entry_type)
-    check(df, "population_types", ["cultivar", "population", "individual", "family"], proposed_name = population_type)
+    check(
+        df,
+        "entry_types",
+        ["cultivar", "population", "individual", "family"],
+        proposed_name = entry_type,
+    )
+    check(
+        df,
+        "population_types",
+        ["cultivar", "population", "individual", "family"],
+        proposed_name = population_type,
+    )
     check(
         df,
         "relationship_types",
@@ -362,12 +400,36 @@ function upload_trial_data!(
     insert_layouts!(conn, df = df)
     # Insert the names if they do not yet exist
     insert_names!(conn, df = df, table = "species", df_col = "species", verbose = verbose)
-    insert_names!(conn, df = df, table = "experiments", df_col = "experiments", verbose = verbose)
-    insert_names!(conn, df = df, table = "treatments", df_col = "treatments", verbose = verbose)
+    insert_names!(
+        conn,
+        df = df,
+        table = "experiments",
+        df_col = "experiments",
+        verbose = verbose,
+    )
+    insert_names!(
+        conn,
+        df = df,
+        table = "treatments",
+        df_col = "treatments",
+        verbose = verbose,
+    )
     insert_names!(conn, df = df, table = "sites", df_col = "sites", verbose = verbose)
-    insert_names!(conn, df = df, table = "measurements", df_col = "measurements", verbose = verbose)
+    insert_names!(
+        conn,
+        df = df,
+        table = "measurements",
+        df_col = "measurements",
+        verbose = verbose,
+    )
     insert_names!(conn, df = df, table = "entries", df_col = "entries", verbose = verbose)
-    insert_names!(conn, df = df, table = "entries", df_col = "populations", verbose = verbose)
+    insert_names!(
+        conn,
+        df = df,
+        table = "entries",
+        df_col = "populations",
+        verbose = verbose,
+    )
     # Update the measurement dates
     update_table_field_by_name!(
         conn,
@@ -417,7 +479,13 @@ function upload_trial_data!(
     insert_entry_relationships!(conn, df = df, verbose = verbose)
     # Extract the traits, i.e. numeric fields which are not layout or dates fields
     traits = extract_traits(df, verbose = verbose)
-    insert_names!(conn, df = DataFrame(traits = traits), table = "traits", df_col = "traits", verbose = verbose)
+    insert_names!(
+        conn,
+        df = DataFrame(traits = traits),
+        table = "traits",
+        df_col = "traits",
+        verbose = verbose,
+    )
     # Finally, insert/update the phenotype data using the combinations of the ids each entry-experiment-site-treatment-layout-measurement combinations
     insert_phenotype_data!(conn, df = df, traits = traits, verbose = verbose)
     nothing
@@ -498,7 +566,12 @@ true
 julia> close(conn);
 ```
 """
-function upload_phenomes!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
+function upload_phenomes!(
+    conn::LibPQ.Connection;
+    fname::String,
+    name::String,
+    notes::String,
+)::Nothing
     # conn = dbconnect(); fname = string(pwd(), "/simulated_phenomes-", Dates.now(), ".jld2"); simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname); name = replace(fname, ".tsv" => ""); notes = "simulated phenomes";
     check(Phenomes, fname = fname)
     if !isabspath(fname)

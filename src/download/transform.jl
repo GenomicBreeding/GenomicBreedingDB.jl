@@ -97,7 +97,13 @@ function unstack_data_table(df::DataFrame)::DataFrame
     # ]
     # df = query(conn, table=table, filters=filters)
     check(df)
-    select!(df, Not([:id, :created_at, :updated_at]))
+    for f in [:id, :created_at, :updated_at]
+        try
+            select!(df, Not(f))
+        catch
+            nothing
+        end
+    end
     rowkeys = filter(x -> x∉["trait", "environmental_variable", "value"], names(df))
     colkey = filter(x -> x ∈ ["trait", "environmental_variable"], names(df))[1]
     unstack(df, rowkeys, colkey, "value")

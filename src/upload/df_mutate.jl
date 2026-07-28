@@ -65,17 +65,23 @@ function add_col!(df::DataFrame; col::String, value::Union{Nothing,String})::Not
     # df = CSV.read(simulate_trial(), DataFrame); col = "species"; value = "Lolium multiflorum"
     if col ∈ names(df)
         if !isnothing(value)
-            @warn("Using \"$col\" col in the dataframe instead of the supplied \"$col = $value\".")
+            @warn(
+                "Using \"$col\" col in the dataframe instead of the supplied \"$col = $value\"."
+            )
         end
     else
         if isnothing(value)
-            error("Please define the value to be inserted into the \"$col\" column of the dataframe.")
+            error(
+                "Please define the value to be inserted into the \"$col\" column of the dataframe.",
+            )
         end
         try
             check_illegal_strings([col, value])
         catch e
-            new_error =
-                join(["Illegal string/s in new column name [$col] and/or its value [$value]!\n", sprint(showerror, e)])
+            new_error = join([
+                "Illegal string/s in new column name [$col] and/or its value [$value]!\n",
+                sprint(showerror, e),
+            ])
             error(new_error)
         end
         df[!, col] .= value
@@ -160,7 +166,9 @@ function parse_layouts!(df::DataFrame; is_trial::Bool = true)::Nothing
         df[!, f] = try
             df[!, f] |>
             x ->
-                [split(xi, "_")[end] for xi in x] |> x -> [split(xi, "-")[end] for xi in x] |> x -> [parse(Int64, xi) for xi in x]
+                [split(xi, "_")[end] for xi in x] |>
+                x ->
+                    [split(xi, "-")[end] for xi in x] |> x -> [parse(Int64, xi) for xi in x]
         catch
             error("Cannot parse $(f)!")
         end
@@ -247,7 +255,10 @@ julia> df_1.dates == df_2.dates
 true
 ```
 """
-function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,Dict{String,String}} = nothing)::Nothing
+function add_measurement_dates!(
+    df::DataFrame;
+    measurement_dates::Union{Nothing,Dict{String,String}} = nothing,
+)::Nothing
     # df = CSV.read(simulate_trial(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
     # df = CSV.read(simulate_trial(), DataFrame); df[!, "dates"] = String.(df.measurements); measurement_dates::Union{Nothing, Dict{String, String}} = nothing
     # df = CSV.read(simulate_trial(), DataFrame); measurement_dates::Union{Nothing, Dict{String, String}} = Dict(); [measurement_dates[x] = x for x in unique(df.measurements)]
@@ -278,7 +289,8 @@ function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,
                     # m = measurements[1]
                     check_date(m)
                     idx = findall(df.measurements .== m)
-                    length(idx) == 0 ? error("Measurement \"$m\" not found in the dataframe!") : nothing
+                    length(idx) == 0 ?
+                    error("Measurement \"$m\" not found in the dataframe!") : nothing
                     df.dates[idx] .= Date(m, dateformat"yyyy-mm-dd")
                 end
             else
@@ -298,7 +310,8 @@ function add_measurement_dates!(df::DataFrame; measurement_dates::Union{Nothing,
                     check_date(v)
                     idx = findall(df.measurements .== k)
                     # println("k=$k; v=$v; length(idx)=$(length(idx))")
-                    length(idx) == 0 ? error("Measurement \"$k\" not found in the dataframe!") : nothing
+                    length(idx) == 0 ?
+                    error("Measurement \"$k\" not found in the dataframe!") : nothing
                     df.dates[idx] .= Date(v, dateformat"yyyy-mm-dd")
                 end
             end

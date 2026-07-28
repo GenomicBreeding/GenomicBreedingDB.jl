@@ -96,10 +96,12 @@ function insert_names!(
     try
         check_illegal_strings(String.(unique(df[!, df_col])))
     catch e
-        new_error = join(["Illegal string in the \"$df_col\" column!\n", sprint(showerror, e)])
+        new_error =
+            join(["Illegal string in the \"$df_col\" column!\n", sprint(showerror, e)])
         error(new_error)
     end
-    uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
+    uploaded_names =
+        select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
     counter = 0
     pb = ProgressMeter.Progress(
         length(uploaded_names),
@@ -207,7 +209,12 @@ julia> n >= m
 true
 ```
 """
-function insert_layouts!(conn::LibPQ.Connection; df::DataFrame, is_trial::Bool = true, verbose::Bool = false)::Nothing
+function insert_layouts!(
+    conn::LibPQ.Connection;
+    df::DataFrame,
+    is_trial::Bool = true,
+    verbose::Bool = false,
+)::Nothing
     # conn::LibPQ.Connection = dbconnect()
     # df = load_trial_df(simulate_trial())
     # verbose::Bool = true
@@ -244,7 +251,9 @@ function insert_layouts!(conn::LibPQ.Connection; df::DataFrame, is_trial::Bool =
         end
         if verbose
             ProgressMeter.finish!(pb)
-            println("Inserted $counter relationships between entries in the \"$table\" table.")
+            println(
+                "Inserted $counter relationships between entries in the \"$table\" table.",
+            )
         end
         execute(conn, "COMMIT")
     catch e
@@ -338,7 +347,11 @@ julia> nrow(df_before) < nrow(df_after)
 true
 ```
 """
-function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verbose::Bool = false)::Nothing
+function insert_entry_relationships!(
+    conn::LibPQ.Connection;
+    df::DataFrame,
+    verbose::Bool = false,
+)::Nothing
     check(conn, "entry_relationships")
     expected_columns = ["entries", "populations", "relationship_types"]
     if sum([x∉names(df) for x in expected_columns]) > 0
@@ -352,7 +365,9 @@ function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verb
         end
     end
     entry_population_relationship =
-        string.(df.entries, "|||", df.populations, "|||", df.relationship_types) |> unique |> x -> split.(x, "|||")
+        string.(df.entries, "|||", df.populations, "|||", df.relationship_types) |>
+        unique |>
+        x -> split.(x, "|||")
     counter = 0
     pb = ProgressMeter.Progress(
         length(entry_population_relationship),
@@ -365,13 +380,23 @@ function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verb
             child = entry_population_relationship[i][1]
             parent = entry_population_relationship[i][2]
             rel_type = entry_population_relationship[i][3]
-            if rel_type∉["member_of", "clone_of", "parent_is", "maternal_parent_is", "paternal_parent_is"]
+            if rel_type∉[
+                "member_of",
+                "clone_of",
+                "parent_is",
+                "maternal_parent_is",
+                "paternal_parent_is",
+            ]
                 error("Invalid relationship type: \"$rel_type\".")
             end
             child_id =
-                execute(conn, "SELECT id FROM entries WHERE name = \$1", [child]) |> DataFrame |> x -> first(x.id)
+                execute(conn, "SELECT id FROM entries WHERE name = \$1", [child]) |>
+                DataFrame |>
+                x -> first(x.id)
             parent_id =
-                execute(conn, "SELECT id FROM entries WHERE name = \$1", [parent]) |> DataFrame |> x -> first(x.id)
+                execute(conn, "SELECT id FROM entries WHERE name = \$1", [parent]) |>
+                DataFrame |>
+                x -> first(x.id)
             execute(
                 conn,
                 """
@@ -391,7 +416,9 @@ function insert_entry_relationships!(conn::LibPQ.Connection; df::DataFrame, verb
         end
         if verbose
             ProgressMeter.finish!(pb)
-            println("Inserted $counter relationships between entries in the \"entry_relationships\" table.")
+            println(
+                "Inserted $counter relationships between entries in the \"entry_relationships\" table.",
+            )
         end
         execute(conn, "COMMIT")
     catch e

@@ -325,7 +325,11 @@ function upload(
         end,
         # Environmental data
         "environmental_data" => try
-            !isnothing(extract_environment_variables(load_environments_df(fname, missing_strings = missing_strings)))
+            !isnothing(
+                extract_environment_variables(
+                    load_environments_df(fname, missing_strings = missing_strings),
+                ),
+            )
         catch
             false
         end,
@@ -354,7 +358,9 @@ function upload(
     )
     filter!(x -> x.second, data_type_checks)
     if length(data_type_checks) == 0
-        error("Unable to determine the type of \"$fname\"! Please refer to #link to file formats..(TODO...)")
+        error(
+            "Unable to determine the type of \"$fname\"! Please refer to #link to file formats..(TODO...)",
+        )
     end
     if sum(values(data_type_checks)) > 1
         error(
@@ -418,7 +424,9 @@ function upload(
     elseif data_type == "Fit"
         upload_fit!(conn, fname = fname, name = name, notes = notes)
     else
-        error("Totally unexpected error as we expect the previous data type checks to catch all possible errors!")
+        error(
+            "Totally unexpected error as we expect the previous data type checks to catch all possible errors!",
+        )
     end
     close(conn)
     if verbose

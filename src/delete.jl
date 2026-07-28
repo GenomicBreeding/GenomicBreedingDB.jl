@@ -105,7 +105,8 @@ function delete_names!(
             "The \"$df_col\" column does not exist in the dataframe (Existing columns: [\"$(join(names(df), "\", \""))\"])!",
         )
     end
-    uploaded_names = select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
+    uploaded_names =
+        select(df, [Symbol(df_col)])[:, 1] |> x -> String.(string.(x)) |> sort |> unique
     check_illegal_strings([table])
     check_illegal_strings(uploaded_names)
     counter = 0
@@ -117,7 +118,9 @@ function delete_names!(
     try
         for x in uploaded_names
             # x = uploaded_names[1]
-            filter_cat, par = concat_filters([Filter(conn, table = table, field = "name", filter_in = [x])])
+            filter_cat, par = concat_filters([
+                Filter(conn, table = table, field = "name", filter_in = [x]),
+            ])
             sql = join(vcat(["DELETE FROM $table WHERE 1 = 1"], filter_cat), " ")
             execute(conn, sql, par)
             counter += 1
