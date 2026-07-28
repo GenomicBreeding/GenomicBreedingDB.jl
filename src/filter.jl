@@ -427,20 +427,20 @@ function Base.:(==)(x::Filter, y::Filter)::Bool
     true
 end
 
-
 """
     concat_filters(
         filters::Vector{Filter};
         verbose::Bool=false,
     )::Tuple{Vector{String},Vector{String}}
 
-Convert a collection of `Filter` objects into parameterised SQL filter clauses
-and their associated query parameters.
+Convert a collection of validated `Filter` objects into parameterised SQL filter
+clauses and their associated query parameters.
 
-The function translates validated `Filter` instances into SQL fragments suitable
-for inclusion in a `WHERE` clause. SQL expressions and query parameters are
-generated simultaneously, ensuring that placeholder numbering remains consistent
-across multiple filters.
+The function translates `Filter` instances into SQL fragments suitable for
+inclusion in a `WHERE` clause. Because `Filter` objects perform schema
+validation, field validation, type checking, identifier resolution, and input
+sanitisation during construction, this function can safely focus on generating
+parameterised SQL expressions and their corresponding query parameters.
 
 The resulting SQL fragments and parameter vector can be incorporated directly
 into parameterised SQL queries, update statements, and delete operations.
@@ -470,8 +470,16 @@ applying string-based filtering operations.
 
 # Notes
 
-- SQL fragments are generated using parameter placeholders (`$1`, `$2`, ...)
+- `Filter` objects are expected to have already been validated before reaching
+  this function.
+- Table names, field names, filter types, and filter values have already been
+  checked during `Filter` construction.
+- Foreign-key name resolution and identifier lookup have already been performed
+  by `Filter` where applicable.
+- SQL fragments are generated using parameter placeholders (`\$1`, `\$2`, ...)
   rather than embedding values directly into query strings.
+- This separation between SQL text and parameter values helps prevent SQL
+  injection attacks.
 - The function supports the following filter types:
   - `like` → `ILIKE`
   - `in` → `IN (...)`
