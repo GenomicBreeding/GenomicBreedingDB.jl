@@ -66,6 +66,76 @@ function extract_all_tables(conn::LibPQ.Connection)::DataFrame
 end
 
 """
+    extract_table_fields(
+        conn::LibPQ.Connection,
+        table::String,
+    )::Vector{String}
+
+Extract the names of all fields (columns) from a database table.
+
+The function validates that the specified table exists and then queries the
+database schema to retrieve the names of all columns defined for that table.
+Field names are returned in their original ordinal order as defined within the
+database.
+
+This function is useful for schema inspection, validation, dynamic query
+construction, and programmatically determining available fields in a table.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table whose fields are to be retrieved.
+
+# Returns
+
+- `Vector{String}`: Column names in the order they were defined within the
+  table schema.
+
+# Throws
+
+- `ErrorException`: If the database connection has been closed.
+- `ErrorException`: If the specified table does not exist.
+- Any database exception raised while querying schema metadata.
+
+# Notes
+
+- Table validation is performed using `check(conn, table)`.
+- Column metadata are retrieved from PostgreSQL's
+  `INFORMATION_SCHEMA.COLUMNS` view.
+- Fields are returned according to their `ORDINAL_POSITION`.
+- The function returns only field names and does not return data types,
+  constraints, or other schema metadata.
+- The returned field names can be used with functions such as `query`,
+  `Filter`, and `update_table!`.
+- The function performs a read-only operation and does not modify the database.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> extract_table_fields(conn, "entries") |> length >= 0
+true
+
+julia> close(conn);
+```
+"""
+function extract_table_fields(conn::LibPQ.Connection, table::String)::Vector{String}
+    check(conn, table)
+    df = execute(
+        conn,
+        """
+        SELECT column_name 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = \$1
+        ORDER BY ORDINAL_POSITION;
+        """,
+        [table]
+    ) |> DataFrame
+    String.(df.column_name)
+end
+
+"""
     extract_table_contents(
         conn::LibPQ.Connection,
         table::String,

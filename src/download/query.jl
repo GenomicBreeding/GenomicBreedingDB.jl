@@ -16,7 +16,11 @@ foreign-key identifier fields automatically translated into their corresponding
 human-readable names wherever possible.
 
 By default, all columns are returned. A subset of columns may be requested using
-the `output_fields` argument.
+the `output_fields` argument. For `phenotype_data` and `environment_data`
+tables, user-facing field names are automatically converted into their
+corresponding database foreign-key fields before query execution, allowing users
+to request columns such as `entry`, `site`, `trait`, or
+`environmental_variable` directly.
 
 Missing foreign-key values are preserved as missing values in the output and are
 excluded from identifier lookups, allowing queries to operate correctly on
@@ -29,8 +33,8 @@ tables containing incomplete relationships.
   criteria. All filters must reference the same database table.
 - `output_fields::Vector{String}=["*"]`: Fields to return in the query result.
   Use `["*"]` to return all fields.
-- `verbose::Bool=false`: If `true`, display progress information whilst
-  processing query results.
+- `verbose::Bool=false`: If `true`, display progress and status information
+  during query construction, execution, and result processing.
 
 # Returns
 
@@ -40,6 +44,8 @@ tables containing incomplete relationships.
 
 - `ErrorException`: If the database connection has been closed.
 - `ErrorException`: If the supplied filters fail validation.
+- `ErrorException`: If any supplied output field contains illegal characters or
+  strings.
 - `ErrorException`: If an inferred lookup table name contains illegal
   characters.
 - Any database exception raised whilst constructing or executing the query.
@@ -48,12 +54,22 @@ tables containing incomplete relationships.
 
 - Connection validation is performed using `check(conn)`.
 - Filter validation is performed using `check(filters)`.
+- Requested output fields are validated using `check_illegal_strings`.
 - SQL clauses and query parameters are generated using `concat_filters`.
 - All filtering is performed using parameterised SQL statements.
 - Multiple filters are combined using logical `AND` conditions.
 - By default, all columns are returned using `SELECT *`.
-- Foreign-key fields ending in `_id` are automatically converted into the
-  corresponding entity names.
+- When querying `phenotype_data` or `environment_data`, requested fields are
+  automatically translated into the underlying database schema:
+  - `id`
+  - `value`
+  - `created_at`
+  - `updated_at`
+  are included directly.
+- All other requested fields are translated to their corresponding foreign-key
+  columns by appending `_id` before query execution.
+- Foreign-key fields ending in `_id` are automatically resolved back into
+  human-readable names after query execution.
 - Identifier translation is performed by querying the corresponding lookup
   tables:
   - `entry_id` → `entries`
@@ -61,10 +77,11 @@ tables containing incomplete relationships.
   - `<name>_id` → `<name>s`
 - Missing identifier values are excluded from lookup queries and remain missing
   in the returned `DataFrame`.
-- Converted fields are renamed by removing the `_id` suffix.
+- Converted columns are renamed by removing the `_id` suffix.
 - The resulting `DataFrame` contains human-readable values rather than internal
   database identifiers wherever possible.
-- When `verbose=true`, progress information is displayed while identifier fields
+- When `verbose=true`, status messages are displayed during query construction
+  and execution, and progress information is displayed while identifier fields
   are being resolved.
 
 # Examples
@@ -114,6 +131,11 @@ true
 julia> df == query(conn, unique(filters))
 true
 
+julia> df_new = query(conn, filters, output_fields=["experiment", "treatment", "environment_variable", "value"]);
+
+julia> select(df, ["experiment", "treatment", "environment_variable", "value"]) == df_new
+true
+
 julia> close(conn);
 ```
 """
@@ -135,8 +157,25 @@ function query(
     check(conn)
     check(filters)
     table = filters[1].table
+    output_fields != ["*"] ? check_illegal_strings(output_fields) : nothing
+    output_fields = if (output_fields != ["*"]) && ((table == "phenotype_data") || (table == "environment_data"))
+        tmp = deepcopy(output_fields)
+        for i = 1:length(output_fields)
+            # i = 1
+            f = output_fields[i]
+            if (f == "id") || (f == "value") || (f == "created_at") || (f == "updated_at")
+                continue
+            end
+            tmp[i] = string(f, "_id")
+        end
+        tmp
+    else
+        output_fields
+    end
+    verbose ? println("Concatenating the filters and buidling the query statement...") : nothing
     filter_cat, par = concat_filters(filters, verbose = verbose)
     sql = join(vcat(String["SELECT $(join(output_fields, ',')) FROM $table WHERE 1=1"], filter_cat), " ")
+    verbose ? println("Querying the database...") : nothing
     df = execute(conn, sql, par) |> DataFrame
     pb = ProgressMeter.Progress(ncol(df), desc = "Converting *_id fields into names...")
     for f in names(df)
@@ -161,6 +200,9 @@ function query(
         rename!(df, "$(f)_id" => f)
         verbose ? ProgressMeter.next!(pb) : nothing
     end
-    verbose ? ProgressMeter.finish!(pb) : nothing
+    if verbose
+        ProgressMeter.finish!(pb)
+        println("Done!")
+    end
     df
 end

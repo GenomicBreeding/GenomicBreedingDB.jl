@@ -227,7 +227,7 @@ function upload_genotype_vcf!(
         )
         if nrow(df_reference_genome) == 0
             throw(
-                "The reference genome file \"$fname\" is not found in the database. Please check the path or use `upload_reference_genome!(...)` first!",
+                "The reference genome file \"$fname_reference_genome\" is not found in the database. Please check the path or use `upload_reference_genome!(...)` first!",
             )
         end
         df_reference_genome.id[1]
