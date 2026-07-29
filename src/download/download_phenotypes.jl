@@ -20,24 +20,25 @@
         blocks::Vector{Int64}=Int64[],
         rows::Vector{Int64}=Int64[],
         cols::Vector{Int64}=Int64[],
+        values::Tuple{Float64,Float64}=(-Inf, +Inf),
         keep_id_and_do_not_unstack::Bool=false,
         verbose::Bool=false,
     )::DataFrame
 
-Download phenotype data from the database using a flexible collection of exact
-and partial-match filters.
+Download phenotype data from the database using a flexible collection of exact,
+partial-match, and numeric-range filters.
 
-The function retrieves data from the `phenotype_data` table and automatically
-applies additional filtering using metadata stored in the related `entries` and
-`layouts` tables. Filters may be specified using exact matches (`entries`,
-`sites`, `traits`, etc.) or pattern-matching searches (`like_entries`,
-`like_sites`, `like_traits`, etc.).
+The function retrieves records from the `phenotype_data` table and augments them
+with metadata from the related `entries` and `layouts` tables. Filters may be
+specified using exact matches (`entries`, `sites`, `traits`, etc.),
+pattern-matching searches (`like_entries`, `like_sites`, `like_traits`, etc.),
+or numeric ranges (`values`).
 
-Data retrieval is performed in three stages. The function first queries the
-`phenotype_data` table, then augments and filters the result using the
-associated `entries` table, and finally incorporates information from the
-`layouts` table. The resulting dataset is optionally reshaped into a wide-format
-table suitable for downstream analysis.
+Data retrieval occurs in three stages. First, records are filtered directly from
+the `phenotype_data` table. Second, entry-level metadata filters are applied
+using the `entries` table. Third, layout-level filters are applied using the
+`layouts` table. The resulting tables are joined together and optionally
+reshaped into a wide-format phenotype matrix suitable for downstream analysis.
 
 By default, phenotype measurements are unstacked such that trait names become
 columns and each row corresponds to a unique observational unit.
@@ -52,8 +53,8 @@ columns and each row corresponds to a unique observational unit.
 - `species::Vector{String}=String[]`: Species names to match exactly.
 - `entry_types::Vector{String}=String[]`: Entry types to match exactly.
 - `traits::Vector{String}=String[]`: Trait names to match exactly.
-- `like_experiments::Vector{String}=String[]`: Experiment patterns for
-  partial matching.
+- `like_experiments::Vector{String}=String[]`: Experiment patterns for partial
+  matching.
 - `like_sites::Vector{String}=String[]`: Site patterns for partial matching.
 - `like_treatments::Vector{String}=String[]`: Treatment patterns for partial
   matching.
@@ -69,43 +70,57 @@ columns and each row corresponds to a unique observational unit.
 - `blocks::Vector{Int64}=Int64[]`: Block identifiers to match.
 - `rows::Vector{Int64}=Int64[]`: Plot-row identifiers to match.
 - `cols::Vector{Int64}=Int64[]`: Plot-column identifiers to match.
+- `values::Tuple{Float64,Float64}=(-Inf, +Inf)`: Inclusive lower and upper
+  bounds used to filter phenotype values.
 - `keep_id_and_do_not_unstack::Bool=false`: If `true`, return the long-format
-  table without reshaping.
+  table without reshaping. Main use-case is rectification of incorrect data.
 - `verbose::Bool=false`: If `true`, display progress messages throughout the
   download and processing workflow.
 
 # Returns
 
-- `DataFrame`: Phenotype data matching the supplied filters.
+- `DataFrame`: Phenotype data matching the supplied filtering criteria.
 
 # Throws
 
 - `ErrorException`: If one or more filters fail validation.
 - `ErrorException`: If a referenced table, field, or filter value is invalid.
+- `ErrorException`: If an invalid numeric range is supplied via `values`.
 - Any database exception raised during querying.
-- Any exception raised whilst reshaping or joining intermediate tables.
+- Any exception raised whilst joining or reshaping intermediate tables.
 
 # Notes
 
 - A database connection is opened automatically and closed before returning.
-- Exact-match filters are translated into `IN` clauses.
-- Partial-match filters are translated into SQL `ILIKE` clauses.
+- Exact-match filters are translated into SQL `IN` filters.
+- Partial-match filters are translated into SQL `ILIKE` filters.
+- The `values` argument is translated into a `filter_between` constraint on the
+  `phenotype_data.value` field.
+- All constructed filters are validated, type-checked, sanitised, and converted
+  into parameterised SQL statements before execution.
 - Filtering is performed using metadata from three related tables:
   - `phenotype_data`
   - `entries`
   - `layouts`
-- Filters are applied only to tables containing the corresponding fields.
-- If no phenotype-data filters are supplied, a default catch-all filter is used
-  to retrieve phenotype records.
-- Entry metadata are joined onto phenotype records using the `entry` field.
-- Layout metadata are joined onto phenotype records using the `layout` field.
+- Filters are only applied to tables containing the corresponding fields.
+- If no phenotype-data filters are supplied, a default catch-all phenotype query
+  is generated.
+- If no entry-level filters are supplied, all entries are considered.
+- If no layout-level filters are supplied, all layouts are considered.
+- Entry metadata are joined onto phenotype records via the `entry` field.
+- Layout metadata are joined onto phenotype records via the `layout` field.
+- Records lacking valid entry or layout matches are excluded during the join
+  process.
 - By default, the returned table is reshaped using `unstack_data_table`,
-  producing a wide-format phenotype matrix.
-- When `keep_id_and_do_not_unstack=true`, the long-format database representation
-  is returned unchanged.
-- The resulting DataFrame may contain columns originating from the phenotype,
-  entries, and layouts tables.
-- Progress messages describing each query stage are displayed when
+  producing a wide-format phenotype matrix with traits as columns.
+- When `keep_id_and_do_not_unstack=true`, the original long-format database
+  representation is returned without reshaping. This is primarily intended for
+  data correction workflows, where retaining the database `id` column allows
+  specific records to be identified and updated directly without constructing
+  complex filtering criteria.
+- The resulting DataFrame may contain columns originating from the
+  `phenotype_data`, `entries`, and `layouts` tables.
+- Progress messages describing each retrieval stage are displayed when
   `verbose=true`.
 
 # Examples
@@ -115,15 +130,15 @@ julia> df_all = download_phenotype_data();
 
 julia> df_exp = download_phenotype_data(experiments=[df_all.experiment[1]], like_experiments=["exp"]);
 
-julia> df_ent = download_phenotype_data(entry_types=["population"]);
+julia> df_ent = download_phenotype_data(entry_types=["family"]);
 
 julia> nrow(df_all) > nrow(df_exp)
 true
 
-julia> nrow(df_all) > nrow(df_ent)
+julia> nrow(df_all) == nrow(df_ent)
 true
 
-julia> df_ent = download_phenotype_data(entry_types=["population"], like_entry_types=["fam"]);
+julia> df_ent = download_phenotype_data(entry_types=["family"], like_entry_types=["pop"]);
 
 julia> nrow(df_ent) == 0
 true
@@ -131,6 +146,14 @@ true
 julia> df_val = download_phenotype_data(values=(5., 10.));
 
 julia> nrow(df_all) > nrow(df_val)
+true
+
+julia> df_lon = download_phenotype_data(keep_id_and_do_not_unstack=true);
+
+julia> nrow(df_all) < nrow(df_lon)
+true
+
+julia> ncol(df_all) < ncol(df_lon)
 true
 ```
 """
