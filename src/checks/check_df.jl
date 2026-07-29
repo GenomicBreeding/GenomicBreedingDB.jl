@@ -148,10 +148,9 @@ function check(df::DataFrame)::Nothing
     fields = replace.(names(df), Regex("_id\$") => "")
     missing_fields = filter(x -> x ∉ fields, expected_fields)
     okay = (
-        (length(missing_fields) == 0) || (
-            (length(missing_fields) == 1) && (missing_fields[1] == "trait") ||
-            (missing_fields[1] == "environment_variable")
-        )
+        (length(missing_fields) == 0) ||
+        ("trait" ∈ missing_fields) && (sort(missing_fields) == ["entry", "trait"]) ||
+        (missing_fields == ["environment_variable"])
     )
     if !okay
         error("Missing field/s:\n\t- $(join(missing_fields, "\n\t- "))")

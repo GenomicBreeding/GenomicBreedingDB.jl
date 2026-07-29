@@ -25,20 +25,20 @@
         verbose::Bool=false,
     )::DataFrame
 
-Download phenotype data from the database using a flexible collection of exact,
-partial-match, and numeric-range filters.
+Download phenotype data from the database using exact-match, partial-match,
+and numeric-range filters.
 
 The function retrieves records from the `phenotype_data` table and augments them
-with metadata from the related `entries` and `layouts` tables. Filters may be
-specified using exact matches (`entries`, `sites`, `traits`, etc.),
-pattern-matching searches (`like_entries`, `like_sites`, `like_traits`, etc.),
-or numeric ranges (`values`).
+with metadata from the related `entries` and `layouts` tables. Filtering
+criteria are supplied through keyword arguments and are automatically translated
+into validated `Filter` objects and parameterised SQL queries.
 
-Data retrieval occurs in three stages. First, records are filtered directly from
-the `phenotype_data` table. Second, entry-level metadata filters are applied
-using the `entries` table. Third, layout-level filters are applied using the
-`layouts` table. The resulting tables are joined together and optionally
-reshaped into a wide-format phenotype matrix suitable for downstream analysis.
+Data retrieval is performed in three stages. First, phenotype observations are
+filtered using fields from the `phenotype_data` table. Second, entry-level
+metadata filters are applied using the `entries` table. Third, layout-level
+filters are applied using the `layouts` table. The resulting datasets are joined
+and optionally reshaped into a wide-format phenotype matrix suitable for
+analysis.
 
 By default, phenotype measurements are unstacked such that trait names become
 columns and each row corresponds to a unique observational unit.
@@ -53,29 +53,32 @@ columns and each row corresponds to a unique observational unit.
 - `species::Vector{String}=String[]`: Species names to match exactly.
 - `entry_types::Vector{String}=String[]`: Entry types to match exactly.
 - `traits::Vector{String}=String[]`: Trait names to match exactly.
-- `like_experiments::Vector{String}=String[]`: Experiment patterns for partial
-  matching.
-- `like_sites::Vector{String}=String[]`: Site patterns for partial matching.
-- `like_treatments::Vector{String}=String[]`: Treatment patterns for partial
-  matching.
-- `like_measurements::Vector{String}=String[]`: Measurement patterns for
+- `like_experiments::Vector{String}=String[]`: Experiment name patterns for
   partial matching.
-- `like_entries::Vector{String}=String[]`: Entry patterns for partial matching.
-- `like_species::Vector{String}=String[]`: Species patterns for partial
+- `like_sites::Vector{String}=String[]`: Site name patterns for partial
+  matching.
+- `like_treatments::Vector{String}=String[]`: Treatment name patterns for
+  partial matching.
+- `like_measurements::Vector{String}=String[]`: Measurement name patterns for
+  partial matching.
+- `like_entries::Vector{String}=String[]`: Entry name patterns for partial
+  matching.
+- `like_species::Vector{String}=String[]`: Species name patterns for partial
   matching.
 - `like_entry_types::Vector{String}=String[]`: Entry-type patterns for partial
   matching.
-- `like_traits::Vector{String}=String[]`: Trait patterns for partial matching.
+- `like_traits::Vector{String}=String[]`: Trait name patterns for partial
+  matching.
 - `replications::Vector{Int64}=Int64[]`: Replication identifiers to match.
 - `blocks::Vector{Int64}=Int64[]`: Block identifiers to match.
 - `rows::Vector{Int64}=Int64[]`: Plot-row identifiers to match.
 - `cols::Vector{Int64}=Int64[]`: Plot-column identifiers to match.
 - `values::Tuple{Float64,Float64}=(-Inf, +Inf)`: Inclusive lower and upper
   bounds used to filter phenotype values.
-- `keep_id_and_do_not_unstack::Bool=false`: If `true`, return the long-format
-  table without reshaping. Main use-case is rectification of incorrect data.
-- `verbose::Bool=false`: If `true`, display progress messages throughout the
-  download and processing workflow.
+- `keep_id_and_do_not_unstack::Bool=false`: If `true`, return the original
+  long-format representation instead of reshaping the data.
+- `verbose::Bool=false`: If `true`, display progress messages throughout data
+  retrieval and post-processing.
 
 # Returns
 
@@ -84,10 +87,10 @@ columns and each row corresponds to a unique observational unit.
 # Throws
 
 - `ErrorException`: If one or more filters fail validation.
-- `ErrorException`: If a referenced table, field, or filter value is invalid.
-- `ErrorException`: If an invalid numeric range is supplied via `values`.
-- Any database exception raised during querying.
-- Any exception raised whilst joining or reshaping intermediate tables.
+- `ErrorException`: If an invalid field, table, or filtering criterion is
+  supplied.
+- `ErrorException`: If an invalid numeric interval is supplied via `values`.
+- Any database exception raised during querying, joining, or reshaping.
 
 # Notes
 
@@ -96,31 +99,29 @@ columns and each row corresponds to a unique observational unit.
 - Partial-match filters are translated into SQL `ILIKE` filters.
 - The `values` argument is translated into a `filter_between` constraint on the
   `phenotype_data.value` field.
-- All constructed filters are validated, type-checked, sanitised, and converted
+- All generated filters are validated, type-checked, sanitised, and converted
   into parameterised SQL statements before execution.
+- Query construction is delegated to the helper `query(conn, args; ...)`
+  method, reducing duplicated filtering logic across tables.
 - Filtering is performed using metadata from three related tables:
   - `phenotype_data`
   - `entries`
   - `layouts`
-- Filters are only applied to tables containing the corresponding fields.
-- If no phenotype-data filters are supplied, a default catch-all phenotype query
-  is generated.
-- If no entry-level filters are supplied, all entries are considered.
-- If no layout-level filters are supplied, all layouts are considered.
-- Entry metadata are joined onto phenotype records via the `entry` field.
-- Layout metadata are joined onto phenotype records via the `layout` field.
-- Records lacking valid entry or layout matches are excluded during the join
-  process.
+- Entry metadata are joined to phenotype observations through the `entry`
+  field.
+- Layout metadata are joined to phenotype observations through the `layout`
+  field.
+- Phenotype records without matching entry or layout metadata are excluded from
+  the final result.
 - By default, the returned table is reshaped using `unstack_data_table`,
   producing a wide-format phenotype matrix with traits as columns.
 - When `keep_id_and_do_not_unstack=true`, the original long-format database
-  representation is returned without reshaping. This is primarily intended for
-  data correction workflows, where retaining the database `id` column allows
-  specific records to be identified and updated directly without constructing
-  complex filtering criteria.
-- The resulting DataFrame may contain columns originating from the
+  representation is returned without reshaping. This is primarily useful for
+  data-correction workflows, as database identifiers are retained and can be
+  used to update specific records directly.
+- The resulting DataFrame may contain fields originating from the
   `phenotype_data`, `entries`, and `layouts` tables.
-- Progress messages describing each retrieval stage are displayed when
+- Progress messages describing each processing stage are displayed when
   `verbose=true`.
 
 # Examples
@@ -150,10 +151,7 @@ true
 
 julia> df_lon = download_phenotype_data(keep_id_and_do_not_unstack=true);
 
-julia> nrow(df_all) < nrow(df_lon)
-true
-
-julia> ncol(df_all) < ncol(df_lon)
+julia> size(df_all) != size(df_lon)
 true
 ```
 """
@@ -205,7 +203,7 @@ function download_phenotype_data(;
     # values::Tuple{Float64, Float64} = (0., 10.)
     # keep_id_and_do_not_unstack::Bool = false
     # verbose::Bool = true
-    args = Dict(
+    args::Dict{String, Union{Tuple{Float64, Float64}, Vector{Float64}, Vector{Int64}, Vector{String}}} = Dict(
         "experiments" => experiments,
         "sites" => sites,
         "treatments" => treatments,
@@ -240,64 +238,26 @@ function download_phenotype_data(;
     if verbose
         println("(1/4) Querying using `phenotype_data` table filters...")
     end
-    filters = Filter[]
-    for (k, v) in args
-        # k = string.(keys(args))[11]; v = args[k]
-        if length(v) == 0
-            continue
-        end
-        is_like = !isnothing(match(Regex("^like_"), k))
-        field =
-            replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
-        if field ∉ fields_expected_phenotype_data
-            continue
-        end
-        if is_like
-            for vi in v
-                push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_like = vi))
-            end
-        elseif field == "value"
-            push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_between = v))
-        else
-            push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_in = v))
-        end
-    end
-    filters = if length(filters) == 0
-        push!(filters, Filter(conn, table = "phenotype_data", field = "experiment", filter_like = "%"))
-    else
-        filters
-    end
-    df = query(conn, filters, verbose = verbose)
+    df = query(
+        conn,
+        args;
+        table="phenotype_data",
+        expected_fields=fields_expected_phenotype_data,
+        backup_field_string="experiment",
+        verbose=verbose,
+    )
     # Filter df using entries table filters
     if verbose
         println("(2/4) Querying using `entries` table filters...")
     end
-    filters = Filter[]
-    for (k, v) in args
-        # k = string.(keys(args))[5]; v = args[k]
-        if length(v) == 0
-            continue
-        end
-        is_like = !isnothing(match(Regex("^like_"), k))
-        field =
-            replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
-        if field ∉ fields_expected_entries
-            continue
-        end
-        if is_like
-            for vi in v
-                push!(filters, Filter(conn, table = "entries", field = field, filter_like = vi))
-            end
-        else
-            push!(filters, Filter(conn, table = "entries", field = field, filter_in = v))
-        end
-    end
-    filters = if length(filters) == 0
-        push!(filters, Filter(conn, table = "entries", field = "species", filter_like = "%"))
-    else
-        filters
-    end
-    df_entries = query(conn, filters, verbose = verbose)
+    df_entries = query(
+        conn,
+        args;
+        table="entries",
+        expected_fields=fields_expected_entries,
+        backup_field_string="species",
+        verbose=verbose,
+    )
     rename!(df_entries, "name" => "entry")
     select!(df_entries, Not([:id, :notes, :created_at, :updated_at]))
     entries = unique(df_entries.entry)
@@ -307,32 +267,14 @@ function download_phenotype_data(;
     if verbose
         println("(3/4) Querying using `layouts` table filters...")
     end
-    filters = Filter[]
-    for (k, v) in args
-        # k = string.(keys(args))[5]; v = args[k]
-        if length(v) == 0
-            continue
-        end
-        is_like = !isnothing(match(Regex("^like_"), k))
-        field =
-            replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
-        if field ∉ fields_expected_layouts
-            continue
-        end
-        if is_like
-            for vi in v
-                push!(filters, Filter(conn, table = "layouts", field = field, filter_like = vi))
-            end
-        else
-            push!(filters, Filter(conn, table = "layouts", field = field, filter_in = v))
-        end
-    end
-    filters = if length(filters) == 0
-        push!(filters, Filter(conn, table = "layouts", field = "replication", filter_greater_than = -1000))
-    else
-        filters
-    end
-    df_layouts = query(conn, filters, verbose = verbose)
+    df_layouts = query(
+        conn,
+        args;
+        table="layouts",
+        expected_fields=fields_expected_layouts,
+        backup_field_numeric="replication",
+        verbose=verbose,
+    )
     rename!(df_layouts, "name" => "layout")
     select!(df_layouts, Not([:id, :created_at, :updated_at]))
     layouts = unique(df_layouts.layout)
@@ -344,8 +286,10 @@ function download_phenotype_data(;
         println("(4/4) Preparing final table...")
     end
     df = if !keep_id_and_do_not_unstack
-        df = unstack_data_table(df)
-        select(df, Not("layout"))
+        select(
+            unstack_data_table(df),
+            Not("layout")
+        )
     else
         df
     end

@@ -97,7 +97,7 @@ fields.
   - `species` → `species_id`
 - String-based filters (`filter_like` and string-valued `filter_in`) are
   validated against the underlying database field type.
-- Numeric filters (`filter_between`, `filter_equal_to`,
+- Numeric filters (numeric-valued `filter_in`, `filter_between`, `filter_equal_to`,
   `filter_less_than`, and `filter_greater_than`) are validated against the
   underlying database field type.
 - For `filter_between`, the first value must be less than or equal to the second
@@ -222,9 +222,15 @@ struct Filter
         end
         check(conn, table, field)
         filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
-            # String type checks
-            !isnothing(filter_in) ? check(conn, table, field, String) : nothing
+            # Type checks
             !isnothing(filter_like) ? check(conn, table, field, String) : nothing
+            if !isnothing(filter_in)
+                try
+                    check(conn, table, field, String)
+                catch
+                    check(conn, table, field, Float64)
+                end
+            end
             filter_in, filter_like
         else
             metatable = if field == "entry_id"
