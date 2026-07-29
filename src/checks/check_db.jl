@@ -324,41 +324,33 @@ function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::N
         SELECT pg_typeof($field) 
         FROM $table 
         LIMIT 1;
-        """
+        """,
     ) |> DataFrame |> x -> x.pg_typeof[1]
-    if (
-        (T <: AbstractString) && 
-        (t != "text") &&
-        (t != "entry_type") &&
-        (t != "relationship_type")
-    )
+    if ((T <: AbstractString) && (t != "text") && (t != "entry_type") && (t != "relationship_type"))
         error("The \"$field\" field in table \"$table\" is not string!")
     end
     if (
-        (T <: Number) && 
-        (t != "smallint") && 
-        (t != "int") && 
-        (t != "integer") && 
-        (t != "numeric") && 
-        (t != "decimal") && 
-        (t != "real") && 
-        (t != "double precision") && 
-        (t != "smallserial") && 
-        (t != "serial") && 
+        (T <: Number) &&
+        (t != "smallint") &&
+        (t != "int") &&
+        (t != "integer") &&
+        (t != "numeric") &&
+        (t != "decimal") &&
+        (t != "real") &&
+        (t != "double precision") &&
+        (t != "smallserial") &&
+        (t != "serial") &&
         (t != "bigserial")
     )
         error("The \"$field\" field in table \"$table\" is not numeric!")
     end
     if (
-        (
-            (T <: Date) ||
-            (T <: DateTime)
-        ) && 
-        (t != "timestamp") && 
-        (t != "timestamptz") && 
-        (t != "date") && 
-        (t != "time") && 
-        (t != "timetz") && 
+        ((T <: Date) || (T <: DateTime)) &&
+        (t != "timestamp") &&
+        (t != "timestamptz") &&
+        (t != "date") &&
+        (t != "time") &&
+        (t != "timetz") &&
         (t != "interval")
     )
         error("The \"$field\" field in table \"$table\" is not date or datetime!")

@@ -115,12 +115,22 @@ julia> df_all = download_phenotype_data();
 
 julia> df_exp = download_phenotype_data(experiments=[df_all.experiment[1]], like_experiments=["exp"]);
 
-julia> df_ent = download_phenotype_data(entry_types=[df_all.entry_type[1]], like_entry_types=["fam"]);
+julia> df_ent = download_phenotype_data(entry_types=["population"]);
 
 julia> nrow(df_all) > nrow(df_exp)
 true
 
 julia> nrow(df_all) > nrow(df_ent)
+true
+
+julia> df_ent = download_phenotype_data(entry_types=["population"], like_entry_types=["fam"]);
+
+julia> nrow(df_ent) == 0
+true
+
+julia> df_val = download_phenotype_data(values=(5., 10.));
+
+julia> nrow(df_all) > nrow(df_val)
 true
 ```
 """
@@ -145,7 +155,7 @@ function download_phenotype_data(;
     blocks::Vector{Int64} = Int64[],
     rows::Vector{Int64} = Int64[],
     cols::Vector{Int64} = Int64[],
-    values_between::Tuple{Float64, Float64} = (-Inf, +Inf),
+    values::Tuple{Float64,Float64} = (-Inf, +Inf),
     keep_id_and_do_not_unstack::Bool = false,
     verbose::Bool = false,
 )::DataFrame
@@ -169,7 +179,7 @@ function download_phenotype_data(;
     # blocks::Vector{Int64} = Int64[]
     # rows::Vector{Int64} = Int64[]
     # cols::Vector{Int64} = Int64[1]
-    # values_between::Tuple{Float64, Float64} = (-Inf, +Inf)
+    # values::Tuple{Float64, Float64} = (0., 10.)
     # keep_id_and_do_not_unstack::Bool = false
     # verbose::Bool = true
     args = Dict(
@@ -193,6 +203,7 @@ function download_phenotype_data(;
         "blocks" => blocks,
         "rows" => rows,
         "cols" => cols,
+        "values" => values,
     )
     conn = dbconnect()
     fields_to_ignore = String["id", "name", "created_at", "updated_at"]
@@ -208,7 +219,7 @@ function download_phenotype_data(;
     end
     filters = Filter[]
     for (k, v) in args
-        # k = string.(keys(args))[1]; v = args[k]
+        # k = string.(keys(args))[11]; v = args[k]
         if length(v) == 0
             continue
         end
@@ -222,6 +233,8 @@ function download_phenotype_data(;
             for vi in v
                 push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_like = vi))
             end
+        elseif field == "value"
+            push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_between = v))
         else
             push!(filters, Filter(conn, table = "phenotype_data", field = field, filter_in = v))
         end
@@ -266,7 +279,7 @@ function download_phenotype_data(;
     select!(df_entries, Not([:id, :notes, :created_at, :updated_at]))
     entries = unique(df_entries.entry)
     filter!(x -> x.entry ∈ entries, df)
-    df = leftjoin(df_entries, df, on = :entry)
+    df = innerjoin(df_entries, df, on = :entry)
     # Filter df using layouts table filters
     if verbose
         println("(3/4) Querying using `layouts` table filters...")
@@ -302,7 +315,7 @@ function download_phenotype_data(;
     layouts = unique(df_layouts.layout)
     filter!(x -> !ismissing(x.layout), df)
     filter!(x -> x.layout ∈ layouts, df)
-    df = leftjoin(df_layouts, df, on = :layout)
+    df = innerjoin(df_layouts, df, on = :layout)
     # Prepare the final dataframe
     if verbose
         println("(4/4) Preparing final table...")
