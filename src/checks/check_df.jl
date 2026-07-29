@@ -84,7 +84,7 @@ name-based representations of the data.
 
 The dataset must contain all core experimental design fields together with a
 `value` field and exactly one of either `trait` or
-`environmental_variable`.
+`environment_variable`.
 
 # Arguments
 
@@ -105,7 +105,7 @@ The dataset must contain all core experimental design fields together with a
 - Required fields include:
   `experiment`, `site`, `treatment`, `layout`, `measurement`, `entry`,
   and `value`.
-- Exactly one of `trait` or `environmental_variable` may be omitted.
+- Exactly one of `trait` or `environment_variable` may be omitted.
 - The function supports both phenotype and environmental data tables.
 - Validation is limited to field presence and does not verify data types or
   field contents.
@@ -117,7 +117,7 @@ The dataset must contain all core experimental design fields together with a
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> df_okay_phe = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], trait=[], value=[]);
 
-julia> df_okay_env = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], environmental_variable=[], value=[]);
+julia> df_okay_env = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], environment_variable=[], value=[]);
 
 julia> df_nope = DataFrame(experiment=[], site=[]);
 
@@ -142,7 +142,7 @@ function check(df::DataFrame)::Nothing
         "measurement",
         "entry",
         "trait",
-        "environmental_variable",
+        "environment_variable",
         "value",
     ]
     fields = replace.(names(df), Regex("_id\$") => "")
@@ -150,7 +150,7 @@ function check(df::DataFrame)::Nothing
     okay = (
         (length(missing_fields) == 0) || (
             (length(missing_fields) == 1) && (missing_fields[1] == "trait") ||
-            (missing_fields[1] == "environmental_variable")
+            (missing_fields[1] == "environment_variable")
         )
     )
     if !okay
