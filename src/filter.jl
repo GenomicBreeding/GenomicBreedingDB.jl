@@ -100,6 +100,8 @@ fields.
 - Numeric filters (`filter_between`, `filter_equal_to`,
   `filter_less_than`, and `filter_greater_than`) are validated against the
   underlying database field type.
+- For `filter_between`, the first value must be less than or equal to the second
+  value.
 - Name-based filters applied to foreign-key fields are automatically translated
   into numeric ids using `extract_ids`.
 - Foreign-key mappings are resolved through corresponding lookup tables:
@@ -267,6 +269,17 @@ struct Filter
             replace(filter_like, "_" => "\\_")
         else
             filter_like
+        end
+        if !isnothing(filter_between) && (filter_between[1] > filter_between[2])
+            error(
+                string(
+                    "The first value (",
+                    filter_between[1],
+                    ") in the `filter_between` tuple should not be greater than the second value (",
+                    filter_between[2],
+                    ")!",
+                ),
+            )
         end
         # Numeric type checks
         !isnothing(filter_between) ? check(conn, table, field, Float64) : nothing
