@@ -222,14 +222,14 @@ Validate that a database field exists and is compatible with an expected Julia
 type.
 
 The function verifies that the specified field exists in the target table and
-queries PostgreSQL to determine the underlying database type associated with the
-field. The detected database type is then compared against an expected Julia
-type category, allowing validation of string, numeric, and temporal fields
-before they are used in filtering, querying, or update operations.
+retrieves its database type from PostgreSQL schema metadata. The detected type
+is compared against a broad Julia type category, allowing validation of string,
+numeric, and temporal fields before they are used in filtering, querying,
+updating, or data-import workflows.
 
 This function is primarily intended for defensive schema validation and helps
-ensure that higher-level database operations are applied only to fields whose
-types are compatible with the requested operation.
+ensure that database operations are only applied to fields whose types are
+compatible with the requested operation.
 
 # Arguments
 
@@ -259,14 +259,16 @@ types are compatible with the requested operation.
 
 - Table and field validation are performed using
   `check(conn, table, field)`.
-- PostgreSQL field types are determined using `pg_typeof(...)`.
+- Field metadata are retrieved from PostgreSQL's
+  `information_schema.columns` view.
+- Validation is based on the field's `data_type` recorded in the database
+  schema rather than values stored within the table.
 - String validation (`T <: AbstractString`) supports:
   - `text`
-  - `entry_type`
-  - `relationship_type`
-- Enum fields such as `entry_type` and `relationship_type` are treated as
-  string-compatible types and may be used with string-based filtering
-  operations.
+  - `USER-DEFINED`
+- The `USER-DEFINED` category allows PostgreSQL enum types such as
+  `entry_type` and `relationship_type` to be treated as string-compatible
+  fields.
 - Numeric validation (`T <: Number`) supports:
   - `smallint`
   - `int`
@@ -317,16 +319,21 @@ julia> close(conn);
 """
 function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::Nothing
     # conn = dbconnect(); table = "entries"; field = "entry_type"; T = String
+    # conn = dbconnect(); table = "traits"; field = "name"; T = String
+    # conn = dbconnect(); table = "measurements"; field = "name"; T = String
+    # conn = dbconnect(); table = "phenotype_data"; field = "value"; T = Float64
     check(conn, table, field)
     t = execute(
         conn,
         """
-        SELECT pg_typeof($field) 
-        FROM $table 
-        LIMIT 1;
+        SELECT column_name, data_type
+  FROM information_schema.columns
+  WHERE table_name = \$1
+  AND column_name = \$2
         """,
-    ) |> DataFrame |> x -> x.pg_typeof[1]
-    if ((T <: AbstractString) && (t != "text") && (t != "entry_type") && (t != "relationship_type"))
+        [table, field],
+    ) |> DataFrame |> x -> x.data_type[1]
+    if (T <: AbstractString) && (t != "text") && (t != "USER-DEFINED")
         error("The \"$field\" field in table \"$table\" is not string!")
     end
     if (
