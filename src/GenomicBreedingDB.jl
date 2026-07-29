@@ -60,5 +60,7 @@ include("download/transform.jl")
 export unstack_data_table
 include("download/download_phenotypes.jl")
 export download_phenotype_data
+include("download/download_environments.jl")
+export download_environment_data
 
 end

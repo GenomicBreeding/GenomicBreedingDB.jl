@@ -334,13 +334,13 @@ julia> close(conn);
 ```
 """
 function query(
-	conn::LibPQ.Connection,
-	args::AbstractDict{String};
-	table::String,
-	expected_fields::Vector{String} = ["*"],
-	backup_field_string::Union{Nothing, String} = nothing,
-	backup_field_numeric::Union{Nothing, String} = nothing,
-	verbose::Bool = false,
+    conn::LibPQ.Connection,
+    args::AbstractDict{String};
+    table::String,
+    expected_fields::Vector{String} = ["*"],
+    backup_field_string::Union{Nothing,String} = nothing,
+    backup_field_numeric::Union{Nothing,String} = nothing,
+    verbose::Bool = false,
 )::DataFrame
     filters = Filter[]
     for (k, v) in args
@@ -354,24 +354,24 @@ function query(
         if (expected_fields != ["*"]) && (field ∉ expected_fields)
             continue
         end
-		if is_like
-			for vi in v
-				push!(filters, Filter(conn, table = table, field = field, filter_like = vi))
-			end
-		elseif field == "value"
-			push!(filters, Filter(conn, table = table, field = field, filter_between = v))
-		else
-			# TODO: probably for date intervals...
-			push!(filters, Filter(conn, table = table, field = field, filter_in = v))
-		end
+        if is_like
+            for vi in v
+                push!(filters, Filter(conn, table = table, field = field, filter_like = vi))
+            end
+        elseif field == "value"
+            push!(filters, Filter(conn, table = table, field = field, filter_between = v))
+        else
+            # TODO: probably for date intervals...
+            push!(filters, Filter(conn, table = table, field = field, filter_in = v))
+        end
     end
     filters = if (length(filters) == 0) && !isnothing(backup_field_string)
         push!(filters, Filter(conn, table = table, field = backup_field_string, filter_like = "%"))
     elseif (length(filters) == 0) && !isnothing(backup_field_numeric)
         push!(filters, Filter(conn, table = table, field = backup_field_numeric, filter_greater_than = -1_000_000))
-	elseif length(filters) == 0
-		error("Please define either `backup_field_string` or `backup_field_numeric`!")
-	else
+    elseif length(filters) == 0
+        error("Please define either `backup_field_string` or `backup_field_numeric`!")
+    else
         filters
     end
     query(conn, filters, verbose = verbose)
