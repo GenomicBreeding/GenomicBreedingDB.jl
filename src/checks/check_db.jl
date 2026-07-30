@@ -209,3 +209,158 @@ function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
     end
     nothing
 end
+
+"""
+    check(
+        conn::LibPQ.Connection,
+        table::String,
+        field::String,
+        T::Type,
+    )::Nothing
+
+Validate that a database field exists and is compatible with an expected Julia
+type.
+
+The function verifies that the specified field exists in the target table and
+retrieves its database type from PostgreSQL schema metadata. The detected type
+is compared against a broad Julia type category, allowing validation of string,
+numeric, and temporal fields before they are used in filtering, querying,
+updating, or data-import workflows.
+
+This function is primarily intended for defensive schema validation and helps
+ensure that database operations are only applied to fields whose types are
+compatible with the requested operation.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `table::String`: Name of the table containing the field.
+- `field::String`: Name of the field to validate.
+- `T::Type`: Expected Julia type category.
+
+# Returns
+
+- `Nothing`: Returned when the field exists and its database type is compatible
+  with the expected Julia type.
+
+# Throws
+
+- `ErrorException`: If the specified table does not exist.
+- `ErrorException`: If the specified field does not exist.
+- `ErrorException`: If a string type is requested but the field is not a
+  supported string-compatible database type.
+- `ErrorException`: If a numeric type is requested but the field is not a
+  supported numeric database type.
+- `ErrorException`: If a date or datetime type is requested but the field is
+  not a supported temporal database type.
+- Any database exception raised whilst retrieving schema information.
+
+# Notes
+
+- Table and field validation are performed using
+  `check(conn, table, field)`.
+- Field metadata are retrieved from PostgreSQL's
+  `information_schema.columns` view.
+- Validation is based on the field's `data_type` recorded in the database
+  schema rather than values stored within the table.
+- String validation (`T <: AbstractString`) supports:
+  - `text`
+  - `USER-DEFINED`
+- The `USER-DEFINED` category allows PostgreSQL enum types such as
+  `entry_type` and `relationship_type` to be treated as string-compatible
+  fields.
+- Numeric validation (`T <: Number`) supports:
+  - `smallint`
+  - `int`
+  - `integer`
+  - `numeric`
+  - `decimal`
+  - `real`
+  - `double precision`
+  - `smallserial`
+  - `serial`
+  - `bigserial`
+- Temporal validation (`T <: Date` or `T <: DateTime`) supports:
+  - `timestamp`
+  - `timestamptz`
+  - `date`
+  - `time`
+  - `timetz`
+  - `interval`
+- The function validates compatibility with broad type categories rather than
+  exact Julia types.
+- No database contents are modified.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> try isnothing(check(conn, "entries", "name", String)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "entries", "name", Int)); catch; false; end
+false
+
+julia> try isnothing(check(conn, "layouts", "replication", Int)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "layouts", "row", Int)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "layouts", "col", Int)); catch; false; end
+true
+
+julia> try isnothing(check(conn, "phenotype_data", "value", Float64)); catch; false; end
+true
+
+julia> close(conn);
+```
+"""
+function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::Nothing
+    # conn = dbconnect(); table = "entries"; field = "entry_type"; T = String
+    # conn = dbconnect(); table = "traits"; field = "name"; T = String
+    # conn = dbconnect(); table = "measurements"; field = "name"; T = String
+    # conn = dbconnect(); table = "phenotype_data"; field = "value"; T = Float64
+    check(conn, table, field)
+    t = execute(
+        conn,
+        """
+        SELECT column_name, data_type
+  FROM information_schema.columns
+  WHERE table_name = \$1
+  AND column_name = \$2
+        """,
+        [table, field],
+    ) |> DataFrame |> x -> x.data_type[1]
+    if (T <: AbstractString) && (t != "text") && (t != "USER-DEFINED")
+        error("The \"$field\" field in table \"$table\" is not string!")
+    end
+    if (
+        (T <: Number) &&
+        (t != "smallint") &&
+        (t != "int") &&
+        (t != "integer") &&
+        (t != "numeric") &&
+        (t != "decimal") &&
+        (t != "real") &&
+        (t != "double precision") &&
+        (t != "smallserial") &&
+        (t != "serial") &&
+        (t != "bigserial")
+    )
+        error("The \"$field\" field in table \"$table\" is not numeric!")
+    end
+    if (
+        ((T <: Date) || (T <: DateTime)) &&
+        (t != "timestamp") &&
+        (t != "timestamptz") &&
+        (t != "date") &&
+        (t != "time") &&
+        (t != "timetz") &&
+        (t != "interval")
+    )
+        error("The \"$field\" field in table \"$table\" is not date or datetime!")
+    end
+    nothing
+end

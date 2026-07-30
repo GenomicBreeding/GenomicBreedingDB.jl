@@ -7,22 +7,23 @@ Convert a long-format phenotype or environmental data table into a wide-format
 table.
 
 The function reshapes a data table by converting values stored in either the
-`trait` or `environmental_variable` column into separate output columns. All
+`trait` or `environment_variable` column into separate output columns. All
 remaining fields are treated as row identifiers and are used to define unique
 records in the resulting wide-format table.
 
-Prior to reshaping, database bookkeeping fields (`id`, `created_at`, and
-`updated_at`) are removed, as these fields are not useful for the unstacking
-operation and would otherwise interfere with identification of unique rows.
+Prior to reshaping, common database bookkeeping fields (`id`, `created_at`, and
+`updated_at`) are removed when present. Missing bookkeeping fields are ignored,
+allowing the function to operate on both raw database query results and
+previously processed DataFrames.
 
 The function automatically determines whether the input represents phenotype or
 environmental data by detecting the presence of either a `trait` or
-`environmental_variable` column.
+`environment_variable` column.
 
 # Arguments
 
 - `df::DataFrame`: Long-format data table containing a `value` column and either
-  a `trait` or `environmental_variable` column.
+  a `trait` or `environment_variable` column.
 
 # Returns
 
@@ -33,19 +34,19 @@ environmental data by detecting the presence of either a `trait` or
 # Throws
 
 - `ErrorException`: If the input DataFrame fails validation.
-- `BoundsError`: If neither a `trait` nor `environmental_variable` column is
+- `BoundsError`: If neither a `trait` nor `environment_variable` column is
   present.
 - Any exception raised by `DataFrames.unstack`.
 
 # Notes
 
 - Input validation is performed using `check(df)`.
-- The columns `id`, `created_at`, and `updated_at` are removed prior to
-  reshaping.
+- The columns `id`, `created_at`, and `updated_at` are removed if present.
+- Missing bookkeeping columns are silently ignored.
 - The function expects a long-format table containing a `value` column.
 - The column key is automatically inferred from the first matching field among:
   - `trait`
-  - `environmental_variable`
+  - `environment_variable`
 - All remaining columns other than the column key and `value` are used as row
   identifiers.
 - Phenotype data are typically converted from long format:
@@ -53,11 +54,13 @@ environmental data by detecting the presence of either a `trait` or
   into wide format:
   `entry × trait_1 × trait_2 × ...`.
 - Environmental data are typically converted from long format:
-  `site × environmental_variable × value`
+  `site × environment_variable × value`
   into wide format:
   `site × variable_1 × variable_2 × ...`.
 - The function is intended for transforming query results into formats suitable
   for statistical analysis, modelling, visualization, and export.
+- The input DataFrame is modified in-place prior to unstacking because
+  bookkeeping columns are removed using `select!`.
 
 # Examples
 
@@ -104,7 +107,7 @@ function unstack_data_table(df::DataFrame)::DataFrame
             nothing
         end
     end
-    rowkeys = filter(x -> x∉["trait", "environmental_variable", "value"], names(df))
-    colkey = filter(x -> x ∈ ["trait", "environmental_variable"], names(df))[1]
+    rowkeys = filter(x -> x∉["trait", "environment_variable", "value"], names(df))
+    colkey = filter(x -> x ∈ ["trait", "environment_variable"], names(df))[1]
     unstack(df, rowkeys, colkey, "value")
 end

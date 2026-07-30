@@ -74,50 +74,64 @@ end
         df::DataFrame,
     )::Nothing
 
-Validate that a DataFrame conforms to the expected structure of a phenotype or
-environmental data table.
+Validate that a DataFrame contains the minimum set of fields required by data
+processing utilities such as `unstack_data_table`.
 
-The function checks that the DataFrame contains the required fields needed for
-long-format observational data. Field names ending in `_id` are normalised by
-removing the suffix before validation, allowing both identifier-based and
-name-based representations of the data.
+The function checks whether the supplied DataFrame contains a recognised schema
+for phenotype or environmental data. Field names ending in `_id` are treated as
+their human-readable equivalents prior to validation (e.g. `entry_id` is
+treated as `entry`).
 
-The dataset must contain all core experimental design fields together with a
-`value` field and exactly one of either `trait` or
-`environmental_variable`.
+The validation is intentionally permissive and supports several related table
+structures. Complete phenotype and environmental data tables are accepted, as
+are partially denormalised representations containing only entry or trait
+information.
 
 # Arguments
 
-- `df::DataFrame`: Data table to validate.
+- `df::DataFrame`: DataFrame to validate.
 
 # Returns
 
-- `Nothing`: Returned when the DataFrame satisfies the expected structure.
+- `Nothing`: Returned when the DataFrame contains an acceptable set of fields.
 
 # Throws
 
-- `ErrorException`: If required fields are missing from the DataFrame.
+- `ErrorException`: If the DataFrame is missing fields required by all
+  recognised schemas.
 
 # Notes
 
-- Identifier fields ending in `_id` are treated as equivalent to their
-  corresponding name-based fields.
-- Required fields include:
-  `experiment`, `site`, `treatment`, `layout`, `measurement`, `entry`,
-  and `value`.
-- Exactly one of `trait` or `environmental_variable` may be omitted.
-- The function supports both phenotype and environmental data tables.
-- Validation is limited to field presence and does not verify data types or
-  field contents.
-- The function performs validation only and does not modify the input
-  `DataFrame`.
+- Fields ending in `_id` are normalised by removing the `_id` suffix prior to
+  validation.
+- The canonical set of recognised fields is:
+  - `experiment`
+  - `site`
+  - `treatment`
+  - `layout`
+  - `measurement`
+  - `entry`
+  - `trait`
+  - `environment_variable`
+  - `value`
+- Validation succeeds when any of the following conditions are met:
+  - All expected fields are present.
+  - The DataFrame represents environmental data and is missing only
+    `environment_variable`.
+  - The DataFrame represents entry-level data and is missing only `entry`.
+  - The DataFrame represents trait-level data and is missing only `trait`.
+  - The DataFrame represents entry–trait relationships and is missing only
+    `entry` and `trait`.
+- Validation is intended to support the various table structures returned by
+  database extraction, download, and transformation functions.
+- The function does not modify the input DataFrame.
 
 # Examples
 
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> df_okay_phe = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], trait=[], value=[]);
 
-julia> df_okay_env = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], environmental_variable=[], value=[]);
+julia> df_okay_env = DataFrame(experiment=[], site=[], treatment=[], layout=[], measurement=[], entry=[], environment_variable=[], value=[]);
 
 julia> df_nope = DataFrame(experiment=[], site=[]);
 
@@ -134,24 +148,20 @@ false
 function check(df::DataFrame)::Nothing
     # conn = dbconnect()
     # df = extract_table(conn, "phenotype_data")
-    expected_fields = [
-        "experiment",
-        "site",
-        "treatment",
-        "layout",
-        "measurement",
-        "entry",
-        "trait",
-        "environmental_variable",
-        "value",
-    ]
+    expected_fields =
+        ["experiment", "site", "treatment", "layout", "measurement", "entry", "trait", "environment_variable", "value"]
     fields = replace.(names(df), Regex("_id\$") => "")
     missing_fields = filter(x -> x ∉ fields, expected_fields)
     okay = (
-        (length(missing_fields) == 0) || (
-            (length(missing_fields) == 1) && (missing_fields[1] == "trait") ||
-            (missing_fields[1] == "environmental_variable")
-        )
+        (length(missing_fields) == 0) ||
+        (
+            ("trait" ∈ missing_fields) && (
+                (sort(missing_fields) == ["entry", "trait"]) ||
+                (missing_fields == ["entry"]) ||
+                (missing_fields == ["trait"])
+            )
+        ) ||
+        (missing_fields == ["environment_variable"])
     )
     if !okay
         error("Missing field/s:\n\t- $(join(missing_fields, "\n\t- "))")

@@ -12,34 +12,29 @@
         name::Union{Nothing,String}=nothing,
         notes::Union{Nothing,String}=nothing,
         fname_reference_genome::Union{Nothing,String}=nothing,
+        link_value_parser_traits::Union{Nothing,Function}=nothing,
+        link_value_parser_sites::Union{Nothing,Function}=nothing,
+        link_value_parser_experiments::Union{Nothing,Function}=nothing,
+        link_value_parser_measurements::Union{Nothing,Function}=nothing,
+        link_value_parser_treatments::Union{Nothing,Function}=nothing,
         verbose::Bool=false,
     )::Nothing
 
 Automatically detect the type of a supported input file and upload its contents
 to the database.
 
-The function provides a unified interface for importing supported GenomicBreeding
-data types. The supplied file is inspected using a series of validation and
-parsing routines to determine its type before dispatching to the appropriate
+The function provides a unified interface for importing supported data types.
+The supplied file is inspected using a series of validation and parsing
+routines to determine its type before dispatching to the appropriate
 specialised upload function.
 
-Supported file types for upload are:
+Supported uploads include trial data, environmental data, reference genomes,
+VCF files, `Genomes` objects, `Phenomes` objects, and `Fit` objects. Once the
+file type has been identified, a database connection is established and the
+corresponding upload workflow is executed automatically.
 
-1. Tab-delimited files (comma and other delimiters can also be used):
-   - trial data (e.g. ["simulated_trials.tsv"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_trials.tsv))
-   - environmental data (e.g. ["simulated_environments.tsv"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_environments.tsv))
-2. FASTA ([see specifications for details](https://en.wikipedia.org/wiki/FASTA_format))
-   - reference genome file (e.g. ["simulated_reference_genome.fa"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_reference_genome.fa))
-3. VCF ([see specifications for details](https://samtools.github.io/hts-specs/VCFv4.2.pdf))
-   - genotype data file (e.g. ["simulated_genomes.vcf"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_genomes.vcf))
-4. JLD2
-   - [Genomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Genomes) (e.g. ["simulated_genomes.jld2"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_genomes.jld2))
-   - [Phenomes struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Phenomes) (e.g. ["simulated_phenomes.jld2"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_phenomes.jld2))
-   - [Fit struct](https://genomicbreeding.github.io/GenomicBreedingCore.jl/dev/#GenomicBreedingCore.Fit) (e.g. ["simulated_fit.jld2"](https://github.com/GenomicBreeding/GenomicBreedingDB.jl/tree/dev/res/simulated_fit.jld2))
-
-The function requires different optional arguments depending on the detected file
-type. These parameters are forwarded to the underlying upload function after
-successful type identification.
+Depending on the detected file type, additional keyword arguments may be
+required and are forwarded to the underlying upload function.
 
 # Arguments
 
@@ -50,8 +45,8 @@ successful type identification.
   trial data.
 - `experiment::Union{Nothing,String}=nothing`: Experiment name used when
   importing trial or environmental data.
-- `treatment::Union{Nothing,String}=nothing`: Treatment name used when importing
-  trial or environmental data.
+- `treatment::Union{Nothing,String}=nothing`: Treatment name used when
+  importing trial or environmental data.
 - `entry_type::Union{Nothing,String}=nothing`: Entry type used when importing
   trial data.
 - `population_type::Union{Nothing,String}=nothing`: Population type used when
@@ -59,13 +54,28 @@ successful type identification.
 - `relationship_type::Union{Nothing,String}=nothing`: Relationship type used
   when importing trial data.
 - `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Mapping of
-  measurement names to dates used when importing trial or environmental data.
-- `name::Union{Nothing,String}=nothing`: Name assigned to uploaded datasets such
-  as reference genomes, VCFs, `Genomes`, `Phenomes`, and `Fit` objects.
-- `notes::Union{Nothing,String}=nothing`: Descriptive notes associated with the
-  uploaded dataset.
-- `fname_reference_genome::Union{Nothing,String}=nothing`: Path to a registered
-  reference genome required when uploading VCF or `Genomes` files.
+  measurement names to dates used during tabular-data imports.
+- `name::Union{Nothing,String}=nothing`: Name assigned to uploaded datasets
+  such as reference genomes, VCFs, `Genomes`, `Phenomes`, and `Fit` objects.
+- `notes::Union{Nothing,String}=nothing`: Descriptive notes associated with
+  uploaded datasets.
+- `fname_reference_genome::Union{Nothing,String}=nothing`: Path to a previously
+  registered reference genome required when uploading VCF or `Genomes` files.
+- `link_value_parser_traits::Union{Nothing,Function}=nothing`: Function used to
+  extract trait names from the `trait` field of the `Phenomes` struct when
+  populating the `phenomes_traits` relationship table.
+- `link_value_parser_sites::Union{Nothing,Function}=nothing`: Function used to
+  extract site names from the `trait` field of the `Phenomes` struct when
+  populating the `phenomes_sites` relationship table.
+- `link_value_parser_experiments::Union{Nothing,Function}=nothing`: Function
+  used to extract experiment names from the `trait` field of the `Phenomes`
+  struct when populating the `phenomes_experiments` relationship table.
+- `link_value_parser_measurements::Union{Nothing,Function}=nothing`: Function
+  used to extract measurement names from the `trait` field of the `Phenomes`
+  struct when populating the `phenomes_measurements` relationship table.
+- `link_value_parser_treatments::Union{Nothing,Function}=nothing`: Function
+  used to extract treatment names from the `trait` field of the `Phenomes`
+  struct when populating the `phenomes_treatments` relationship table.
 - `verbose::Bool=false`: If `true`, display progress and status messages during
   file-type detection and upload.
 
@@ -75,37 +85,41 @@ successful type identification.
 
 # Throws
 
-- `ErrorException`: If the supplied file does not exist.
+- `ErrorException`: If the specified file does not exist.
 - `ErrorException`: If the file type cannot be determined.
-- `ErrorException`: If more than one supported file type matches the supplied
-  file.
+- `ErrorException`: If the file matches more than one supported format.
 - Any exception raised by the underlying upload function.
 - Any exception raised whilst connecting to the database.
 
-# Details
+# Notes
 
 - File-type detection is performed before opening a database connection.
 - Supported file types include:
-    + Delimiter-separated value or tabular data files:
-        - trial phenotype data
-        - environmental data
-    + FASTA files:
-        - reference genome
-    + VCF files
-        - genotype data
-    + JLD2 files (containing GenomicBreedingCore.jl structs)
-        - `Genomes` structs
-        - `Phenomes` structs
-        - `Fit` structs
-- Type detection is performed using the same validation routines used by the
-  dedicated upload functions.
-- Exactly one file type must match; ambiguous matches are treated as errors.
-- A database connection is established only after successful type detection.
-- The database connection is automatically closed when uploading completes.
-- Optional arguments are passed directly to the relevant upload function and may
-  be ignored for unrelated file types.
-- This function provides a convenient high-level entry point for data import
-  workflows without requiring the caller to manually determine file formats.
+  - Trial data (`Trials`)
+  - Environmental data
+  - Reference genome FASTA files
+  - VCF files
+  - `Genomes` JLD2 files
+  - `Phenomes` JLD2 files
+  - `Fit` JLD2 files
+- Type detection is based on the same validation and parsing routines used by
+  the corresponding upload functions.
+- Exactly one file type must be identified. Ambiguous matches are treated as
+  errors.
+- All upload operations are delegated to specialised upload functions.
+- A database connection is opened automatically and closed once the upload has
+  completed.
+- Optional arguments are forwarded only to upload functions that require them.
+- When uploading `Phenomes` objects, the `link_value_parser_*` functions may be
+  used to create relationships between phenotype traits and existing database
+  records such as traits, sites, experiments, measurements, and treatments.
+- Parser functions receive values from the `trait` field of the `Phenomes`
+  struct and must return the corresponding database entity name to be linked.
+- All generated database queries use validated and sanitised inputs through the
+  package's filtering and upload infrastructure.
+- This function provides a convenient high-level entry point for importing
+  supported datasets without requiring the caller to determine the file type
+  manually.
 
 # Examples
 
@@ -245,6 +259,11 @@ function upload(
     name::Union{Nothing,String} = nothing,
     notes::Union{Nothing,String} = nothing,
     fname_reference_genome::Union{Nothing,String} = nothing,
+    link_value_parser_traits::Union{Nothing,Function} = nothing,
+    link_value_parser_sites::Union{Nothing,Function} = nothing,
+    link_value_parser_experiments::Union{Nothing,Function} = nothing,
+    link_value_parser_measurements::Union{Nothing,Function} = nothing,
+    link_value_parser_treatments::Union{Nothing,Function} = nothing,
     verbose::Bool = false,
 )::Nothing
     # missing_strings::Vector{String} = ["missing", "NA", "na", "N/A", "n/a", ""]
@@ -386,7 +405,17 @@ function upload(
             verbose = verbose,
         )
     elseif data_type == "Phenomes"
-        upload_phenomes!(conn, fname = fname, name = name, notes = notes)
+        upload_phenomes!(
+            conn,
+            fname = fname,
+            name = name,
+            notes = notes,
+            link_value_parser_traits = link_value_parser_traits,
+            link_value_parser_sites = link_value_parser_sites,
+            link_value_parser_experiments = link_value_parser_experiments,
+            link_value_parser_measurements = link_value_parser_measurements,
+            link_value_parser_treatments = link_value_parser_treatments,
+        )
     elseif data_type == "environmental_data"
         upload_environment_data!(
             conn,
