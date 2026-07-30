@@ -124,7 +124,17 @@ julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), nam
 
 julia> upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, notes="simulated", fname_reference_genome=abspath(fname_reference_genome));
 
-julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, notes="simulated");
+julia> link_value_parser_traits = x -> String(split(x, '|')[1]);
+
+julia> link_value_parser_sites = x -> String(split(split(x, '|')[2], "-")[end-1]);
+
+julia> link_value_parser_experiments = x -> String("simulated experiment");
+
+julia> link_value_parser_measurements = x -> String(join(split(split(x, '|')[2], "-")[2:4], "-"));
+
+julia> link_value_parser_treatments = x -> String("control");
+
+julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, notes="simulated", link_value_parser_traits=link_value_parser_traits, link_value_parser_sites=link_value_parser_sites, link_value_parser_experiments=link_value_parser_experiments, link_value_parser_measurements=link_value_parser_measurements, link_value_parser_treatments=link_value_parser_treatments);
 
 julia> n_before = execute(conn, "SELECT * FROM genomes_entries") |> DataFrame |> nrow;
 
@@ -132,7 +142,7 @@ julia> define_relationships!(conn, table="genomes_entries", fname_jld2=abspath(f
 
 julia> n_after = execute(conn, "SELECT * FROM genomes_entries") |> DataFrame |> nrow;
 
-julia> n_before < n_after
+julia> n_before <= n_after
 true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_entries") |> DataFrame |> nrow;
@@ -141,7 +151,7 @@ julia> define_relationships!(conn, table="phenomes_entries", fname_jld2=abspath(
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_entries") |> DataFrame |> nrow;
 
-julia> n_before < n_after
+julia> n_before <= n_after
 true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_traits") |> DataFrame |> nrow;
@@ -150,7 +160,7 @@ julia> define_relationships!(conn, table="phenomes_traits", fname_jld2=abspath(f
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_traits") |> DataFrame |> nrow;
 
-julia> n_before < n_after
+julia> n_before <= n_after
 true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_sites") |> DataFrame |> nrow;
@@ -161,7 +171,7 @@ julia> define_relationships!(conn, table="phenomes_sites", fname_jld2=abspath(fn
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_sites") |> DataFrame |> nrow;
 
-julia> n_before < n_after
+julia> n_before <= n_after
 true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_experiments") |> DataFrame |> nrow;
@@ -172,7 +182,7 @@ julia> define_relationships!(conn, table="phenomes_experiments", fname_jld2=absp
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_experiments") |> DataFrame |> nrow;
 
-julia> n_before < n_after
+julia> n_before <= n_after
 true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_measurements") |> DataFrame |> nrow;
@@ -183,7 +193,7 @@ julia> define_relationships!(conn, table="phenomes_measurements", fname_jld2=abs
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_measurements") |> DataFrame |> nrow;
 
-julia> n_before < n_after
+julia> n_before <= n_after
 true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_treatments") |> DataFrame |> nrow;
@@ -194,7 +204,7 @@ julia> define_relationships!(conn, table="phenomes_treatments", fname_jld2=abspa
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_treatments") |> DataFrame |> nrow;
 
-julia> n_before < n_after
+julia> n_before <= n_after
 true
 
 julia> close(conn);

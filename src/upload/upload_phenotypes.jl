@@ -429,57 +429,107 @@ end
         fname::String,
         name::String,
         notes::String,
+        link_value_parser_traits::Union{Nothing,Function}=nothing,
+        link_value_parser_sites::Union{Nothing,Function}=nothing,
+        link_value_parser_experiments::Union{Nothing,Function}=nothing,
+        link_value_parser_measurements::Union{Nothing,Function}=nothing,
+        link_value_parser_treatments::Union{Nothing,Function}=nothing,
+        verbose::Bool=false,
     )::Nothing
 
-Upload a `Phenomes` dataset to the database and register its metadata.
+Register a `Phenomes` dataset in the database and optionally create associated
+relationship records.
 
-The function validates that the supplied file exists and appears to be a JLD2 file
-containing a `Phenomes` object, verifies that the file path is absolute, and then
-registers the dataset in the `phenomes` table.
+The function validates a `Phenomes` JLD2 file, registers it in the `phenomes`
+table, and optionally populates one or more phenotype relationship tables using
+user-defined parsing functions.
 
-File validation is delegated to `check(Phenomes; fname=...)`, which performs a
-lightweight inspection of the file to ensure it appears to contain a valid
-`Phenomes` object. Existing records are preserved using an
-`ON CONFLICT DO NOTHING` clause.
+A relationship between the uploaded `Phenomes` object and its entries is always
+created via the `phenomes_entries` table. Additional relationships to traits,
+sites, experiments, measurements, and treatments may also be created when the
+corresponding `link_value_parser_*` functions are supplied.
+
+This design supports phenotype datasets whose trait names encode multiple pieces
+of metadata. For example, trait names may contain embedded site, treatment,
+measurement, or experiment information that can be extracted and linked to
+existing database records during upload.
+
+If the phenotype dataset has already been registered, the database record is
+left unchanged and a warning is emitted. Relationship records are then updated
+using `define_relationships!`.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `fname::String`: Absolute path to the JLD2 file containing a `Phenomes`
-  object.
-- `name::String`: Unique name used to identify the phenomic dataset.
-- `notes::String`: Descriptive notes associated with the phenomic dataset.
+- `fname::String`: Absolute path to a valid `Phenomes` JLD2 file.
+- `name::String`: Name assigned to the uploaded phenotype dataset.
+- `notes::String`: Descriptive notes associated with the dataset.
+- `link_value_parser_traits::Union{Nothing,Function}=nothing`: Function used to
+  extract trait names from the `trait` field of the `Phenomes` struct 
+  when populating the `phenomes_traits` relationship table.
+- `link_value_parser_sites::Union{Nothing,Function}=nothing`: Function used to
+  extract site names from `trait` the field of the `Phenomes` struct 
+  when populating the `phenomes_sites` relationship table.
+- `link_value_parser_experiments::Union{Nothing,Function}=nothing`: Function
+  used to extract experiment names from the `trait` field of the `Phenomes` struct 
+  when populating the `phenomes_experiments` relationship table.
+- `link_value_parser_measurements::Union{Nothing,Function}=nothing`: Function
+  used to extract measurement names from the `trait` field of the `Phenomes` struct 
+  when populating the `phenomes_measurements` relationship table.
+- `link_value_parser_treatments::Union{Nothing,Function}=nothing`: Function
+  used to extract treatment names from the `trait` field of the `Phenomes` struct 
+  when populating the `phenomes_treatments` relationship table.
+- `verbose::Bool=false`: If `true`, display progress information whilst
+  creating relationship records.
 
 # Returns
 
-- `Nothing`: Metadata describing the phenomic dataset are inserted into the
-  database.
+- `Nothing`: The dataset is registered in the database and relationship records
+  are created as requested.
 
 # Throws
 
-- `ErrorException`: If the supplied file does not exist.
-- `ErrorException`: If the file does not appear to contain a valid `Phenomes`
-  object.
-- `ErrorException`: If the file path is not absolute.
-- Any database exception raised during insertion.
+- `ErrorException`: If `fname` does not contain a valid `Phenomes` object.
+- `ErrorException`: If `fname` is not an absolute file path.
+- Any database exception raised whilst inserting records or querying metadata.
+- Any exception raised by `define_relationships!`.
+- Any exception raised by user-supplied parsing functions.
 
 # Warnings
 
-- A warning is emitted when a matching phenomes record already exists and the
-  insert operation is ignored.
+- A warning is emitted if the phenotype dataset has already been registered in
+  the `phenomes` table.
+- Existing records are preserved through the use of
+  `INSERT ... ON CONFLICT DO NOTHING`.
+- Relationship values parsed by the supplied parser functions must correspond
+  to records that already exist in the appropriate database tables.
 
 # Notes
 
-- File validation is delegated to `check(Phenomes; fname=...)`.
-- Only absolute file paths are accepted.
-- Records are inserted into the `phenomes` table using the supplied name, file
-  path, and notes.
-- Existing records are preserved through the use of
+- Validation of the input file is performed using
+  `check(Phenomes; fname=fname)`.
+- The phenotype file path must be supplied as an absolute path.
+- Dataset records are inserted into the `phenomes` table with:
+  - `name`
+  - `file_path`
+  - `notes`
+- Duplicate dataset registrations are ignored using
   `ON CONFLICT DO NOTHING`.
-- The JLD2 file itself is not stored in the database; only its metadata and file
-  location are recorded.
-- This function is intended for registering previously generated phenomic
-  datasets rather than creating new ones.
+- A relationship between the uploaded dataset and its entries is always created
+  using the `phenomes_entries` table.
+- Additional relationship tables are only populated when the corresponding
+  `link_value_parser_*` argument is supplied.
+- Relationship creation is performed using `define_relationships!`.
+- Parser functions receive the original trait string and must return the name
+  of the related database entity to be linked.
+- This mechanism enables trait identifiers containing embedded metadata to be
+  decomposed into multiple database relationships.
+- For example, a trait identifier such as:
+  `yield|site_1|control|2024`
+  could be parsed into separate trait, site, treatment, or experiment
+  relationships.
+- When `verbose=true`, progress information generated by
+  `define_relationships!` is displayed.
 
 # Examples
 
@@ -495,11 +545,46 @@ julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phe
 julia> query(conn, [Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2])]) |> nrow == 1
 true
 
+julia> fname_phenomes_jld2_NEW = string("simulated_phenotype_jld2-", Dates.now(),".jld2");
+
+julia> genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname_phenomes_jld2_NEW);
+
+julia> link_value_parser_traits = x -> String(split(x, '|')[1]);
+
+julia> link_value_parser_sites = x -> String(split(split(x, '|')[2], "-")[end-1]);
+
+julia> link_value_parser_experiments = x -> String("simulated experiment");
+
+julia> link_value_parser_measurements = x -> String(join(split(split(x, '|')[2], "-")[2:4], "-"));
+
+julia> link_value_parser_treatments = x -> String("control");
+
+julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2_NEW), name=fname_phenomes_jld2_NEW, notes="simulated", link_value_parser_traits=link_value_parser_traits, link_value_parser_sites=link_value_parser_sites, link_value_parser_experiments=link_value_parser_experiments, link_value_parser_measurements=link_value_parser_measurements, link_value_parser_treatments=link_value_parser_treatments);
+
+julia> query(conn, [Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2_NEW])]) |> nrow == 1
+true
+
 julia> close(conn);
 ```
 """
-function upload_phenomes!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
+function upload_phenomes!(
+    conn::LibPQ.Connection;
+    fname::String,
+    name::String,
+    notes::String,
+    link_value_parser_traits::Union{Nothing,Function} = nothing,
+    link_value_parser_sites::Union{Nothing,Function} = nothing,
+    link_value_parser_experiments::Union{Nothing,Function} = nothing,
+    link_value_parser_measurements::Union{Nothing,Function} = nothing,
+    link_value_parser_treatments::Union{Nothing,Function} = nothing,
+    verbose::Bool = false,
+)::Nothing
     # conn = dbconnect(); fname = string(pwd(), "/simulated_phenomes-", Dates.now(), ".jld2"); simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname); name = replace(fname, ".tsv" => ""); notes = "simulated phenomes";
+    # link_value_parser_traits = x -> String(split(x, '|')[1])
+    # link_value_parser_sites = x -> String(split(split(x, '|')[2], "-")[end-1])
+    # link_value_parser_experiments = x -> String("simulated experiment")
+    # link_value_parser_measurements = x -> String(join(split(split(x, '|')[2], "-")[2:4], "-"))
+    # link_value_parser_treatments = x -> String("control")
     check(Phenomes, fname = fname)
     if !isabspath(fname)
         error("The path to the Phenomes file is not absolute: \"$fname\"!")
@@ -520,6 +605,53 @@ function upload_phenomes!(conn::LibPQ.Connection; fname::String, name::String, n
     )
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the JLD2 file \"$fname\" already exists!"
+    end
+    # Define relationship tables
+    define_relationships!(conn, table = "phenomes_entries", fname_jld2 = fname, verbose = verbose)
+    if !isnothing(link_value_parser_traits)
+        define_relationships!(
+            conn,
+            table = "phenomes_traits",
+            fname_jld2 = fname,
+            link_value_parser = link_value_parser_traits,
+            verbose = verbose,
+        )
+    end
+    if !isnothing(link_value_parser_sites)
+        define_relationships!(
+            conn,
+            table = "phenomes_sites",
+            fname_jld2 = fname,
+            link_value_parser = link_value_parser_sites,
+            verbose = verbose,
+        )
+    end
+    if !isnothing(link_value_parser_experiments)
+        define_relationships!(
+            conn,
+            table = "phenomes_experiments",
+            fname_jld2 = fname,
+            link_value_parser = link_value_parser_experiments,
+            verbose = verbose,
+        )
+    end
+    if !isnothing(link_value_parser_measurements)
+        define_relationships!(
+            conn,
+            table = "phenomes_measurements",
+            fname_jld2 = fname,
+            link_value_parser = link_value_parser_measurements,
+            verbose = verbose,
+        )
+    end
+    if !isnothing(link_value_parser_treatments)
+        define_relationships!(
+            conn,
+            table = "phenomes_treatments",
+            fname_jld2 = fname,
+            link_value_parser = link_value_parser_treatments,
+            verbose = verbose,
+        )
     end
     # execute(conn, "SELECT * FROM phenomes") |> DataFrame
     nothing

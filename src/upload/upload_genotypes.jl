@@ -262,68 +262,79 @@ end
         name::String,
         notes::String,
         fname_reference_genome::String,
+        verbose::Bool=false,
     )::Nothing
 
-Upload a `Genomes` dataset to the database and associate it with an existing
-reference genome.
+Register a `Genomes` dataset in the database and create its associated
+entry-level relationships.
 
-The function validates that the supplied file exists and appears to be a JLD2 file
-containing a `Genomes` object, verifies that the file path is absolute, resolves
-the associated reference genome from the database, and then registers the genomic
-dataset in the `genomes` table.
+The function validates a `Genomes` JLD2 file, registers it in the `genomes`
+table, links it to a previously registered reference genome, and automatically
+populates the `genomes_entries` relationship table using metadata extracted from
+the uploaded dataset.
 
-The associated reference genome must already be registered in the database and is
-identified using its stored file path. Existing genome records are preserved using
-an `ON CONFLICT DO NOTHING` clause.
+The supplied reference genome must already exist in the database. The
+association between the uploaded `Genomes` object and its reference genome is
+stored through the `reference_genome_id` foreign-key field.
+
+If the genome dataset has already been registered, the database record is left
+unchanged and a warning is emitted. Relationship records are then synchronised
+using `define_relationships!`, i.e. updates the `genomes_entries` table.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `fname::String`: Absolute path to the JLD2 file containing a `Genomes`
-  object.
-- `name::String`: Unique name used to identify the genomic dataset.
-- `notes::String`: Descriptive notes associated with the genomic dataset.
-- `fname_reference_genome::String`: Absolute path to a reference genome already
-  registered in the `reference_genomes` table.
+- `fname::String`: Absolute path to a valid `Genomes` JLD2 file.
+- `name::String`: Name assigned to the uploaded genome dataset.
+- `notes::String`: Descriptive notes associated with the dataset.
+- `fname_reference_genome::String`: Absolute path to a previously registered
+  reference genome file.
+- `verbose::Bool=false`: If `true`, display progress information whilst
+  creating relationship records.
 
 # Returns
 
-- `Nothing`: Metadata describing the genomic dataset are inserted into the
-  database.
+- `Nothing`: The dataset is registered in the database and relationship records
+  are created as required.
 
 # Throws
 
-- `ErrorException`: If the supplied file does not exist.
-- `ErrorException`: If the file does not appear to contain a valid `Genomes`
-  object.
-- `ErrorException`: If the file path is not absolute.
-- `ErrorException`: If the associated reference genome cannot be found in the
+- `ErrorException`: If `fname` does not contain a valid `Genomes` object.
+- `ErrorException`: If `fname` is not an absolute file path.
+- `ErrorException`: If the specified reference genome is not registered in the
   database.
-- Any database exception raised during insertion.
+- Any database exception raised whilst inserting records or querying metadata.
+- Any exception raised by `define_relationships!`.
 
 # Warnings
 
-- A warning is emitted when a matching genome record already exists and the
-  insert operation is ignored.
+- A warning is emitted if the genome dataset has already been registered in the
+  `genomes` table.
+- Existing records are preserved through the use of
+  `INSERT ... ON CONFLICT DO NOTHING`.
 
 # Notes
 
-- File validation is delegated to `check(Genomes; fname=...)`.
-- Only absolute file paths are accepted.
-- The associated reference genome must be registered beforehand using
-  `upload_reference_genome!`.
-- Reference genome lookup is performed using the `file_path` field of the
-  `reference_genomes` table.
-- The resolved reference genome identifier is stored in the
-  `genomes.reference_genome_id` field.
-- Records are inserted into the `genomes` table using the supplied name, file
-  path, reference genome identifier, and notes.
-- Existing records are preserved through the use of
+- Validation of the input file is performed using
+  `check(Genomes; fname=fname)`.
+- The genome file path must be supplied as an absolute path.
+- The reference genome must already exist in the `reference_genomes` table.
+- Reference genomes are located using their stored file paths.
+- A foreign-key relationship is created between the uploaded genome dataset and
+  its reference genome.
+- Dataset records are inserted into the `genomes` table with:
+  - `name`
+  - `file_path`
+  - `reference_genome_id`
+  - `notes`
+- Duplicate dataset registrations are ignored using
   `ON CONFLICT DO NOTHING`.
-- The JLD2 file itself is not stored in the database; only its metadata, file
-  path, and reference genome association are recorded.
-- This function is intended for registering previously generated genomic
-  datasets rather than creating new ones.
+- After registration, the function automatically populates the
+  `genomes_entries` relationship table using `define_relationships!`.
+- Relationship creation is based on entry information contained within the
+  uploaded `Genomes` object, i.e. updates the `genomes_entries` table.
+- When `verbose=true`, progress information generated by
+  `define_relationships!` is displayed.
 
 # Examples
 
@@ -356,6 +367,7 @@ function upload_genomes!(
     name::String,
     notes::String,
     fname_reference_genome::String,
+    verbose::Bool = false,
 )::Nothing
     # conn = dbconnect(); fname_reference_genome = abspath("simulated_reference_genome.fa"); fname = string(pwd(), "/simulated_genomes-", Dates.now(), ".jld2"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname); name = replace(fname, ".jld2" => ""); notes = "Simulated genomes JLD2";
     check(Genomes, fname = fname)
@@ -397,6 +409,8 @@ function upload_genomes!(
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the JLD2 file \"$fname\" already exists!"
     end
+    define_relationships!(conn, table = "genomes_entries", fname_jld2 = fname, verbose = verbose)
     # execute(conn, "SELECT * FROM genomes") |> DataFrame
+    # execute(conn, "SELECT * FROM genomes_entries") |> DataFrame
     nothing
 end
