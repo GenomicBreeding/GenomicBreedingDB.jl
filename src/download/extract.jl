@@ -1,5 +1,5 @@
 """
-    extract_all_tables(
+    list_all_tables(
         conn::LibPQ.Connection,
     )::DataFrame
 
@@ -21,7 +21,7 @@ executing potentially expensive row-count queries.
 # Returns
 
 - `DataFrame`: Table containing the fields `table_name` and
-  `estimated_row_count`.
+  `row_count`.
 
 # Throws
 
@@ -44,13 +44,13 @@ executing potentially expensive row-count queries.
 ```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
 julia> conn = dbconnect();
 
-julia> extract_all_tables(conn) |> nrow > 0
+julia> list_all_tables(conn) |> nrow > 0
 true
 
 julia> close(conn);
 ```
 """
-function extract_all_tables(conn::LibPQ.Connection)::DataFrame
+function list_all_tables(conn::LibPQ.Connection)::DataFrame
     # conn = dbconnect()
     check(conn)
     execute(
@@ -58,7 +58,7 @@ function extract_all_tables(conn::LibPQ.Connection)::DataFrame
         """
         SELECT 
             relname AS table_name, 
-            n_live_tup AS estimated_row_count
+            n_live_tup AS row_count
         FROM 
             pg_stat_user_tables
         """,

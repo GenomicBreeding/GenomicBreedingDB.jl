@@ -209,7 +209,7 @@ pixi run julia --project=. --threads=2,1 --load test/interactive_prelude.jl
 dbinit()
 # Open a connection to the database, list all the tables initialised, and close the connection
 conn = dbconnect()
-extract_all_tables(conn)
+list_all_tables(conn)
 close(conn)
 ```
 

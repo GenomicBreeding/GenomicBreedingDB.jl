@@ -166,6 +166,27 @@ true
 julia> !isnothing(match(Regex("_"), x.like))
 true
 
+julia> x_1 = Filter(conn, table="genomes", field="entries", filter_in=["entry_001"]);
+
+julia> x_2 = Filter(conn, table="genomes", field="entries", filter_like="%");
+
+julia> (x_1.table == "genomes") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
+true
+
+julia> x_1 = Filter(conn, table="phenomes", field="entries", filter_in=["entry_001"]);
+
+julia> x_2 = Filter(conn, table="phenomes", field="entries", filter_like="%");
+
+julia> (x_1.table == "phenomes") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
+true
+
+julia> x_1 = Filter(conn, table="phenomes", field="traits", filter_like="_1");
+
+julia> x_2 = Filter(conn, table="phenomes", field="traits", filter_like="trait_");
+
+julia> (x_1.table == "phenomes") && (x_1.field == "trait_id") && (x_1.in[1] ∈ x_2.in)
+true
+
 julia> close(conn);
 ```
 """
@@ -194,6 +215,7 @@ struct Filter
         # table = "entries"; field = "name"; filter_in = String["entry_100"]; # table = "phenotype_data"; field = "entries"; filter_in = String["entry_100"]; # table = "phenotype_data"; field = "site"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "site_id"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "WQRERWE"; filter_in = String["site_1"]; # table = "phenotype_data"; field = "site"; filter_like = "site"; # table = "phenotype_data"; field = "site"; # table = "phenotype_data"; field = "entry"; filter_in = String["entry_010", "entry_020"]; # table = "phenotype_data"; field = "entry"; filter_in = String["entry_010"]; # table = "phenotype_data"; field = "entry";
         # execute(conn, "SELECT id,value FROM phenotype_data") |> DataFrame
         # table = "phenotype_data"; field = "value"; filter_in = Float64[10.515928568077884]; # table = "phenotype_data"; field = "value"; filter_between = (10, 12); # table = "phenotype_data"; field = "value"; filter_equal_to = 10.515928568077884; # table = "phenotype_data"; field = "value"; filter_less_than = 10; # table = "phenotype_data"; field = "value"; filter_greater_than = 100
+        # table = "phenomes"; field = "treatment"; filter_in = ["control"]
         check(conn, table) # checks for illegal strings
         sum([
             !isnothing(filter_like),
@@ -220,9 +242,8 @@ struct Filter
                 end
             end
         end
-        check(conn, table, field)
         filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
-            # Type checks
+            # No need to look at a meta table or relationship table
             !isnothing(filter_like) ? check(conn, table, field, String) : nothing
             if !isnothing(filter_in)
                 try
@@ -233,6 +254,7 @@ struct Filter
             end
             filter_in, filter_like
         else
+            # Will need to look at a meta table and if necessary (genomes and phenomes tables), relationship table
             metatable = if field == "entry_id"
                 "entries"
             elseif field == "species_id"
@@ -240,31 +262,63 @@ struct Filter
             else
                 replace(field, "_id" => "s")
             end
-            filter_in = if isnothing(filter_in)
-                nothing
+            reltable, metatable = if (table == "genomes") || (table == "phenomes")
+                reltable = string(table, "_", metatable)
+                check(conn, reltable, field)
+                check(conn, metatable, "id")
+                reltable, metatable
             else
-                tmp = extract_ids(conn, names = filter_in, table = metatable).id
-                if length(tmp) == 0
-                    error("No matches for \"$(join(filter_in, "\", \""))\" in \"$metatable\" table!")
+                reltable = nothing
+                check(conn, table, field)
+                check(conn, metatable, "id")
+                reltable, metatable
+            end
+            dict_filters_in_and_like::Dict{String,Union{Nothing,String,Vector{String}}} =
+                Dict("filter_in" => filter_in, "filter_like" => filter_like)
+            for (k, v) in dict_filters_in_and_like
+                # k = string.(keys(dict_filters_in_and_like))[1]; v = dict_filters_in_and_like[k]
+                isnothing(v) ? continue : nothing
+                v, is_like = if k == "filter_like"
+                    [v], true
+                else
+                    v, false
                 end
-                tmp
-            end
-            filter_like = if isnothing(filter_like)
-                nothing
-            else
-                tmp = extract_ids(conn, names = [filter_like], table = metatable, is_like = true).id
-                if length(tmp) == 0
-                    error("No matches for \"%$filter_like%\" in \"$metatable\" table!")
+                tmp = if isnothing(reltable)
+                    # `table` is connected directly to `metatable`
+                    extract_ids(conn, names = v, table = metatable, is_like = is_like).id
+                else
+                    # `table` is connected to `metatable` via a `reltable`
+                    relfield = if table == "genomes"
+                        "genome_id"
+                    elseif table == "phenomes"
+                        "phenome_id"
+                    else
+                        error("Unexpected table=\"$table\" connected to metable=\"$metatable\" via reltable=\"$reltable\"!")
+                    end
+                    check_illegal_strings([relfield, reltable, field])
+                    ids_meta = extract_ids(conn, names = v, table = metatable, is_like = is_like).id
+                    ids_rel = String[]
+                    for id in ids_meta
+                        # id = ids_meta[1]
+                        df_tmp = execute(conn, "SELECT $relfield FROM $reltable WHERE $field = \$1", [id]) |> DataFrame
+                        isempty(df_tmp) ? continue : nothing
+                        push!(ids_rel, df_tmp[1, 1])
+                    end
+                    ids_rel
                 end
-                tmp
+                unique!(tmp)
+                if length(tmp) == 0
+                    error("No matches for \"$(join(v, "\", \""))\" in \"$metatable\" table!")
+                end
+                dict_filters_in_and_like[k] = tmp
             end
-
-            if !isnothing(filter_like)
-                # Here we set the `filter_like` into `filter_in` because we already assigned the query matches from above an no longer need to do fuzzy search
-                (filter_like, nothing)
-            else
-                (filter_in, nothing)
+            # Here we set the `filter_like` into `filter_in` because 
+            # we already assigned the query matches from above and no longer need to do fuzzy search
+            if !isnothing(dict_filters_in_and_like["filter_like"])
+                dict_filters_in_and_like["filter_in"] = deepcopy(dict_filters_in_and_like["filter_like"])
+                dict_filters_in_and_like["filter_like"] = nothing
             end
+            (dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
         end
         filter_like = if !isnothing(filter_like)
             filter_like = if isnothing(match(Regex("%"), filter_like))

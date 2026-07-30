@@ -342,6 +342,7 @@ function query(
     backup_field_numeric::Union{Nothing,String} = nothing,
     verbose::Bool = false,
 )::DataFrame
+    # conn = dbconnect(); args = Dict("treatments"=>["control"]); table = "phenomes"; expected_fields = ["*"]; backup_field_string = nothing; backup_field_numeric = nothing; verbose = true
     filters = Filter[]
     for (k, v) in args
         # k = string.(keys(args))[1]; v = args[k]

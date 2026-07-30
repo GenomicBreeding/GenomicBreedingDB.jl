@@ -135,6 +135,15 @@ julia> n_after = execute(conn, "SELECT * FROM genomes_entries") |> DataFrame |> 
 julia> n_before < n_after
 true
 
+julia> n_before = execute(conn, "SELECT * FROM phenomes_entries") |> DataFrame |> nrow;
+
+julia> define_relationships!(conn, table="phenomes_entries", fname_jld2=abspath(fname_phenomes_jld2));
+
+julia> n_after = execute(conn, "SELECT * FROM phenomes_entries") |> DataFrame |> nrow;
+
+julia> n_before < n_after
+true
+
 julia> n_before = execute(conn, "SELECT * FROM phenomes_traits") |> DataFrame |> nrow;
 
 julia> define_relationships!(conn, table="phenomes_traits", fname_jld2=abspath(fname_phenomes_jld2));
@@ -151,6 +160,39 @@ julia> link_value_parser = x -> String(split(split(x, '|')[2], "-")[end-1]);
 julia> define_relationships!(conn, table="phenomes_sites", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_sites") |> DataFrame |> nrow;
+
+julia> n_before < n_after
+true
+
+julia> n_before = execute(conn, "SELECT * FROM phenomes_experiments") |> DataFrame |> nrow;
+
+julia> link_value_parser = x -> String("simulated experiment");
+
+julia> define_relationships!(conn, table="phenomes_experiments", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
+
+julia> n_after = execute(conn, "SELECT * FROM phenomes_experiments") |> DataFrame |> nrow;
+
+julia> n_before < n_after
+true
+
+julia> n_before = execute(conn, "SELECT * FROM phenomes_measurements") |> DataFrame |> nrow;
+
+julia> link_value_parser = x -> String(join(split(split(x, '|')[2], "-")[2:4], "-"));
+
+julia> define_relationships!(conn, table="phenomes_measurements", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
+
+julia> n_after = execute(conn, "SELECT * FROM phenomes_measurements") |> DataFrame |> nrow;
+
+julia> n_before < n_after
+true
+
+julia> n_before = execute(conn, "SELECT * FROM phenomes_treatments") |> DataFrame |> nrow;
+
+julia> link_value_parser = x -> String("control");
+
+julia> define_relationships!(conn, table="phenomes_treatments", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
+
+julia> n_after = execute(conn, "SELECT * FROM phenomes_treatments") |> DataFrame |> nrow;
 
 julia> n_before < n_after
 true
@@ -178,7 +220,7 @@ function define_relationships!(
     check(conn)
     check_illegal_strings([table])
     valid_table_names =
-        extract_all_tables(conn) |>
+        list_all_tables(conn) |>
         df ->
             filter!(x -> !isnothing(match(Regex("^genomes_|^phenomes_"), x.table_name)), df) |>
             df -> filter!(x -> length(split(x.table_name, "_")) == 2, df) |> df -> df.table_name
@@ -207,8 +249,11 @@ function define_relationships!(
         )
     end
     link_values = let
-        field = table_1 == "phenomes" ? Symbol("traits") : Symbol(table_2)
-        readjld2(type, fname = fname_jld2) |> x -> unique(getproperty(x, field)) |> x -> link_value_parser.(x)
+        # `link_values` at the moment does the affect the Genomes-related relationship table
+        field = table_2 != "entries" ? Symbol("traits") : Symbol(table_2)
+        phenomes = readjld2(type, fname = fname_jld2)
+        link_values = unique(getproperty(phenomes, field))
+        link_value_parser.(link_values)
     end
     unregistered_node_2 = String[]
     n_new = 0
@@ -250,6 +295,7 @@ function define_relationships!(
         execute(conn, "ROLLBACK")
         rethrow(e)
     end
+    unique!(unregistered_node_2)
     if length(unregistered_node_2) > 0
         @warn join([
             "The following values were found in the $type file but are absent in the database. ",

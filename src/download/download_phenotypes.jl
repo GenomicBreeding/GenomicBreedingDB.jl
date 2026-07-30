@@ -296,3 +296,31 @@ function download_phenotype_data(;
     end
     df
 end
+
+function download_phenomes_paths()::DataFrame
+    experiments::Vector{String}=String[]
+    sites::Vector{String}=String[]
+    treatments::Vector{String}=String["control"]
+    measurements::Vector{String}=String[]
+    entries::Vector{String}=String[]
+    species::Vector{String}=String[]
+    entry_types::Vector{String}=String[]
+    traits::Vector{String}=String[]
+    like_experiments::Vector{String}=String[]
+    like_sites::Vector{String}=String[]
+    like_treatments::Vector{String}=String[]
+    like_measurements::Vector{String}=String[]
+    like_entries::Vector{String}=String["ent"]
+    like_species::Vector{String}=String[]
+    like_entry_types::Vector{String}=String[]
+    like_traits::Vector{String}=String[]
+    values::Tuple{Float64,Float64}=(-Inf, +Inf)
+    keep_id_and_do_not_unstack::Bool=false
+    verbose::Bool=true
+
+    conn = dbconnect()
+
+
+
+    DataFrame()
+end
