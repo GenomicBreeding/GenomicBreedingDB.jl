@@ -64,5 +64,6 @@ include("download/download_environments.jl")
 export download_environment_data
 include("download/download_pedigrees.jl")
 export download_pedigrees
-
+include("download/download_genotypes.jl")
+export download_genomes_paths
 end

@@ -114,6 +114,12 @@ version = "2.5.0"
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 version = "1.1.2"
 
+[[deps.ArnoldiMethod]]
+deps = ["LinearAlgebra", "Random", "StaticArrays"]
+git-tree-sha1 = "d57bd3762d308bded22c3b82d033bff85f6195c6"
+uuid = "ec485272-7323-5ecc-a04f-4719b315124d"
+version = "0.4.0"
+
 [[deps.Arpack]]
 deps = ["Arpack_jll", "Libdl", "LinearAlgebra", "Logging"]
 git-tree-sha1 = "9b9b347613394885fd1c8c7729bfc60528faa436"
@@ -662,7 +668,7 @@ uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"
 version = "0.2.0"
 
 [[deps.GenomicBreedingDB]]
-deps = ["CSV", "CodecZlib", "DataFrames", "Dates", "Documenter", "DotEnv", "GenomicBreedingCore", "GenomicBreedingIO", "JuliaFormatter", "LibPQ", "ProgressMeter", "Random", "StatsBase", "Suppressor", "Tables", "TranscodingStreams"]
+deps = ["CSV", "CodecZlib", "DataFrames", "Dates", "Documenter", "DotEnv", "GenomicBreedingCore", "GenomicBreedingIO", "Graphs", "JuliaFormatter", "LibPQ", "ProgressMeter", "Random", "StatsBase", "Suppressor", "Tables", "TranscodingStreams"]
 path = "."
 uuid = "dd1ffd05-44c9-4da0-a67e-cb767bb549d1"
 version = "0.0.1"
@@ -697,6 +703,19 @@ version = "2.55.0+0"
 git-tree-sha1 = "246c628cec062230b7d183aab88841fa94fcabe9"
 uuid = "c27321d9-0574-5035-807b-f59d2c89b15c"
 version = "1.5.0"
+
+[[deps.Graphs]]
+deps = ["ArnoldiMethod", "DataStructures", "Inflate", "LinearAlgebra", "Random", "SimpleTraits", "SparseArrays", "Statistics"]
+git-tree-sha1 = "7eb45fe833a5b7c51cf6d89c5a841d5967e44be3"
+uuid = "86223c79-3864-5bf0-83f7-82e725a168b6"
+version = "1.14.0"
+
+    [deps.Graphs.extensions]
+    GraphsSharedArraysExt = "SharedArrays"
+
+    [deps.Graphs.weakdeps]
+    Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+    SharedArrays = "1a1011a3-84de-559e-8e89-a11a2f7dc383"
 
 [[deps.HashArrayMappedTries]]
 git-tree-sha1 = "2eaa69a7cab70a52b9687c8bf950a5a93ec895ae"
@@ -736,6 +755,11 @@ deps = ["Dates", "Random", "Requires"]
 git-tree-sha1 = "cf8234411cbeb98676c173f930951ea29dca3b23"
 uuid = "a303e19e-6eb4-11e9-3b09-cd9505f79100"
 version = "0.2.4"
+
+[[deps.Inflate]]
+git-tree-sha1 = "d1b1b796e47d94588b3757fe84fbf65a5ec4a80d"
+uuid = "d25df0c9-e2be-5dd7-82c8-3ad0b3e990b9"
+version = "0.1.5"
 
 [[deps.InitialValues]]
 git-tree-sha1 = "4da0f88e9a39111c2fa3add390ab15f3a44f3ca3"
@@ -1358,6 +1382,12 @@ version = "1.11.0"
 git-tree-sha1 = "503688b59397b3307443af35cd953a13e8005c16"
 uuid = "1277b4bf-5013-50f5-be3d-901d8477a67a"
 version = "2.0.0"
+
+[[deps.SimpleTraits]]
+deps = ["InteractiveUtils", "MacroTools"]
+git-tree-sha1 = "7ddb0b49c109481b046972c0e4ab02b2127d6a75"
+uuid = "699a6c99-e7fa-54fc-8d76-47d257e15c1d"
+version = "0.9.6"
 
 [[deps.Sockets]]
 uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
