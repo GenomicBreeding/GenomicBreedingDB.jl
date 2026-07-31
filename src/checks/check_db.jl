@@ -222,14 +222,14 @@ Validate that a database field exists and is compatible with an expected Julia
 type.
 
 The function verifies that the specified field exists in the target table and
-retrieves its database type from PostgreSQL schema metadata. The detected type
-is compared against a broad Julia type category, allowing validation of string,
-numeric, and temporal fields before they are used in filtering, querying,
-updating, or data-import workflows.
+retrieves its PostgreSQL data type from the database schema. The detected type
+is then compared against an expected Julia type category, allowing validation of
+string, numeric, and temporal fields before they are used in filtering,
+querying, updating, or data-import operations.
 
 This function is primarily intended for defensive schema validation and helps
-ensure that database operations are only applied to fields whose types are
-compatible with the requested operation.
+ensure that higher-level database operations are applied only to fields whose
+types are compatible with the requested operation.
 
 # Arguments
 
@@ -261,14 +261,17 @@ compatible with the requested operation.
   `check(conn, table, field)`.
 - Field metadata are retrieved from PostgreSQL's
   `information_schema.columns` view.
-- Validation is based on the field's `data_type` recorded in the database
-  schema rather than values stored within the table.
+- Validation is based on the field's declared database type rather than values
+  stored within the table.
 - String validation (`T <: AbstractString`) supports:
   - `text`
+  - `uuid`
   - `USER-DEFINED`
 - The `USER-DEFINED` category allows PostgreSQL enum types such as
   `entry_type` and `relationship_type` to be treated as string-compatible
   fields.
+- UUID fields are treated as string-compatible because they are commonly used
+  as textual identifiers.
 - Numeric validation (`T <: Number`) supports:
   - `smallint`
   - `int`
@@ -327,13 +330,13 @@ function check(conn::LibPQ.Connection, table::String, field::String, T::Type)::N
         conn,
         """
         SELECT column_name, data_type
-  FROM information_schema.columns
-  WHERE table_name = \$1
-  AND column_name = \$2
+        FROM information_schema.columns
+        WHERE table_name = \$1
+        AND column_name = \$2
         """,
         [table, field],
     ) |> DataFrame |> x -> x.data_type[1]
-    if (T <: AbstractString) && (t != "text") && (t != "USER-DEFINED")
+    if (T <: AbstractString) && (t != "text") && (t != "uuid") && (t != "USER-DEFINED")
         error("The \"$field\" field in table \"$table\" is not string!")
     end
     if (

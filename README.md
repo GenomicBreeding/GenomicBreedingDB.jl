@@ -44,7 +44,7 @@ upload("siumulated_fit.jld2")
 
 ### Input file formats
 
-- Tab-delimited files (comma and other delimiters can also be used):
+- Tab-delimited files:
     + trial data (e.g. ["simulated_trials.tsv"](./res/simulated_trials.tsv))
     + environmental data (e.g. ["simulated_environments.tsv"](./res/simulated_environments.tsv))
 - FASTA ([see specifications for details](https://en.wikipedia.org/wiki/FASTA_format))
