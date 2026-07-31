@@ -93,8 +93,13 @@ fields.
 - If the supplied field is absent, the constructor attempts to infer a matching
   foreign-key field automatically.
 - Special handling is provided for:
-  - `entries` → `entry_id`
-  - `species` → `species_id`
+    + `entries` → `entry_id`
+    + `species` → `species_id`
+- The `entry_relationships` table is treated as a special case because its
+  relationship fields store values directly rather than through associated
+  metadata tables. Consequently, filters applied to `entry_relationships` are
+  validated against the table schema but are not resolved through metadata or
+  intermediate relationship tables.
 - String-based filters (`filter_like` and string-valued `filter_in`) are
   validated against the underlying database field type.
 - Numeric filters (numeric-valued `filter_in`, `filter_between`, `filter_equal_to`,
@@ -242,7 +247,7 @@ struct Filter
                 end
             end
         end
-        filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
+        filter_in, filter_like = if isnothing(match(Regex("_id\$"), field)) || (table == "entry_relationships")
             # No need to look at a meta table or relationship table
             !isnothing(filter_like) ? check(conn, table, field, String) : nothing
             if !isnothing(filter_in)

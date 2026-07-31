@@ -72,9 +72,11 @@ tables containing incomplete relationships.
   human-readable names after query execution.
 - Identifier translation is performed by querying the corresponding lookup
   tables:
-  - `entry_id` → `entries`
-  - `species_id` → `species`
-  - `<name>_id` → `<name>s`
+    + `entry_id` → `entries`
+    + `species_id` → `species`
+    + `<name>_id` → `<name>s`
+- The `entry_relationships` table is treated as a special case because
+  `child_id` and `parent_id` refer to `id` field in the `entries` table.
 - Missing identifier values are excluded from lookup queries and remain missing
   in the returned `DataFrame`.
 - Converted columns are renamed by removing the `_id` suffix.
@@ -179,13 +181,18 @@ function query(
     df = execute(conn, sql, par) |> DataFrame
     pb = ProgressMeter.Progress(ncol(df), desc = "Converting *_id fields into names...")
     for f in names(df)
-        # f = names(df)[3]
+        # f = names(df)[2]
         # println(f)
         isnothing(match(Regex("_id\$"), f)) ? continue : nothing
+        f, g = if table == "entry_relationships"
+            "entry_id", replace(f, Regex("_id\$") => "")
+        else
+            f, nothing
+        end
         f = replace(f, Regex("_id\$") => "")
         metatable = f == "entry" ? "entries" : f == "species" ? "species" : "$(f)s"
         check_illegal_strings([metatable])
-        values = df[!, "$(f)_id"]
+        values = isnothing(g) ? df[!, "$(f)_id"] : df[!, "$(g)_id"]
         df_tmp =
             execute(
                 conn,
@@ -195,9 +202,17 @@ function query(
         for i = 1:nrow(df_tmp)
             # i = 1
             idx = findall(.!ismissing.(values) .&& (values .== df_tmp.id[i]))
-            df[idx, "$(f)_id"] .= df_tmp.name[i]
+            if isnothing(g)
+                df[idx, "$(f)_id"] .= df_tmp.name[i]
+            else
+                df[idx, "$(g)_id"] .= df_tmp.name[i]
+            end
         end
-        rename!(df, "$(f)_id" => f)
+        if isnothing(g)
+            rename!(df, "$(f)_id" => f)
+        else
+            rename!(df, "$(g)_id" => g)
+        end
         verbose ? ProgressMeter.next!(pb) : nothing
     end
     if verbose
@@ -221,25 +236,21 @@ end
 Construct and execute a database query from a collection of filtering
 arguments.
 
-The function translates user-supplied filtering arguments into validated
+The function converts user-supplied filtering arguments into validated
 `Filter` objects and executes the resulting query against the specified
-database table. Argument names are automatically mapped to database field
-names, filtered against an optional set of permitted fields, and converted
+database table. Argument names are automatically translated into database field
+names, optionally filtered against a set of permitted fields, and converted
 into the appropriate filter types.
 
-Arguments prefixed with `like_` are interpreted as pattern-matching filters
-and converted into `filter_like` constraints. The special field `value` is
+Arguments prefixed with `like_` are interpreted as fuzzy-search filters and
+converted into `filter_like` constraints. The special field `value` is
 interpreted as a numeric interval and converted into a `filter_between`
 constraint. All other recognised fields are interpreted as exact-match filters
 and converted into `filter_in` constraints.
 
-All generated filters are validated, type-checked, sanitised, and translated
-into parameterised SQL query components via the `Filter` constructor before
-being executed by the lower-level `query(conn, filters; ...)` method.
-
-If no valid filters are generated, a fallback filter is automatically created
-using either a string or numeric field, allowing unrestricted queries whilst
-maintaining compatibility with APIs that require at least one `Filter`.
+This function serves as a convenience wrapper around `Filter` and
+`query(conn, filters; ...)`, allowing queries to be defined using simple
+dictionaries rather than explicit filter objects.
 
 # Arguments
 
@@ -247,7 +258,7 @@ maintaining compatibility with APIs that require at least one `Filter`.
 - `args::AbstractDict{String}`: Collection of filtering arguments.
 - `table::String`: Name of the target database table.
 - `expected_fields::Vector{String}=["*"]`: Fields permitted to participate in
-  query construction. Use `["*"]` to allow all supplied fields.
+  query construction. Use `["*"]` to allow all recognised fields.
 - `backup_field_string::Union{Nothing,String}=nothing`: String field used to
   generate a catch-all filter when no valid filters are supplied.
 - `backup_field_numeric::Union{Nothing,String}=nothing`: Numeric field used to
@@ -262,6 +273,8 @@ maintaining compatibility with APIs that require at least one `Filter`.
 
 # Throws
 
+- `ErrorException`: If a fuzzy-search argument contains more than one search
+  term.
 - `ErrorException`: If no valid filters are generated and neither
   `backup_field_string` nor `backup_field_numeric` is supplied.
 - Any exception raised whilst constructing `Filter` objects.
@@ -273,24 +286,26 @@ maintaining compatibility with APIs that require at least one `Filter`.
   - `traits` → `trait`
   - `entries` → `entry`
   - `species` → `species`
-- Arguments prefixed with `like_` generate one `filter_like` constraint for
-  each supplied value.
-- The special field `value` is converted into a `filter_between` constraint.
+- Arguments prefixed with `like_` are converted into `filter_like`
+  constraints.
+- Fuzzy-search filters accept only a single search term.
+- The special field `value` is converted into a `filter_between`
+  constraint.
 - All other recognised fields are converted into `filter_in` constraints.
 - Empty filter values are ignored.
 - If `expected_fields != ["*"]`, only fields present in
-  `expected_fields` are used to construct filters.
+  `expected_fields` are used when constructing filters.
 - All generated filters are validated against the database schema, checked for
   type compatibility, sanitised, and converted into parameterised SQL query
-  fragments by the `Filter` constructor.
+  components by the `Filter` constructor.
 - If no valid filters are generated and `backup_field_string` is supplied, a
   catch-all filter of `backup_field_string LIKE '%'` is used.
 - If no valid filters are generated and only
   `backup_field_numeric` is supplied, a catch-all filter of
   `backup_field_numeric > -1_000_000` is used.
 - This function is intended as a convenience wrapper around `Filter` and
-  `query`, reducing repetitive filter-construction logic in higher-level data
-  extraction and download functions.
+  `query`, reducing repetitive filter-construction logic throughout the
+  package.
 - Future extensions may support interval-based filtering for additional field
   types such as dates and datetimes.
 
@@ -343,6 +358,7 @@ function query(
     verbose::Bool = false,
 )::DataFrame
     # conn = dbconnect(); args = Dict("treatments"=>["control"]); table = "phenomes"; expected_fields = ["*"]; backup_field_string = nothing; backup_field_numeric = nothing; verbose = true
+    # args = Dict("like_entries" = String["01", "02"])
     filters = Filter[]
     for (k, v) in args
         # k = string.(keys(args))[1]; v = args[k]
@@ -356,9 +372,10 @@ function query(
             continue
         end
         if is_like
-            for vi in v
-                push!(filters, Filter(conn, table = table, field = field, filter_like = vi))
+            if length(v) > 1
+                error("We only accept 1 query for fuzzy search: $k = $v")
             end
+            push!(filters, Filter(conn, table = table, field = field, filter_like = v[1]))
         elseif field == "value"
             push!(filters, Filter(conn, table = table, field = field, filter_between = v))
         else
