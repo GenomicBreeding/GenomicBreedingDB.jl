@@ -53,7 +53,7 @@ include("upload/upload.jl")
 export upload
 # Downloads
 include("download/extract.jl")
-export list_all_tables, extract_table_fields, extract_table_contents, extract_ids, extract_names
+export list_all_tables, extract_table_fields, extract_table_contents, extract_ids, extract_names, combinations
 include("download/query.jl")
 export query
 include("download/transform.jl")
@@ -65,5 +65,5 @@ export download_environment_data
 include("download/download_pedigrees.jl")
 export download_pedigrees
 include("download/download_genotypes.jl")
-export download_reference_genomes_paths, download_vcfs_paths, download_genomes_paths
+export download_genotype_data_paths
 end

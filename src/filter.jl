@@ -88,39 +88,61 @@ fields.
 # Notes
 
 - Exactly one filtering criterion must be supplied.
-- Table validation is performed using `check(conn, table)`.
-- Field validation is performed using `check(conn, table, field)`.
-- If the supplied field is absent, the constructor attempts to infer a matching
-  foreign-key field automatically.
-- Special handling is provided for:
+- Table and field names are validated before filter construction.
+- String-based filters are validated against the underlying database schema.
+- Numeric filters are validated against the underlying database schema.
+- When a supplied field cannot be found directly in the target table, the
+  constructor attempts to infer the corresponding foreign-key field
+  automatically.
+- This behaviour relies on the database convention that ordinary field names
+  are singular (with the exception of `species`), whilst references to records
+  stored in other tables are represented using foreign-key fields ending in
+  `_id`.
+- Plural field names are therefore interpreted as references to related
+  entities and converted automatically. For example:
     + `entries` → `entry_id`
+    + `traits` → `trait_id`
+    + `sites` → `site_id`
+    + `measurements` → `measurement_id`
     + `species` → `species_id`
+- Fields ending in `_id` are treated as foreign-key relationships and are
+  resolved through the appropriate metadata tables.
+- For standard tables, foreign-key values are resolved directly through the
+  associated metadata table.
+- For `genomes`, `genotype_vcfs`, and `phenomes`, foreign-key values are
+  resolved through intermediate relationship tables linking the
+  dataset to metadata records.
+- These relationship tables are:
+    + `genomes_entries`
+    + `genotype_vcfs_entries`
+    + `phenomes_entries`
+    + `phenomes_traits`
+    + `phenomes_sites`
+    + `phenomes_experiments`
+    + `phenomes_measurements`
+    + `phenomes_treatments`
+- The `reference_genome_id` field is a special case. Because `genomes` and
+  `genotype_vcfs` store a direct foreign-key relationship to
+  `reference_genomes`, identifier resolution is performed directly through the
+  `reference_genomes` table rather than through an intermediate relationship
+  table.
 - The `entry_relationships` table is treated as a special case because its
-  relationship fields store values directly rather than through associated
-  metadata tables. Consequently, filters applied to `entry_relationships` are
-  validated against the table schema but are not resolved through metadata or
-  intermediate relationship tables.
-- String-based filters (`filter_like` and string-valued `filter_in`) are
-  validated against the underlying database field type.
-- Numeric filters (numeric-valued `filter_in`, `filter_between`, `filter_equal_to`,
-  `filter_less_than`, and `filter_greater_than`) are validated against the
-  underlying database field type.
-- For `filter_between`, the first value must be less than or equal to the second
+  relationship values are stored directly and therefore do not require
+  metadata-table lookups or identifier resolution.
+- Human-readable names supplied through `filter_in` or `filter_like` are
+  automatically converted to database identifiers where necessary.
+- `filter_like` searches applied to foreign-key relationships are resolved
+  immediately and subsequently converted into equivalent `filter_in`
+  constraints.
+- Wildcard characters (`%`) are automatically added to `filter_like`
+  expressions when not already present.
+- Underscore characters are escaped to avoid unintended SQL wildcard matching.
+- The first value of a `filter_between` interval must not exceed the second
   value.
-- Name-based filters applied to foreign-key fields are automatically translated
-  into numeric ids using `extract_ids`.
-- Foreign-key mappings are resolved through corresponding lookup tables:
-  - `entry_id` ↔ `entries`
-  - `species_id` ↔ `species`
-  - `<name>_id` ↔ `<name>s`
-- `filter_like` searches applied to foreign-key fields are resolved to matching
-  ids and subsequently converted into an `IN` filter.
-- Pattern-matching filters automatically receive `%` wildcards when not already
-  supplied.
-- Underscore characters are escaped to avoid unintended wildcard matching.
-- The resulting `Filter` object contains fully validated and resolved values and
-  is ready for use with functions such as `query`, `update_table!`, and
-  `delete_names!`.
+- Constructed filters are intended for use with helper functions such as
+  `query`, `concat_filters`, `update_table!`, and `delete_names!`.
+- All resulting SQL statements remain parameterised, helping protect against
+  SQL injection.
 
 # Examples
 
@@ -178,6 +200,13 @@ julia> x_2 = Filter(conn, table="genomes", field="entries", filter_like="%");
 julia> (x_1.table == "genomes") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
 true
 
+julia> x_1 = Filter(conn, table="genotype_vcfs", field="entries", filter_in=["entry_001"]);
+
+julia> x_2 = Filter(conn, table="genotype_vcfs", field="entries", filter_like="%");
+
+julia> (x_1.table == "genotype_vcfs") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
+true
+
 julia> x_1 = Filter(conn, table="phenomes", field="entries", filter_in=["entry_001"]);
 
 julia> x_2 = Filter(conn, table="phenomes", field="entries", filter_like="%");
@@ -230,10 +259,13 @@ struct Filter
             !isnothing(filter_less_than),
             !isnothing(filter_greater_than),
         ]) != 1 ? error("We expect one and only one `filter_*` argument!") : nothing
+        # Attempt to resolve field name; if direct field doesn't exist, infer foreign-key field
         field = try
             check(conn, table, field) # checks for illegal strings
             field
         catch
+            # Here, we assume that plural field names refer to references, i.e. ids to another table.
+            # We can do this safely because we have set all field names across all table to be singular (except species).
             if field == "entries"
                 "entry_id"
             elseif field == "species"
@@ -247,8 +279,16 @@ struct Filter
                 end
             end
         end
-        filter_in, filter_like = if isnothing(match(Regex("_id\$"), field)) || (table == "entry_relationships")
-            # No need to look at a meta table or relationship table
+        # Process field resolution: check if field is a direct column or requires foreign-key lookup
+        # We need to potentially redefine field, filter_in, and filter_like because:
+        # 1. If field is a direct column (not ending in _id, or is entry_relationships), we validate
+        #    the filter type matches the column's data type and return the values as-is
+        # 2. If field is a foreign-key reference (ends in _id), we must resolve human-readable names
+        #    (e.g., "entry_100") to their corresponding database IDs using a metadata table and possibly a relationship table.
+        #    After ID resolution, field is set to "id" because the resolved IDs refer to the primary key
+        #    column "id" in the primary table.
+        field, filter_in, filter_like = if isnothing(match(Regex("_id\$"), field)) || (table == "entry_relationships")
+            # Direct column field - validate filter type matches field data type
             !isnothing(filter_like) ? check(conn, table, field, String) : nothing
             if !isnothing(filter_in)
                 try
@@ -257,9 +297,9 @@ struct Filter
                     check(conn, table, field, Float64)
                 end
             end
-            filter_in, filter_like
+            field, filter_in, filter_like
         else
-            # Will need to look at a meta table and if necessary (genomes and phenomes tables), relationship table
+            # Foreign-key field - resolve human-readable names to database identifiers
             metatable = if field == "entry_id"
                 "entries"
             elseif field == "species_id"
@@ -267,17 +307,21 @@ struct Filter
             else
                 replace(field, "_id" => "s")
             end
-            reltable, metatable = if (table == "genomes") || (table == "phenomes")
-                reltable = string(table, "_", metatable)
-                check(conn, reltable, field)
-                check(conn, metatable, "id")
-                reltable, metatable
-            else
-                reltable = nothing
-                check(conn, table, field)
-                check(conn, metatable, "id")
-                reltable, metatable
-            end
+            # Determine if lookup requires an intermediate relationship table
+            reltable, metatable =
+                if ((table == "genomes") || (table == "phenomes") || (table == "genotype_vcfs")) &&
+                   (metatable != "reference_genomes")
+                    reltable = string(table, "_", metatable)
+                    check(conn, reltable, field)
+                    check(conn, metatable, "id")
+                    reltable, metatable
+                else
+                    reltable = nothing
+                    check(conn, table, field)
+                    check(conn, metatable, "id")
+                    reltable, metatable
+                end
+            # Process filter_in and filter_like by converting human-readable names to IDs
             dict_filters_in_and_like::Dict{String,Union{Nothing,String,Vector{String}}} =
                 Dict("filter_in" => filter_in, "filter_like" => filter_like)
             for (k, v) in dict_filters_in_and_like
@@ -289,14 +333,18 @@ struct Filter
                     v, false
                 end
                 tmp = if isnothing(reltable)
-                    # `table` is connected directly to `metatable`
+                    # Direct foreign-key lookup through metadata table
+                    # i.e. `table` is connected directly to `metatable`
                     extract_ids(conn, names = v, table = metatable, is_like = is_like).id
                 else
-                    # `table` is connected to `metatable` via a `reltable`
+                    # Indirect lookup through relationship table intermediate table
+                    # i.e. `table` is connected to `metatable` via a `reltable`
                     relfield = if table == "genomes"
                         "genome_id"
                     elseif table == "phenomes"
                         "phenome_id"
+                    elseif table == "genotype_vcfs"
+                        "genotype_vcf_id"
                     else
                         error("Unexpected table=\"$table\" connected to metable=\"$metatable\" via reltable=\"$reltable\"!")
                     end
@@ -304,7 +352,6 @@ struct Filter
                     ids_meta = extract_ids(conn, names = v, table = metatable, is_like = is_like).id
                     ids_rel = String[]
                     for id in ids_meta
-                        # id = ids_meta[1]
                         df_tmp = execute(conn, "SELECT $relfield FROM $reltable WHERE $field = \$1", [id]) |> DataFrame
                         isempty(df_tmp) ? continue : nothing
                         push!(ids_rel, df_tmp[1, 1])
@@ -317,14 +364,14 @@ struct Filter
                 end
                 dict_filters_in_and_like[k] = tmp
             end
-            # Here we set the `filter_like` into `filter_in` because 
-            # we already assigned the query matches from above and no longer need to do fuzzy search
+            # Convert filter_like to filter_in after ID resolution
             if !isnothing(dict_filters_in_and_like["filter_like"])
                 dict_filters_in_and_like["filter_in"] = deepcopy(dict_filters_in_and_like["filter_like"])
                 dict_filters_in_and_like["filter_like"] = nothing
             end
-            (dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
+            ("id", dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
         end
+        # Process filter_like: add wildcard characters and escape underscores
         filter_like = if !isnothing(filter_like)
             filter_like = if isnothing(match(Regex("%"), filter_like))
                 "%$(filter_like)%"
@@ -335,6 +382,7 @@ struct Filter
         else
             filter_like
         end
+        # Validate filter_between interval ordering
         if !isnothing(filter_between) && (filter_between[1] > filter_between[2])
             error(
                 string(
@@ -346,17 +394,12 @@ struct Filter
                 ),
             )
         end
-        # Numeric type checks
+        # Validate numeric filters are applied to numeric fields
         !isnothing(filter_between) ? check(conn, table, field, Float64) : nothing
         !isnothing(filter_equal_to) ? check(conn, table, field, Float64) : nothing
         !isnothing(filter_less_than) ? check(conn, table, field, Float64) : nothing
         !isnothing(filter_greater_than) ? check(conn, table, field, Float64) : nothing
-        # !isnothing(filter_like) ? let sql = "SELECT * FROM $table WHERE $field LIKE ($(join(string.("\$", 1:length(filter_like)), ',')))"; execute(conn, sql, filter_like) |> DataFrame; end : nothing
-        # !isnothing(filter_in) ? let sql = "SELECT * FROM $table WHERE $field IN ($(join(string.("\$", 1:length(filter_in)), ',')))"; execute(conn, sql, filter_in) |> DataFrame; end : nothing
-        # !isnothing(filter_between) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field BETWEEN \$1 AND \$2", [filter_between[1], filter_between[2]]) |> DataFrame : nothing
-        # !isnothing(filter_equal_to) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field = \$1", [filter_equal_to]) |> DataFrame : nothing
-        # !isnothing(filter_less_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field < \$1", [filter_less_than]) |> DataFrame : nothing
-        # !isnothing(filter_greater_than) ? execute(conn, "SELECT id,value FROM $table WHERE $field != 'NaN' AND $field > \$1", [filter_greater_than]) |> DataFrame : nothing
+        # Construct Filter object with validated and resolved parameters
         new(
             table,
             field,

@@ -24,31 +24,31 @@ upload(
     verbose = true,
 )
 upload("simulated_environments.tsv", experiment = "simulated experiment", treatment = "control", verbose = true)
-upload(abspath("simulated_phenomes.jld2"), name = "simulated phenomes", notes = "simulated", verbose = true)
+upload(abspath("simulated_phenomes.jld2"), name = "simulated phenomes", note = "simulated", verbose = true)
 upload(
     abspath("simulated_reference_genome.fa"),
     name = "simulated reference genome",
-    notes = "simulated",
+    note = "simulated",
     verbose = true,
 )
 upload(
     abspath("simulated_genomes.vcf"),
     name = "simulated genomes",
-    notes = "simulated",
+    note = "simulated",
     fname_reference_genome = abspath("simulated_reference_genome.fa"),
     verbose = true,
 )
 upload(
     abspath("simulated_genomes.jld2"),
     name = "simulated genomes",
-    notes = "simulated",
+    note = "simulated",
     fname_reference_genome = abspath("simulated_reference_genome.fa"),
     verbose = true,
 )
 upload(
     abspath("simulated_phenomes.jld2"),
     name = "simulated phenomes",
-    notes = "simulated",
+    note = "simulated",
     link_value_parser_traits = x -> String(split(x, '|')[1]),
     link_value_parser_sites = x -> String(split(split(x, '|')[2], "-")[end-1]),
     link_value_parser_experiments = x -> String("simulated experiment"),

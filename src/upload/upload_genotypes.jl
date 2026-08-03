@@ -3,7 +3,7 @@
         conn::LibPQ.Connection;
         fname::String,
         name::String,
-        notes::String,
+        note::String,
     )::Nothing
 
 Upload a reference genome file to the database and register its metadata.
@@ -24,7 +24,7 @@ check ensures that multiple records cannot reference the same file path.
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
 - `fname::String`: Absolute path to the reference genome FASTA file.
 - `name::String`: Unique name used to identify the reference genome.
-- `notes::String`: Descriptive notes associated with the reference genome.
+- `note::String`: Descriptive note associated with the reference genome.
 
 # Returns
 
@@ -56,7 +56,7 @@ check ensures that multiple records cannot reference the same file path.
 - Existing registrations are identified using the stored `file_path` field.
 - Duplicate file registrations are not permitted.
 - Metadata are inserted into the `reference_genomes` table using the supplied
-  name, file path, and notes.
+  name, file path, and note.
 - Existing records with the same name are preserved through the use of
   `ON CONFLICT (name) DO NOTHING`.
 - The reference genome file itself is not stored in the database; only its
@@ -73,7 +73,7 @@ julia> simulate_genomes(fname_reference_genome=fname_reference_genome);
 
 julia> conn = dbconnect();
 
-julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, notes="simulated");
+julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, note="simulated");
 
 julia> query(conn, [Filter(conn, table="reference_genomes", field="name", filter_in=[fname_reference_genome])]) |> nrow == 1
 true
@@ -81,8 +81,8 @@ true
 julia> close(conn);
 ```
 """
-function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
-    # conn = dbconnect(); fname = string(pwd(), "/simulated_reference_genome-", Dates.now(), ".fa"); simulate_reference_genome(fname_reference_genome=fname); name = "Milnesium tardigradum"; notes = "Simulated reference genome";
+function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::String, note::String)::Nothing
+    # conn = dbconnect(); fname = string(pwd(), "/simulated_reference_genome-", Dates.now(), ".fa"); simulate_reference_genome(fname_reference_genome=fname); name = "Milnesium tardigradum"; note = "Simulated reference genome";
     if !isabspath(fname)
         error("The path to the reference genome file is not absolute: \"$fname\"!")
     end
@@ -108,12 +108,12 @@ function upload_reference_genome!(conn::LibPQ.Connection; fname::String, name::S
         (
             name,
             file_path,
-            notes
+            note
         )
         VALUES (\$1,\$2,\$3)
         ON CONFLICT (name) DO NOTHING
         """,
-        [name, fname, notes],
+        [name, fname, note],
     )
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the FASTA file \"$fname\" already exists!"
@@ -127,7 +127,7 @@ end
         conn::LibPQ.Connection;
         fname::String,
         name::String,
-        notes::String,
+        note::String,
         fname_reference_genome::String,
     )::Nothing
 
@@ -147,7 +147,7 @@ are supported.
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
 - `fname::String`: Absolute path to the genotype VCF file.
 - `name::String`: Unique name used to identify the genotype dataset.
-- `notes::String`: Descriptive notes associated with the genotype dataset.
+- `note::String`: Descriptive note associated with the genotype dataset.
 - `fname_reference_genome::String`: Absolute path to a reference genome that has
   already been registered in the `reference_genomes` table.
 
@@ -183,6 +183,8 @@ are supported.
   `ON CONFLICT DO NOTHING`.
 - The VCF file itself is not stored in the database; only its metadata, file
   path, and reference genome association are recorded.
+- After registration, the function automatically populates the
+  `genotype_vcfs_entries` relationship table using `define_relationships!`.
 
 # Examples
 
@@ -195,12 +197,12 @@ julia> simulate_genomes(fname_reference_genome=fname_reference_genome, fname_gen
 
 julia> conn = dbconnect(); 
 
-julia> try isnothing(upload_genotype_vcf!(conn, fname=abspath(fname_genomes_vcf), name=fname_genomes_vcf, notes="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
+julia> try isnothing(upload_genotype_vcf!(conn, fname=abspath(fname_genomes_vcf), name=fname_genomes_vcf, note="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
 false
 
-julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, notes="simulated");
+julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, note="simulated");
 
-julia> try isnothing(upload_genotype_vcf!(conn, fname=abspath(fname_genomes_vcf), name=fname_genomes_vcf, notes="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
+julia> try isnothing(upload_genotype_vcf!(conn, fname=abspath(fname_genomes_vcf), name=fname_genomes_vcf, note="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
 true
 
 julia> query(conn, [Filter(conn, table="genotype_vcfs", field="name", filter_in=[fname_genomes_vcf])]) |> nrow == 1
@@ -213,10 +215,11 @@ function upload_genotype_vcf!(
     conn::LibPQ.Connection;
     fname::String,
     name::String,
-    notes::String,
+    note::String,
     fname_reference_genome::String,
+    verbose::Bool = false,
 )::Nothing
-    # conn = dbconnect(); fname_reference_genome = string(pwd(), "/simulated_reference_genome.fa"); fname = string(pwd(), "/simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname); name = string("Simulated_VCF-", Dates.now()); notes = "Simulated reference genome";
+    # conn = dbconnect(); fname_reference_genome = string(pwd(), "/simulated_reference_genome.fa"); fname = string(pwd(), "/simulated_genomes-", Dates.now(), ".vcf"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_vcf=fname); name = string("Simulated_VCF-", Dates.now()); note = "Simulated reference genome"; verbose = true
     if !isabspath(fname)
         error("The path to the VCF file is not absolute: \"$fname\"!")
     end
@@ -241,16 +244,17 @@ function upload_genotype_vcf!(
             name,
             file_path,
             reference_genome_id,
-            notes
+            note
         )
         VALUES (\$1,\$2,\$3,\$4)
         ON CONFLICT DO NOTHING
         """,
-        [name, fname, reference_genome_id, notes],
+        [name, fname, reference_genome_id, note],
     )
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the VCF file \"$fname\" already exists!"
     end
+    define_relationships!(conn, table = "genotype_vcfs_entries", fname_jld2_or_vcf = fname, verbose = verbose)
     # execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame
     nothing
 end
@@ -260,7 +264,7 @@ end
         conn::LibPQ.Connection;
         fname::String,
         name::String,
-        notes::String,
+        note::String,
         fname_reference_genome::String,
         verbose::Bool=false,
     )::Nothing
@@ -286,7 +290,7 @@ using `define_relationships!`, i.e. updates the `genomes_entries` table.
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
 - `fname::String`: Absolute path to a valid `Genomes` JLD2 file.
 - `name::String`: Name assigned to the uploaded genome dataset.
-- `notes::String`: Descriptive notes associated with the dataset.
+- `note::String`: Descriptive note associated with the dataset.
 - `fname_reference_genome::String`: Absolute path to a previously registered
   reference genome file.
 - `verbose::Bool=false`: If `true`, display progress information whilst
@@ -323,10 +327,10 @@ using `define_relationships!`, i.e. updates the `genomes_entries` table.
 - A foreign-key relationship is created between the uploaded genome dataset and
   its reference genome.
 - Dataset records are inserted into the `genomes` table with:
-  - `name`
-  - `file_path`
-  - `reference_genome_id`
-  - `notes`
+    + `name`
+    + `file_path`
+    + `reference_genome_id`
+    + `note`
 - Duplicate dataset registrations are ignored using
   `ON CONFLICT DO NOTHING`.
 - After registration, the function automatically populates the
@@ -347,12 +351,12 @@ julia> simulate_genomes(fname_reference_genome=fname_reference_genome, fname_gen
 
 julia> conn = dbconnect();
 
-julia> try isnothing(upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, notes="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
+julia> try isnothing(upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, note="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
 false
 
-julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, notes="simulated");
+julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, note="simulated");
 
-julia> try isnothing(upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, notes="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
+julia> try isnothing(upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, note="simulated", fname_reference_genome=abspath(fname_reference_genome))); catch; false; end
 true
 
 julia> query(conn, [Filter(conn, table="genomes", field="name", filter_in=[fname_genomes_jld2])]) |> nrow == 1
@@ -365,11 +369,11 @@ function upload_genomes!(
     conn::LibPQ.Connection;
     fname::String,
     name::String,
-    notes::String,
+    note::String,
     fname_reference_genome::String,
     verbose::Bool = false,
 )::Nothing
-    # conn = dbconnect(); fname_reference_genome = abspath("simulated_reference_genome.fa"); fname = string(pwd(), "/simulated_genomes-", Dates.now(), ".jld2"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname); name = replace(fname, ".jld2" => ""); notes = "Simulated genomes JLD2";
+    # conn = dbconnect(); fname_reference_genome = abspath("simulated_reference_genome.fa"); fname = string(pwd(), "/simulated_genomes-", Dates.now(), ".jld2"); simulate_genomes(fname_reference_genome=fname_reference_genome, fname_genomes_jld2=fname); name = replace(fname, ".jld2" => ""); note = "Simulated genomes JLD2";
     check(Genomes, fname = fname)
     if !isabspath(fname)
         error("The path to the Genomes file is not absolute: \"$fname\"!")
@@ -399,17 +403,17 @@ function upload_genomes!(
             name,
             file_path,
             reference_genome_id,
-            notes
+            note
         )
         VALUES (\$1,\$2,\$3,\$4)
         ON CONFLICT DO NOTHING
         """,
-        [name, fname, reference_genome_id, notes],
+        [name, fname, reference_genome_id, note],
     )
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the JLD2 file \"$fname\" already exists!"
     end
-    define_relationships!(conn, table = "genomes_entries", fname_jld2 = fname, verbose = verbose)
+    define_relationships!(conn, table = "genomes_entries", fname_jld2_or_vcf = fname, verbose = verbose)
     # execute(conn, "SELECT * FROM genomes") |> DataFrame
     # execute(conn, "SELECT * FROM genomes_entries") |> DataFrame
     nothing

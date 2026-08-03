@@ -384,7 +384,7 @@ function upload_trial_data!(
         table = "measurements",
         df_name_col = "measurements",
         df_source_col = "notes_years_seasons",
-        table_destination_field = "notes",
+        table_destination_field = "note",
         verbose = verbose,
     )
     update_table_field_by_name!(
@@ -428,7 +428,7 @@ end
         conn::LibPQ.Connection;
         fname::String,
         name::String,
-        notes::String,
+        note::String,
         link_value_parser_traits::Union{Nothing,Function}=nothing,
         link_value_parser_sites::Union{Nothing,Function}=nothing,
         link_value_parser_experiments::Union{Nothing,Function}=nothing,
@@ -463,7 +463,7 @@ using `define_relationships!`.
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
 - `fname::String`: Absolute path to a valid `Phenomes` JLD2 file.
 - `name::String`: Name assigned to the uploaded phenotype dataset.
-- `notes::String`: Descriptive notes associated with the dataset.
+- `note::String`: Descriptive note associated with the dataset.
 - `link_value_parser_traits::Union{Nothing,Function}=nothing`: Function used to
   extract trait names from the `trait` field of the `Phenomes` struct 
   when populating the `phenomes_traits` relationship table.
@@ -512,7 +512,7 @@ using `define_relationships!`.
 - Dataset records are inserted into the `phenomes` table with:
   - `name`
   - `file_path`
-  - `notes`
+  - `note`
 - Duplicate dataset registrations are ignored using
   `ON CONFLICT DO NOTHING`.
 - A relationship between the uploaded dataset and its entries is always created
@@ -540,7 +540,7 @@ julia> genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> x ->
 
 julia> conn = dbconnect(); 
 
-julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, notes="simulated");
+julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, note="simulated");
 
 julia> query(conn, [Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2])]) |> nrow == 1
 true
@@ -559,7 +559,7 @@ julia> link_value_parser_measurements = x -> String(join(split(split(x, '|')[2],
 
 julia> link_value_parser_treatments = x -> String("control");
 
-julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2_NEW), name=fname_phenomes_jld2_NEW, notes="simulated", link_value_parser_traits=link_value_parser_traits, link_value_parser_sites=link_value_parser_sites, link_value_parser_experiments=link_value_parser_experiments, link_value_parser_measurements=link_value_parser_measurements, link_value_parser_treatments=link_value_parser_treatments);
+julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2_NEW), name=fname_phenomes_jld2_NEW, note="simulated", link_value_parser_traits=link_value_parser_traits, link_value_parser_sites=link_value_parser_sites, link_value_parser_experiments=link_value_parser_experiments, link_value_parser_measurements=link_value_parser_measurements, link_value_parser_treatments=link_value_parser_treatments);
 
 julia> query(conn, [Filter(conn, table="phenomes", field="name", filter_in=[fname_phenomes_jld2_NEW])]) |> nrow == 1
 true
@@ -571,7 +571,7 @@ function upload_phenomes!(
     conn::LibPQ.Connection;
     fname::String,
     name::String,
-    notes::String,
+    note::String,
     link_value_parser_traits::Union{Nothing,Function} = nothing,
     link_value_parser_sites::Union{Nothing,Function} = nothing,
     link_value_parser_experiments::Union{Nothing,Function} = nothing,
@@ -579,7 +579,7 @@ function upload_phenomes!(
     link_value_parser_treatments::Union{Nothing,Function} = nothing,
     verbose::Bool = false,
 )::Nothing
-    # conn = dbconnect(); fname = string(pwd(), "/simulated_phenomes-", Dates.now(), ".jld2"); simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname); name = replace(fname, ".tsv" => ""); notes = "simulated phenomes";
+    # conn = dbconnect(); fname = string(pwd(), "/simulated_phenomes-", Dates.now(), ".jld2"); simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2=fname); name = replace(fname, ".tsv" => ""); note = "simulated phenomes";
     # link_value_parser_traits = x -> String(split(x, '|')[1])
     # link_value_parser_sites = x -> String(split(split(x, '|')[2], "-")[end-1])
     # link_value_parser_experiments = x -> String("simulated experiment")
@@ -596,23 +596,23 @@ function upload_phenomes!(
         (
             name,
             file_path,
-            notes
+            note
         )
         VALUES (\$1,\$2,\$3)
         ON CONFLICT DO NOTHING
         """,
-        [name, fname, notes],
+        [name, fname, note],
     )
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the JLD2 file \"$fname\" already exists!"
     end
     # Define relationship tables
-    define_relationships!(conn, table = "phenomes_entries", fname_jld2 = fname, verbose = verbose)
+    define_relationships!(conn, table = "phenomes_entries", fname_jld2_or_vcf = fname, verbose = verbose)
     if !isnothing(link_value_parser_traits)
         define_relationships!(
             conn,
             table = "phenomes_traits",
-            fname_jld2 = fname,
+            fname_jld2_or_vcf = fname,
             link_value_parser = link_value_parser_traits,
             verbose = verbose,
         )
@@ -621,7 +621,7 @@ function upload_phenomes!(
         define_relationships!(
             conn,
             table = "phenomes_sites",
-            fname_jld2 = fname,
+            fname_jld2_or_vcf = fname,
             link_value_parser = link_value_parser_sites,
             verbose = verbose,
         )
@@ -630,7 +630,7 @@ function upload_phenomes!(
         define_relationships!(
             conn,
             table = "phenomes_experiments",
-            fname_jld2 = fname,
+            fname_jld2_or_vcf = fname,
             link_value_parser = link_value_parser_experiments,
             verbose = verbose,
         )
@@ -639,7 +639,7 @@ function upload_phenomes!(
         define_relationships!(
             conn,
             table = "phenomes_measurements",
-            fname_jld2 = fname,
+            fname_jld2_or_vcf = fname,
             link_value_parser = link_value_parser_measurements,
             verbose = verbose,
         )
@@ -648,7 +648,7 @@ function upload_phenomes!(
         define_relationships!(
             conn,
             table = "phenomes_treatments",
-            fname_jld2 = fname,
+            fname_jld2_or_vcf = fname,
             link_value_parser = link_value_parser_treatments,
             verbose = verbose,
         )

@@ -10,7 +10,7 @@
         relationship_type::Union{Nothing,String}=nothing,
         measurement_dates::Union{Nothing,Dict{String,String}}=nothing,
         name::Union{Nothing,String}=nothing,
-        notes::Union{Nothing,String}=nothing,
+        note::Union{Nothing,String}=nothing,
         fname_reference_genome::Union{Nothing,String}=nothing,
         link_value_parser_traits::Union{Nothing,Function}=nothing,
         link_value_parser_sites::Union{Nothing,Function}=nothing,
@@ -57,7 +57,7 @@ required and are forwarded to the underlying upload function.
   measurement names to dates used during tabular-data imports.
 - `name::Union{Nothing,String}=nothing`: Name assigned to uploaded datasets
   such as reference genomes, VCFs, `Genomes`, `Phenomes`, and `Fit` objects.
-- `notes::Union{Nothing,String}=nothing`: Descriptive notes associated with
+- `note::Union{Nothing,String}=nothing`: Descriptive note associated with
   uploaded datasets.
 - `fname_reference_genome::Union{Nothing,String}=nothing`: Path to a previously
   registered reference genome required when uploading VCF or `Genomes` files.
@@ -149,7 +149,7 @@ julia> simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_
 
 julia> df_phenomes_before = execute(conn, "SELECT * FROM phenomes") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data");
+julia> upload(fname, name=basename(fname), note="simulated data");
 
 julia> df_phenomes_after = execute(conn, "SELECT * FROM phenomes") |> DataFrame;
 
@@ -179,7 +179,7 @@ julia> simulate_genomes(fname_reference_genome = fname);
 
 julia> df_reference_genome_before = execute(conn, "SELECT * FROM reference_genomes") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data");
+julia> upload(fname, name=basename(fname), note="simulated data");
 
 julia> df_reference_genome_after = execute(conn, "SELECT * FROM reference_genomes") |> DataFrame;
 
@@ -194,11 +194,11 @@ julia> fname_reference_genome = abspath(string("simulated_reference_genome-", Da
 
 julia> simulate_genomes(fname_genomes_vcf = fname, fname_reference_genome = fname_reference_genome);
 
-julia> upload(fname_reference_genome, name=basename(fname_reference_genome), notes="simulated data");
+julia> upload(fname_reference_genome, name=basename(fname_reference_genome), note="simulated data");
 
 julia> df_vcf_before = execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data", fname_reference_genome=fname_reference_genome);
+julia> upload(fname, name=basename(fname), note="simulated data", fname_reference_genome=fname_reference_genome);
 
 julia> df_vcf_after = execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame;
 
@@ -213,11 +213,11 @@ julia> fname_reference_genome = abspath(string("simulated_reference_genome-", Da
 
 julia> simulate_genomes(fname_genomes_jld2 = fname, fname_reference_genome = fname_reference_genome);
 
-julia> upload(fname_reference_genome, name=basename(fname_reference_genome), notes="simulated data");
+julia> upload(fname_reference_genome, name=basename(fname_reference_genome), note="simulated data");
 
 julia> df_genomes_before = execute(conn, "SELECT * FROM genomes") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data", fname_reference_genome=fname_reference_genome);
+julia> upload(fname, name=basename(fname), note="simulated data", fname_reference_genome=fname_reference_genome);
 
 julia> df_genomes_after = execute(conn, "SELECT * FROM genomes") |> DataFrame;
 
@@ -236,7 +236,7 @@ julia> simulate_fit(genomes, phenomes, fname_fit_jld2 = fname);
 
 julia> df_fit_before = execute(conn, "SELECT * FROM fits") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data");
+julia> upload(fname, name=basename(fname), note="simulated data");
 
 julia> df_fit_after = execute(conn, "SELECT * FROM fits") |> DataFrame;
 
@@ -257,7 +257,7 @@ function upload(
     relationship_type::Union{Nothing,String} = nothing,
     measurement_dates::Union{Nothing,Dict{String,String}} = nothing,
     name::Union{Nothing,String} = nothing,
-    notes::Union{Nothing,String} = nothing,
+    note::Union{Nothing,String} = nothing,
     fname_reference_genome::Union{Nothing,String} = nothing,
     link_value_parser_traits::Union{Nothing,Function} = nothing,
     link_value_parser_sites::Union{Nothing,Function} = nothing,
@@ -275,7 +275,7 @@ function upload(
     # relationship_type::Union{Nothing,String} = nothing
     # measurement_dates::Union{Nothing,Dict{String,String}} = nothing
     # name::Union{Nothing,String} = nothing
-    # notes::Union{Nothing,String} = nothing
+    # note::Union{Nothing,String} = nothing
     # fname_reference_genome::Union{Nothing,String} = nothing
     # verbose::Bool = true
     # # Trial data upload
@@ -291,7 +291,7 @@ function upload(
     # fname = abspath(string("simulated_phenomes-", Dates.now(), ".jld2"))
     # simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2 = fname)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Environmental data upload
     # fname = abspath(string("simulated_environments-", Dates.now(), ".tsv"))
     # simulate_genomes() |> simulate_trials |> x -> simulate_environments(x, fname_environments_tsv = fname)
@@ -301,28 +301,28 @@ function upload(
     # fname = abspath(string("simulated_reference_genome-", Dates.now(), ".fa"))
     # simulate_genomes(fname_reference_genome = fname)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Upload VCF
     # fname = abspath(string("simulated_genomes-", Dates.now(), ".vcf"))
     # fname_reference_genome = abspath(string("simulated_reference_genome-", Dates.now(), ".fa"))
     # simulate_genomes(fname_genomes_vcf = fname, fname_reference_genome = fname_reference_genome)
-    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, notes = isnothing(notes) ? "simulated data" : notes)
+    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, note = isnothing(note) ? "simulated data" : note)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Upload Genomes
     # fname = abspath(string("simulated_genomes-", Dates.now(), ".jld2"))
     # fname_reference_genome = abspath(string("simulated_reference_genome-", Dates.now(), ".fa"))
     # simulate_genomes(fname_genomes_jld2 = fname, fname_reference_genome = fname_reference_genome)
-    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, notes = isnothing(notes) ? "simulated data" : notes)
+    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, note = isnothing(note) ? "simulated data" : note)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Upload Fit
     # fname = abspath(string("simulated_fit-", Dates.now(), ".jld2"))
     # genomes = simulate_genomes()
     # phenomes = simulate_trials(genomes) |> simulate_phenomes
     # simulate_fit(genomes, phenomes, fname_fit_jld2 = fname)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     if !isfile(fname)
         error("The input file: \"$fname\" does not exist!")
     end
@@ -409,7 +409,7 @@ function upload(
             conn,
             fname = fname,
             name = name,
-            notes = notes,
+            note = note,
             link_value_parser_traits = link_value_parser_traits,
             link_value_parser_sites = link_value_parser_sites,
             link_value_parser_experiments = link_value_parser_experiments,
@@ -427,25 +427,19 @@ function upload(
             verbose = verbose,
         )
     elseif data_type == "reference_genome"
-        upload_reference_genome!(conn, fname = fname, name = name, notes = notes)
+        upload_reference_genome!(conn, fname = fname, name = name, note = note)
     elseif data_type == "vcf"
         upload_genotype_vcf!(
             conn,
             fname = fname,
             name = name,
-            notes = notes,
+            note = note,
             fname_reference_genome = fname_reference_genome,
         )
     elseif data_type == "Genomes"
-        upload_genomes!(
-            conn;
-            fname = fname,
-            name = name,
-            notes = notes,
-            fname_reference_genome = fname_reference_genome,
-        )
+        upload_genomes!(conn; fname = fname, name = name, note = note, fname_reference_genome = fname_reference_genome)
     elseif data_type == "Fit"
-        upload_fit!(conn, fname = fname, name = name, notes = notes)
+        upload_fit!(conn, fname = fname, name = name, note = note)
     else
         error("Totally unexpected error as we expect the previous data type checks to catch all possible errors!")
     end

@@ -345,3 +345,115 @@ function extract_names(conn::LibPQ.Connection; ids::Vector{String}, table::Strin
     df.name .= String.(df.name)
     df
 end
+
+"""
+    combinations(
+        args::AbstractDict{String},
+    )::Tuple{Vector{Union{Nothing,Vector{String}}},Vector{String}}
+
+Generate all combinations of fuzzy-search (`like_*`) query terms.
+
+The function extracts all non-empty `like_*` arguments from a collection of
+query arguments and constructs the Cartesian product of their values. The
+resulting combinations are intended for workflows in which each fuzzy-search
+combination must be evaluated independently and the final result obtained by
+taking the union of all matches.
+
+This approach is necessary because individual `filter_like` filters are treated
+as independent fuzzy-search queries that are subsequently combined after query
+execution.
+
+# Arguments
+
+- `args::AbstractDict{String}`: Collection of query arguments potentially
+  containing one or more `like_*` fields.
+
+# Returns
+
+- `Tuple{Vector{Union{Nothing,Vector{String}}},Vector{String}}`:
+  - `like_combinations`: All fuzzy-search combinations derived from the
+    supplied `like_*` arguments. Returns `[nothing]` when no fuzzy-search
+    arguments are provided.
+  - `like_combinations_keys`: Names of the `like_*` fields corresponding to
+    each position within the generated combinations.
+
+# Throws
+
+- Any exception raised whilst constructing Cartesian products of supplied
+  fuzzy-search values.
+
+# Notes
+
+- Only arguments whose names begin with `like_` are considered.
+- Empty `like_*` arguments are ignored.
+- All possible combinations of supplied fuzzy-search values are generated using
+  a Cartesian-product approach.
+- The ordering of values within each combination corresponds to the ordering of
+  fields stored in `like_combinations_keys`.
+- If a single `like_*` argument is supplied, one combination is generated for
+  each provided search term.
+- If multiple `like_*` arguments are supplied, every possible combination of
+  search terms is generated.
+- When no non-empty `like_*` arguments are supplied,
+  `like_combinations == [nothing]`.
+- The function is primarily intended for download workflows that perform
+  multiple `ILIKE` queries and subsequently combine matching records using a
+  set-union operation.
+- This helper is used to avoid constructing complex multi-pattern fuzzy-search
+  filters whilst preserving predictable query behaviour.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> args = Dict("like_entries" => ["_1", "_2"], "like_traits" => ["2", "3"]);
+
+julia> like_combinations, like_combinations_keys = combinations(args);
+
+julia> length(like_combinations) == 4
+true
+
+julia> length(like_combinations[1]) == 2
+true
+
+julia> length(like_combinations_keys) == 2
+true
+```
+"""
+function combinations(args::AbstractDict{String})::Tuple{Vector{Union{Nothing,Vector{String}}},Vector{String}}
+    # Extract all possible combinations of the ILIKE queries because,
+    # we will perform a union on all the matches and hence will have to loop over Filters.
+    # args = Dict("like_entries" => ["_1", "_2"], "like_traits" => ["2", "3"])
+    # args = Dict("like_entries" => [], "like_traits" => [])
+    like_combinations::Vector{Union{Nothing,Vector{String}}} = []
+    like_combinations_keys::Vector{String} = []
+    for (k, v) in args
+        # k = string.(keys(args))[5]; v = args[k]
+        # k = string.(keys(args))[7]; v = args[k]
+        # k = string.(keys(args))[18]; v = args[k]
+        isnothing(match(Regex("^like_"), k)) ? continue : nothing
+        isempty(v) ? continue : nothing
+        like_combinations = if isempty(like_combinations)
+            [[vi] for vi in v]
+        else
+            X = collect(Base.Iterators.product(like_combinations, v))
+            x = collect.(reshape(X, prod(size(X))))
+            if isa(like_combinations[1], Vector)
+                y = []
+                for i in eachindex(x)
+                    # i = 1
+                    push!(y, vcat(x[i][1]..., x[i][2]))
+                end
+                y
+            else
+                x
+            end
+        end
+        push!(like_combinations_keys, k)
+    end
+    like_combinations = if isempty(like_combinations)
+        [nothing]
+    else
+        like_combinations
+    end
+    like_combinations, like_combinations_keys
+end

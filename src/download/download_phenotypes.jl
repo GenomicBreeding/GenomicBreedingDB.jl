@@ -243,37 +243,9 @@ function download_phenotype_data(;
         "cols" => cols,
         "values" => values,
     )
-    like_combinations::Vector{Union{Nothing,Vector{String}}} = []
-    like_combinations_keys::Vector{String} = []
-    for (k, v) in args
-        # k = string.(keys(args))[5]; v = args[k]
-        # k = string.(keys(args))[7]; v = args[k]
-        # k = string.(keys(args))[18]; v = args[k]
-        isnothing(match(Regex("^like_"), k)) ? continue : nothing
-        isempty(v) ? continue : nothing
-        like_combinations = if isempty(like_combinations)
-            [[vi] for vi in v]
-        else
-            X = collect(Base.Iterators.product(like_combinations, v))
-            x = collect.(reshape(X, prod(size(X))))
-            if isa(like_combinations[1], Vector)
-                y = []
-                for i = 1:length(x)
-                    # i = 1
-                    push!(y, vcat(x[i][1]..., x[i][2]))
-                end
-                y
-            else
-                x
-            end
-        end
-        push!(like_combinations_keys, k)
-    end
-    like_combinations = if isempty(like_combinations)
-        [nothing]
-    else
-        like_combinations
-    end
+    # Extract all possible combinations of the ILIKE queries because,
+    # we will perform a union on all the matches and hence will have to loop over Filters.
+    like_combinations, like_combinations_keys = combinations(args)
     conn = dbconnect()
     fields_to_ignore = String["id", "name", "created_at", "updated_at"]
     fields_expected_phenotype_data =
@@ -316,7 +288,7 @@ function download_phenotype_data(;
             verbose = verbose,
         )
         rename!(df_entries, "name" => "entry")
-        select!(df_entries, Not([:id, :notes, :created_at, :updated_at]))
+        select!(df_entries, Not([:id, :note, :created_at, :updated_at]))
         entries = unique(df_entries.entry)
         filter!(x -> x.entry ∈ entries, df)
         df = innerjoin(df_entries, df, on = :entry)
@@ -449,7 +421,7 @@ without loading the underlying `Phenomes` objects themselves.
   - `id`
   - `name`
   - `file_path`
-  - `notes`
+  - `note`
   - creation and update timestamps
 - The function returns database metadata only and does not load the underlying
   `Phenomes` objects from disk.

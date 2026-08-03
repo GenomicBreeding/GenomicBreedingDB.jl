@@ -2,50 +2,36 @@
     define_relationships!(
         conn::LibPQ.Connection;
         table::String,
-        fname_jld2::String,
+        fname_jld2_or_vcf::String,
         link_value_parser::Function=x -> String(split(x, '|')[1]),
         verbose::Bool=false,
     )::Nothing
 
-Create relationship records between a registered GenomicBreeding dataset and a
-database entity table.
+Populate a database relationship table using values extracted from a registered
+genotype or phenotype dataset.
 
-The function populates a junction table linking a registered `Genomes` or
-`Phenomes` dataset to records stored in another database table, such as
-`entries`, `traits`, `sites`, `treatments`, or other supported entities. The
-dataset type is inferred from the relationship table name and the corresponding
-JLD2 file is loaded to extract relationship values.
+The function creates relationships between a registered dataset and existing
+database entities by extracting values from a JLD2 or VCF file and inserting the
+corresponding links into a relationship table.
 
-Values extracted from the dataset are optionally transformed using
-`link_value_parser`, matched against records in the corresponding database table,
-and inserted into the specified relationship table. Existing relationships are
-preserved through the use of `ON CONFLICT DO NOTHING`.
+Supported relationship tables include those linking `genomes`, `genotype_vcfs`,
+and `phenomes` datasets to entries, traits, sites, experiments, measurements,
+and treatments. The function identifies the relevant dataset record, extracts
+the linked values from the source file, resolves them to database identifiers,
+and inserts the resulting relationships whilst avoiding duplicate records.
 
-For `Genomes` datasets, relationship values are extracted directly from the
-property corresponding to the target table, i.e. "entries". For `Phenomes` 
-datasets, values are extracted from the `traits` field and may be parsed into 
-other entities using `link_value_parser`. This allows relationship tables 
-such as `phenomes_sites` and `phenomes_treatments` to be populated when trait 
-names follow a consistent naming convention containing embedded metadata 
-separated by delimiters (for example `"Trait|Treatment-Site-Year"`). In these 
-cases, `link_value_parser` can be used to extract the relevant component prior to
-database matching.
-
-All insert operations are performed within a single transaction. If an error
-occurs during processing, the transaction is rolled back and the exception is
-re-raised.
+Relationship creation is performed inside a database transaction to ensure
+consistency and atomicity.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `table::String`: Name of the relationship table to populate. Must correspond to
-  a valid table matching the pattern `genomes_*` or `phenomes_*`.
-- `fname_jld2::String`: Path to a registered JLD2 file containing a `Genomes` or
-  `Phenomes` object.
+- `table::String`: Relationship table to populate.
+- `fname_jld2_or_vcf::String`: Path to a registered JLD2 or VCF file.
 - `link_value_parser::Function=x -> String(split(x, '|')[1])`: Function used to
-  transform extracted values before matching them against database records.
+  transform extracted values into entity names recognised by the database.
 - `verbose::Bool=false`: If `true`, display progress information and summary
-  statistics during processing.
+  statistics during relationship creation.
 
 # Returns
 
@@ -54,54 +40,57 @@ re-raised.
 
 # Throws
 
-- `ErrorException`: If the database connection has been closed.
-- `ErrorException`: If `table` is not a valid relationship table.
-- `ErrorException`: If `table`, `id_1`, or `id_2` contain illegal characters.
-- `ErrorException`: If the supplied JLD2 file does not exist.
-- `ErrorException`: If the supplied file does not appear to contain the expected
-  object type.
-- `ErrorException`: If the associated dataset has not been registered in the
-  database.
-- Any database exception raised during processing is rethrown after transaction
-  rollback.
-- Any exception raised while loading the JLD2 dataset.
+- `ErrorException`: If the specified relationship table is invalid.
+- `ErrorException`: If the dataset file is not registered in the database.
+- `ErrorException`: If the dataset file fails validation.
+- Any database exception raised whilst querying or inserting records.
+- Any exception raised by the supplied `link_value_parser`.
+- Any exception raised whilst reading the source file.
 
 # Warnings
 
-- A warning is emitted when values extracted from the dataset cannot be found in
-  the corresponding database table.
-- Unmatched values are skipped and no relationship records are created for them.
-- An incorrect `link_value_parser` may result in otherwise valid relationships
-  being omitted.
+- A warning is emitted when values extracted from the source file cannot be
+  matched to records already present in the corresponding metadata table.
+- Unmatched values are skipped and relationship records are not created for
+  them.
+- The warning may indicate missing metadata records or an incorrect
+  `link_value_parser`.
 
 # Notes
 
-- Connection validation is performed using `check(conn)`.
-- Valid relationship tables are discovered automatically from existing database
-  tables whose names match `genomes_*` or `phenomes_*`.
-- The dataset type is inferred from the relationship table prefix:
-  - `genomes_*` → `Genomes`
-  - `phenomes_*` → `Phenomes`
-- File validation is performed using `check(type; fname=fname_jld2)`.
-- The dataset must already be registered in the corresponding table (`genomes`
-  or `phenomes`).
-- Dataset records are identified using the stored absolute file path.
-- For `Genomes`, relationship values are extracted directly from the target
-  property.
-- For `Phenomes`, relationship values are extracted from the `traits` field and
-  transformed using `link_value_parser`.
-- This design allows a single `Phenomes` dataset to populate multiple
-  relationship tables (e.g. `phenomes_traits`, `phenomes_sites`,
-  `phenomes_treatments`) when trait names encode multiple pieces of metadata in
-  a consistent format.
-- Duplicate values are removed prior to processing.
-- Relationship records are inserted using `ON CONFLICT DO NOTHING`.
-- All database modifications occur within a transaction using `BEGIN`,
-  `COMMIT`, and `ROLLBACK`.
-- When `verbose=true`, progress information and summary statistics describing
-  inserted, skipped, and unmatched records are displayed.
-- This function provides a generic mechanism for populating relationship tables
-  involving `Genomes` and `Phenomes` datasets.
+- Supported relationship tables include all tables whose names begin with:
+    + `genomes_`
+    + `genotype_vcfs_`
+    + `phenomes_`
+- The relationship type is inferred automatically from `table`.
+- Supported source datasets include:
+    +  `Genomes`
+    +  `Phenomes`
+    +  VCF files
+- Dataset validation is performed before any relationship records are created.
+- The supplied dataset must already be registered in the database.
+- The source dataset record is located using its absolute file path.
+- Relationships are inserted using `INSERT ... ON CONFLICT DO NOTHING`, making
+  repeated executions safe.
+- Relationship creation is performed inside an explicit database transaction.
+- If an error occurs during insertion, all changes are rolled back.
+- Entry relationships are derived from the dataset `entries` field.
+- All other relationships are currently derived from the dataset `traits`
+  field.
+- The `link_value_parser` receives values extracted from the source dataset and
+  must return entity names corresponding to records already present in the
+  associated metadata table.
+- For phenotype datasets, the parser can be used to extract traits, sites,
+  experiments, measurements, or treatments encoded within trait names,
+  which may be encoded as "yield_kg_per_ha-highN-Hamilton-2026_Early_Spring".
+- Duplicate extracted values are removed before relationship creation.
+- Existing relationship records are detected automatically and are not
+  duplicated.
+- Progress information is displayed when `verbose=true`.
+- Summary statistics report:
+    + newly inserted relationships,
+    + existing relationships skipped, and
+    + unmatched values encountered during processing.
 
 # Examples
 
@@ -120,9 +109,9 @@ julia> simulate_genomes(n=maximum([100, n+1]), fname_reference_genome=fname_refe
 
 julia> upload_trial_data!(conn, fname="simulated_trials.tsv", species="Acacia neglecta", experiment="some-exp", treatment="some_trt", entry_type="family", population_type="population", relationship_type="member_of");
 
-julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, notes="simulated");
+julia> upload_reference_genome!(conn, fname=abspath(fname_reference_genome), name=fname_reference_genome, note="simulated");
 
-julia> upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, notes="simulated", fname_reference_genome=abspath(fname_reference_genome));
+julia> upload_genomes!(conn, fname=abspath(fname_genomes_jld2), name=fname_genomes_jld2, note="simulated", fname_reference_genome=abspath(fname_reference_genome));
 
 julia> link_value_parser_traits = x -> String(split(x, '|')[1]);
 
@@ -134,11 +123,11 @@ julia> link_value_parser_measurements = x -> String(join(split(split(x, '|')[2],
 
 julia> link_value_parser_treatments = x -> String("control");
 
-julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, notes="simulated", link_value_parser_traits=link_value_parser_traits, link_value_parser_sites=link_value_parser_sites, link_value_parser_experiments=link_value_parser_experiments, link_value_parser_measurements=link_value_parser_measurements, link_value_parser_treatments=link_value_parser_treatments);
+julia> upload_phenomes!(conn, fname=abspath(fname_phenomes_jld2), name=fname_phenomes_jld2, note="simulated", link_value_parser_traits=link_value_parser_traits, link_value_parser_sites=link_value_parser_sites, link_value_parser_experiments=link_value_parser_experiments, link_value_parser_measurements=link_value_parser_measurements, link_value_parser_treatments=link_value_parser_treatments);
 
 julia> n_before = execute(conn, "SELECT * FROM genomes_entries") |> DataFrame |> nrow;
 
-julia> define_relationships!(conn, table="genomes_entries", fname_jld2=abspath(fname_genomes_jld2));
+julia> define_relationships!(conn, table="genomes_entries", fname_jld2_or_vcf=abspath(fname_genomes_jld2));
 
 julia> n_after = execute(conn, "SELECT * FROM genomes_entries") |> DataFrame |> nrow;
 
@@ -147,7 +136,7 @@ true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_entries") |> DataFrame |> nrow;
 
-julia> define_relationships!(conn, table="phenomes_entries", fname_jld2=abspath(fname_phenomes_jld2));
+julia> define_relationships!(conn, table="phenomes_entries", fname_jld2_or_vcf=abspath(fname_phenomes_jld2));
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_entries") |> DataFrame |> nrow;
 
@@ -156,7 +145,7 @@ true
 
 julia> n_before = execute(conn, "SELECT * FROM phenomes_traits") |> DataFrame |> nrow;
 
-julia> define_relationships!(conn, table="phenomes_traits", fname_jld2=abspath(fname_phenomes_jld2));
+julia> define_relationships!(conn, table="phenomes_traits", fname_jld2_or_vcf=abspath(fname_phenomes_jld2));
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_traits") |> DataFrame |> nrow;
 
@@ -167,7 +156,7 @@ julia> n_before = execute(conn, "SELECT * FROM phenomes_sites") |> DataFrame |> 
 
 julia> link_value_parser = x -> String(split(split(x, '|')[2], "-")[end-1]);
 
-julia> define_relationships!(conn, table="phenomes_sites", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
+julia> define_relationships!(conn, table="phenomes_sites", fname_jld2_or_vcf=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_sites") |> DataFrame |> nrow;
 
@@ -178,7 +167,7 @@ julia> n_before = execute(conn, "SELECT * FROM phenomes_experiments") |> DataFra
 
 julia> link_value_parser = x -> String("simulated experiment");
 
-julia> define_relationships!(conn, table="phenomes_experiments", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
+julia> define_relationships!(conn, table="phenomes_experiments", fname_jld2_or_vcf=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_experiments") |> DataFrame |> nrow;
 
@@ -189,7 +178,7 @@ julia> n_before = execute(conn, "SELECT * FROM phenomes_measurements") |> DataFr
 
 julia> link_value_parser = x -> String(join(split(split(x, '|')[2], "-")[2:4], "-"));
 
-julia> define_relationships!(conn, table="phenomes_measurements", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
+julia> define_relationships!(conn, table="phenomes_measurements", fname_jld2_or_vcf=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_measurements") |> DataFrame |> nrow;
 
@@ -200,7 +189,7 @@ julia> n_before = execute(conn, "SELECT * FROM phenomes_treatments") |> DataFram
 
 julia> link_value_parser = x -> String("control");
 
-julia> define_relationships!(conn, table="phenomes_treatments", fname_jld2=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
+julia> define_relationships!(conn, table="phenomes_treatments", fname_jld2_or_vcf=abspath(fname_phenomes_jld2), link_value_parser=link_value_parser);
 
 julia> n_after = execute(conn, "SELECT * FROM phenomes_treatments") |> DataFrame |> nrow;
 
@@ -213,18 +202,18 @@ julia> close(conn);
 function define_relationships!(
     conn::LibPQ.Connection;
     table::String,
-    fname_jld2::String,
+    fname_jld2_or_vcf::String,
     link_value_parser::Function = x -> String(split(x, '|')[1]),
     verbose::Bool = false,
 )::Nothing
     # conn = dbconnect()
-    # # table = "genomes_entries"; fname_jld2 = "simulated_genomes.jld2"
-    # # table = "phenomes_entries"; fname_jld2 = "simulated_phenomes.jld2"
-    # table = "phenomes_traits"; fname_jld2 = "simulated_phenomes.jld2"
+    # # table = "genomes_entries"; fname_jld2_or_vcf = "simulated_genomes.jld2"
+    # # table = "genotype_vcfs_entries"; fname_jld2_or_vcf = "simulated_genomes.vcf"
+    # # table = "phenomes_entries"; fname_jld2_or_vcf = "simulated_phenomes.jld2"
+    # # table = "phenomes_traits"; fname_jld2_or_vcf = "simulated_phenomes.jld2"
     # simulate_genomes() |> simulate_trials |> simulate_phenomes
-    # upload_reference_genome!(conn, fname=abspath("simulated_reference_genome.fa"), name = "simulated", notes = "simulated")
-    # upload_genomes!(conn, fname = abspath("simulated_genomes.jld2"), name = "simulated", notes = "simulated", fname_reference_genome = abspath("simulated_reference_genome.fa"))
-    # upload_phenomes!(conn, fname = abspath("simulated_phenomes.jld2"), name = "simulated", notes = "simulated")
+    # upload_trial_data!(conn, fname=abspath("simulated_trials.tsv"), species="Zea mays", experiment="some-exp", treatment="some_trt", entry_type="family", population_type="population", relationship_type="member_of");
+    # upload_reference_genome!(conn, fname=abspath("simulated_reference_genome.fa"), name = "simulated", note = "simulated")
     # link_value_parser::Function = x -> String(split(x, '|')[1])
     # verbose = true
     check(conn)
@@ -232,28 +221,34 @@ function define_relationships!(
     valid_table_names =
         list_all_tables(conn) |>
         df ->
-            filter!(x -> !isnothing(match(Regex("^genomes_|^phenomes_"), x.table_name)), df) |>
-            df -> filter!(x -> length(split(x.table_name, "_")) == 2, df) |> df -> df.table_name
+            filter!(x -> !isnothing(match(Regex("^genomes_|^phenomes_|^genotype_vcfs_"), x.table_name)), df) |>
+            df -> df.table_name
     if table∉valid_table_names
         error("Invalid table: \"$table\"!")
     end
-    table_1, table_2 = String.(split(table, "_"))
+    table_1 = join(String.(split(table, "_"))[1:(end-1)], "_")
+    table_2 = String.(split(table, "_"))[end]
     type = if table_1 == "genomes"
         Genomes
     elseif table_1 == "phenomes"
         Phenomes
+    elseif table_1 == "genotype_vcfs"
+        "VCF"
     else
         error("Invalid table: \"$table\"!")
     end
     id_1 = replace(table_1, Regex("s\$") => "_id")
     id_2 = table_2 == "entries" ? "entry_id" : replace(table_2, Regex("s\$") => "_id")
     check_illegal_strings([id_1, id_2])
-    check(type, fname = fname_jld2)
-    df_record_1 = query(conn, [Filter(conn, table = table_1, field = "file_path", filter_in = [abspath(fname_jld2)])])
+    if type != "VCF"
+        check(type, fname = fname_jld2_or_vcf)
+    end
+    df_record_1 =
+        query(conn, [Filter(conn, table = table_1, field = "file_path", filter_in = [abspath(fname_jld2_or_vcf)])])
     if nrow(df_record_1) == 0
         throw(
             string(
-                "The $type file \"$fname_jld2\" is not found in the database. ",
+                "The $type file \"$fname_jld2_or_vcf\" is not found in the database. ",
                 "Please check the path or use `upload_$(table_1)!(...)` first!",
             ),
         )
@@ -261,8 +256,12 @@ function define_relationships!(
     link_values = let
         # `link_values` at the moment does the affect the Genomes-related relationship table
         field = table_2 != "entries" ? Symbol("traits") : Symbol(table_2)
-        phenomes = readjld2(type, fname = fname_jld2)
-        link_values = unique(getproperty(phenomes, field))
+        X = if type != "VCF"
+            readjld2(type, fname = fname_jld2_or_vcf)
+        else
+            readvcf(fname = fname_jld2_or_vcf)
+        end
+        link_values = unique(getproperty(X, field))
         link_value_parser.(link_values)
     end
     unregistered_node_2 = String[]

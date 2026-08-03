@@ -3,7 +3,7 @@
         conn::LibPQ.Connection;
         fname::String,
         name::String,
-        notes::String,
+        note::String,
     )::Nothing
 
 Upload a fitted model dataset to the database and register its metadata.
@@ -23,7 +23,7 @@ lightweight inspection of the file to ensure it appears to contain a valid
 - `fname::String`: Absolute path to the JLD2 file containing a `Fit`
   object.
 - `name::String`: Unique name used to identify the fitted model.
-- `notes::String`: Descriptive notes associated with the fitted model.
+- `note::String`: Descriptive note associated with the fitted model.
 
 # Returns
 
@@ -48,7 +48,7 @@ lightweight inspection of the file to ensure it appears to contain a valid
 - File validation is delegated to `check(Fit; fname=...)`.
 - Only absolute file paths are accepted.
 - Records are inserted into the `fits` table using the supplied name, file
-  path, and notes.
+  path, and note.
 - Existing records are preserved through the use of
   `ON CONFLICT DO NOTHING`.
 - The JLD2 file itself is not stored in the database; only its metadata and file
@@ -67,7 +67,7 @@ julia> simulate_fit(genomes, phenomes, fname_fit_jld2=fname_fit_jld2);
 
 julia> conn = dbconnect(); 
 
-julia> upload_fit!(conn, fname=abspath(fname_fit_jld2), name=fname_fit_jld2, notes="simulated");
+julia> upload_fit!(conn, fname=abspath(fname_fit_jld2), name=fname_fit_jld2, note="simulated");
 
 julia> query(conn, [Filter(conn, table="fits", field="name", filter_in=[fname_fit_jld2])]) |> nrow == 1
 true
@@ -75,8 +75,8 @@ true
 julia> close(conn);
 ```
 """
-function upload_fit!(conn::LibPQ.Connection; fname::String, name::String, notes::String)::Nothing
-    # conn = dbconnect(); fname = string(pwd(), "/simulated_fit-", Dates.now(), ".jld2"); genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> simulate_phenomes; simulate_fit(genomes, phenomes, fname_fit_jld2=fname); name = replace(fname, ".tsv" => ""); notes = "simulated fit";
+function upload_fit!(conn::LibPQ.Connection; fname::String, name::String, note::String)::Nothing
+    # conn = dbconnect(); fname = string(pwd(), "/simulated_fit-", Dates.now(), ".jld2"); genomes = simulate_genomes(); phenomes = simulate_trials(genomes) |> simulate_phenomes; simulate_fit(genomes, phenomes, fname_fit_jld2=fname); name = replace(fname, ".tsv" => ""); note = "simulated fit";
     check(Fit, fname = fname)
     if !isabspath(fname)
         error("The path to the Fit file is not absolute: \"$fname\"!")
@@ -88,12 +88,12 @@ function upload_fit!(conn::LibPQ.Connection; fname::String, name::String, notes:
         (
             name,
             file_path,
-            notes
+            note
         )
         VALUES (\$1,\$2,\$3)
         ON CONFLICT DO NOTHING
         """,
-        [name, fname, notes],
+        [name, fname, note],
     )
     if LibPQ.num_affected_rows(res) == 0
         @warn "The record for the JLD2 file \"$fname\" already exists!"
