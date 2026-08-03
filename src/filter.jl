@@ -207,6 +207,13 @@ julia> x_2 = Filter(conn, table="genotype_vcfs", field="entries", filter_like="%
 julia> (x_1.table == "genotype_vcfs") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
 true
 
+julia> x_1 = Filter(conn, table="genotype_vcfs", field="reference_genome", filter_in=["simulated reference genome"]);
+
+julia> x_2 = Filter(conn, table="genotype_vcfs", field="reference_genome", filter_like="%");
+
+julia> (x_1.table == "genotype_vcfs") && (x_1.field == "reference_genome_id") && (x_1.in[1] ∈ x_2.in)
+true
+
 julia> x_1 = Filter(conn, table="phenomes", field="entries", filter_in=["entry_001"]);
 
 julia> x_2 = Filter(conn, table="phenomes", field="entries", filter_like="%");
@@ -369,7 +376,14 @@ struct Filter
                 dict_filters_in_and_like["filter_in"] = deepcopy(dict_filters_in_and_like["filter_like"])
                 dict_filters_in_and_like["filter_like"] = nothing
             end
-            ("id", dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
+            # # Set field name depending on whether we used a relational table, i.e.
+            # #   - if we did not then the field with `*_id` is present in the table
+            # #   - else `id` maps to the table
+            # if isnothing(reltable)
+            (field, dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
+            # else
+            #     ("id", dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
+            # end
         end
         # Process filter_like: add wildcard characters and escape underscores
         filter_like = if !isnothing(filter_like)

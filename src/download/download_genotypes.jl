@@ -1,24 +1,36 @@
 """
     download_genotype_data_paths(
         table::String;
+        names::Vector{String}=String[],
+        notes::Vector{String}=String[],
+        reference_genomes::Vector{String}=String[],
+        entries::Vector{String}=String[],
+        species::Vector{String}=String[],
+        entry_types::Vector{String}=String[],
         like_names::Vector{String}=String[],
         like_notes::Vector{String}=String[],
         like_reference_genomes::Vector{String}=String[],
+        like_entries::Vector{String}=String[],
+        like_species::Vector{String}=String[],
+        like_entry_types::Vector{String}=String[],
         verbose::Bool=false,
     )::DataFrame
 
-Retrieve genotype-related dataset records matching one or more fuzzy-search
+Retrieve genotype-related dataset records matching exact-match and fuzzy-search
 criteria.
 
 The function searches one of the supported genotype-related database tables and
-returns records whose metadata match the supplied fuzzy-search patterns.
+returns records whose metadata match the supplied filtering criteria.
 Supported tables include `reference_genomes`, `genotype_vcfs`, and `genomes`.
 
-When multiple fuzzy-search terms are supplied, all possible combinations are
-evaluated independently and the final result is obtained by taking the union of
-all matching records. This enables flexible discovery of genotype resources
-using partial matches against dataset names, notes, and associated reference
-genomes.
+Filtering may be performed using dataset metadata, associated reference
+genomes, entries, species, and entry types. When multiple fuzzy-search terms
+are supplied, all possible combinations are evaluated independently and the
+final result is obtained by taking the union of all matching records.
+
+This function is primarily intended for discovering registered genotype
+resources and their associated file paths without loading the underlying data
+files.
 
 # Arguments
 
@@ -26,19 +38,31 @@ genomes.
   - `reference_genomes`
   - `genotype_vcfs`
   - `genomes`
-- `like_names::Vector{String}=String[]`: Name patterns used for partial
-  matching against the `name` field.
-- `like_notes::Vector{String}=String[]`: Note patterns used for partial
-  matching against the `notes` field.
-- `like_reference_genomes::Vector{String}=String[]`: Reference-genome patterns
-  used for partial matching against associated reference genomes. Applicable
-  only to `genotype_vcfs` and `genomes`.
+- `names::Vector{String}=String[]`: Dataset names to match exactly.
+- `notes::Vector{String}=String[]`: Dataset notes to match exactly.
+- `reference_genomes::Vector{String}=String[]`: Reference genome names to
+  match exactly.
+- `entries::Vector{String}=String[]`: Entry names to match exactly.
+- `species::Vector{String}=String[]`: Species names to match exactly.
+- `entry_types::Vector{String}=String[]`: Entry types to match exactly.
+- `like_names::Vector{String}=String[]`: Dataset name patterns for partial
+  matching.
+- `like_notes::Vector{String}=String[]`: Dataset-note patterns for partial
+  matching.
+- `like_reference_genomes::Vector{String}=String[]`: Reference-genome name
+  patterns for partial matching.
+- `like_entries::Vector{String}=String[]`: Entry name patterns for partial
+  matching.
+- `like_species::Vector{String}=String[]`: Species name patterns for partial
+  matching.
+- `like_entry_types::Vector{String}=String[]`: Entry-type patterns for partial
+  matching.
 - `verbose::Bool=false`: If `true`, display progress information during query
   execution.
 
 # Returns
 
-- `DataFrame`: Records matching the supplied search criteria.
+- `DataFrame`: Records matching the supplied filtering criteria.
 
 # Throws
 
@@ -51,11 +75,14 @@ genomes.
 
 - A database connection is opened automatically and closed before returning.
 - Supported tables are:
-    + `reference_genomes`
-    + `genotype_vcfs`
-    + `genomes`
-- Fuzzy-search combinations are generated using `combinations(args)`.
-- Multiple values supplied to fuzzy-search arguments are treated as independent
+  - `reference_genomes`
+  - `genotype_vcfs`
+  - `genomes`
+- Query construction and execution are delegated to
+  `query(conn, args; ...)`.
+- Exact-match filters are translated into SQL `IN` filters.
+- Fuzzy-search filters are translated into SQL `ILIKE` filters.
+- Multiple values supplied to `like_*` arguments are treated as independent
   search terms.
 - When multiple fuzzy-search arguments contain multiple values, all possible
   combinations are evaluated using a Cartesian-product approach.
@@ -63,20 +90,26 @@ genomes.
   are combined using a union operation.
 - Duplicate records arising from multiple matching combinations are removed
   before returning the final result.
-- Query construction and execution are delegated to
-  `query(conn, args; ...)`.
-- For `genotype_vcfs` and `genomes`, filtering by reference genome is
-  performed through the database relationships linking genotype datasets to
-  registered reference genomes.
-- If no fuzzy-search filters are supplied, a catch-all query based on
+- For `genotype_vcfs` and `genomes`, filtering may be performed using:
+  - dataset names,
+  - notes,
+  - reference genomes,
+  - entries,
+  - species, and
+  - entry types.
+- Filtering by entries, species, and entry types is performed through the
+  corresponding relationship tables and metadata tables.
+- For `reference_genomes`, entry-based and genotype-specific filters are not
+  applicable and are ignored automatically.
+- If no filters are supplied, a catch-all query based on
   `file_path LIKE '%'` is used, returning all records from the selected table.
-- Returned records include:
-    + `id`
-    + `name`
-    + `file_path`
-    + `notes`
-    + associated reference-genome information (where applicable)
-    + creation and update timestamps
+- Returned records typically include:
+  - `id`
+  - `name`
+  - `file_path`
+  - `notes`
+  - associated metadata fields
+  - creation and update timestamps
 - The function returns database metadata only and does not parse or load the
   underlying genotype files.
 
@@ -123,7 +156,7 @@ function download_genotype_data_paths(
     # extract_table_contents(dbconnect(), table)
     valid_tables = ["reference_genomes", "genotype_vcfs", "genomes"]
     if table∉valid_tables
-        error("Invalid table! We expect: [\"$(join(valid_tables, "\", \""))\"].")
+        error("Invalid table! We expect one of these: [\"$(join(valid_tables, "\", \""))\"].")
     end
     conn = dbconnect()
     args = Dict(
@@ -165,7 +198,6 @@ function download_genotype_data_paths(
                 args[key] = [like_combination[j]]
             end
         end
-        # Query using phenotype_data filters only (we'll filter using entries and layouts later)
         df = query(conn, args; table = table, backup_field_string = "file_path", verbose = verbose)
         df_out = if isnothing(df_out)
             df
