@@ -152,7 +152,7 @@ function download_genotype_data_paths(
     # like_names = String[]; like_notes = String[]; like_reference_genomes = String[]; like_entries = String["_01", "_02"]; like_species = String[]; like_entry_types = String[]; 
     # table = "reference_genomes"; like_names = ["genome", "g"]; like_notes = ["data"]; like_reference_genomes = []; verbose = true
     # table = "genotype_vcfs"; like_names = ["genome", "g"]; like_notes = ["sim"]; like_reference_genomes = []; verbose = true
-    # table = "genomes"; like_names = ["genome", "g"]; like_notes = []; like_reference_genomes = ["2026"]; verbose = true
+    # table = "genomes"; like_names = ["genome", "g"]; like_notes = []; like_reference_genomes = ["r"]; verbose = true
     # extract_table_contents(dbconnect(), table)
     valid_tables = ["reference_genomes", "genotype_vcfs", "genomes"]
     if table∉valid_tables

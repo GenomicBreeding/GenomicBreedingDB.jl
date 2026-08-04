@@ -655,7 +655,7 @@ version = "1.1.0"
 
 [[deps.GenomicBreedingCore]]
 deps = ["Bijectors", "Clustering", "Combinatorics", "CovarianceEstimation", "DataFrames", "Distances", "Distributions", "Documenter", "JLD2", "LinearAlgebra", "MixedModels", "MultivariateStats", "Optimisers", "PDMats", "ProgressMeter", "RDatasets", "Random", "ScatteredInterpolation", "SparseArrays", "Statistics", "StatsBase", "StatsModels", "Suppressor", "UnicodePlots"]
-git-tree-sha1 = "67c8e6c88615383d5e1744d410db5f123e9242d4"
+git-tree-sha1 = "f1cd921b8b51c9a59206155d950e89fcfcc0641a"
 repo-rev = "main"
 repo-url = "https://github.com/GenomicBreeding/GenomicBreedingCore.jl"
 uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"

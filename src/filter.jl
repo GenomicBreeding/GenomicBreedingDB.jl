@@ -20,69 +20,68 @@
         filter_greater_than::Union{Nothing,Int,AbstractFloat}=nothing,
     )
 
-Construct a validated database filter for querying, updating, or deleting
+Construct a validated database filter for querying, updating, and deleting
 records.
 
-A `Filter` encapsulates a single filtering criterion applied to a database table.
-The constructor validates the target table and field, verifies that the selected
-filter type is compatible with the database field type, and automatically
-resolves human-readable entity names into database identifiers when filtering on
-foreign-key fields.
+A `Filter` encapsulates a single filtering criterion applied to a database
+table. The constructor validates the requested table, field, and filter values,
+resolves foreign-key relationships where necessary, performs type checking, and
+returns a filter object suitable for use in parameterised SQL queries.
 
-If the supplied field does not exist directly in the specified table, the
-constructor attempts to infer the corresponding foreign-key field. For example,
-fields such as `entry`, `entries`, `species`, `site`, or `trait` may be mapped
-to their associated identifier fields (`entry_id`, `species_id`, `site_id`,
-`trait_id`, etc.).
+The constructor supports exact-match, partial-match, range-based, equality,
+less-than, and greater-than filtering operations. Exactly one filtering method
+must be supplied for each `Filter` instance.
 
-When filtering on foreign-key fields, supplied names are automatically converted
-into their corresponding database identifiers using `extract_ids`. This allows
-queries to be expressed using biological or experimental names rather than
-internal database ids.
-
-The constructor additionally validates that string-based filters are applied only
-to string-compatible fields and that numeric filters are applied only to numeric
-fields.
+When filtering on foreign-key fields, user-supplied names are automatically
+resolved to database identifiers. For genotype- and phenotype-related datasets,
+this may involve traversing intermediate relationship tables before generating
+the final filter.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `table::String`: Name of the target table.
-- `field::String`: Name of the field on which filtering will be applied.
+- `table::String`: Name of the target database table.
+- `field::String`: Name of the field to filter.
 - `filter_like::Union{Nothing,String}=nothing`: Pattern-matching filter.
 - `filter_in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}=nothing`:
   Collection-based filter.
 - `filter_between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}=nothing`:
   Inclusive range filter.
-- `filter_equal_to::Union{Nothing,Int,AbstractFloat}=nothing`: Exact numeric
-  equality filter.
-- `filter_less_than::Union{Nothing,Int,AbstractFloat}=nothing`: Numeric
-  less-than filter.
-- `filter_greater_than::Union{Nothing,Int,AbstractFloat}=nothing`: Numeric
-  greater-than filter.
+- `filter_equal_to::Union{Nothing,Int,AbstractFloat}=nothing`: Equality filter.
+- `filter_less_than::Union{Nothing,Int,AbstractFloat}=nothing`: Less-than
+  filter.
+- `filter_greater_than::Union{Nothing,Int,AbstractFloat}=nothing`:
+  Greater-than filter.
 
 # Fields
 
 - `table::String`: Target database table.
 - `field::String`: Database field used for filtering.
-- `like::Union{Nothing,String}`: Pattern-matching filter value.
+- `like::Union{Nothing,String}`: Pattern-matching constraint.
 - `in::Union{Nothing,Vector{String},Vector{Int},Vector{AbstractFloat}}`:
-  Collection-based filter values.
+  Collection-based constraint.
 - `between::Union{Nothing,Tuple{Int,Int},Tuple{AbstractFloat,AbstractFloat}}`:
-  Inclusive range filter values.
-- `equal_to::Union{Nothing,Int,AbstractFloat}`: Equality filter value.
-- `less_than::Union{Nothing,Int,AbstractFloat}`: Less-than filter value.
-- `greater_than::Union{Nothing,Int,AbstractFloat}`: Greater-than filter value.
+  Range constraint.
+- `equal_to::Union{Nothing,Int,AbstractFloat}`: Equality constraint.
+- `less_than::Union{Nothing,Int,AbstractFloat}`: Less-than constraint.
+- `greater_than::Union{Nothing,Int,AbstractFloat}`: Greater-than constraint.
+
+# Returns
+
+- `Filter`: Fully validated and sanitised filter object ready for query
+  generation.
 
 # Throws
 
-- `ErrorException`: If the target table does not exist.
+- `ErrorException`: If the specified table does not exist.
 - `ErrorException`: If the specified field cannot be resolved to a valid field.
 - `ErrorException`: If zero or multiple filtering criteria are supplied.
 - `ErrorException`: If a string filter is applied to a non-string field.
 - `ErrorException`: If a numeric filter is applied to a non-numeric field.
-- `ErrorException`: If no matching identifiers can be found when resolving
-  foreign-key names.
+- `ErrorException`: If the lower bound of `filter_between` exceeds the upper
+  bound.
+- `ErrorException`: If no matching identifiers can be found whilst resolving
+  foreign-key relationships.
 - Any exception raised during schema validation or identifier resolution.
 
 # Notes
@@ -107,12 +106,13 @@ fields.
     + `species` → `species_id`
 - Fields ending in `_id` are treated as foreign-key relationships and are
   resolved through the appropriate metadata tables.
-- For standard tables, foreign-key values are resolved directly through the
-  associated metadata table.
-- For `genomes`, `genotype_vcfs`, and `phenomes`, foreign-key values are
-  resolved through intermediate relationship tables linking the
-  dataset to metadata records.
-- These relationship tables are:
+- For standard tables, human-readable values are resolved directly through the
+  associated metadata table and the resulting filter is applied to the original
+  foreign-key field (e.g. `entry_id`, `trait_id`, `reference_genome_id`).
+- For `genomes`, `genotype_vcfs`, and `phenomes`, some relationships are not
+  stored directly in the primary table and must be resolved through
+  intermediate relationship tables.
+- Examples include:
     + `genomes_entries`
     + `genotype_vcfs_entries`
     + `phenomes_entries`
@@ -121,10 +121,15 @@ fields.
     + `phenomes_experiments`
     + `phenomes_measurements`
     + `phenomes_treatments`
+- When an intermediate relationship table is used, matching entity identifiers
+  are first resolved from the metadata table and then converted into matching
+  dataset identifiers via the relationship table.
+- In these cases the filter is rewritten to operate on the primary-table `id`
+  field rather than on the original foreign-key field.
 - The `reference_genome_id` field is a special case. Because `genomes` and
-  `genotype_vcfs` store a direct foreign-key relationship to
+  `genotype_vcfs` store direct foreign-key relationships to
   `reference_genomes`, identifier resolution is performed directly through the
-  `reference_genomes` table rather than through an intermediate relationship
+  `reference_genomes` table and does not use an intermediate relationship
   table.
 - The `entry_relationships` table is treated as a special case because its
   relationship values are stored directly and therefore do not require
@@ -197,14 +202,14 @@ julia> x_1 = Filter(conn, table="genomes", field="entries", filter_in=["entry_00
 
 julia> x_2 = Filter(conn, table="genomes", field="entries", filter_like="%");
 
-julia> (x_1.table == "genomes") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
+julia> (x_1.table == "genomes") && (x_1.field == "id") && (x_1.in[1] ∈ x_2.in)
 true
 
 julia> x_1 = Filter(conn, table="genotype_vcfs", field="entries", filter_in=["entry_001"]);
 
 julia> x_2 = Filter(conn, table="genotype_vcfs", field="entries", filter_like="%");
 
-julia> (x_1.table == "genotype_vcfs") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
+julia> (x_1.table == "genotype_vcfs") && (x_1.field == "id") && (x_1.in[1] ∈ x_2.in)
 true
 
 julia> x_1 = Filter(conn, table="genotype_vcfs", field="reference_genome", filter_in=["simulated reference genome"]);
@@ -218,14 +223,14 @@ julia> x_1 = Filter(conn, table="phenomes", field="entries", filter_in=["entry_0
 
 julia> x_2 = Filter(conn, table="phenomes", field="entries", filter_like="%");
 
-julia> (x_1.table == "phenomes") && (x_1.field == "entry_id") && (x_1.in[1] ∈ x_2.in)
+julia> (x_1.table == "phenomes") && (x_1.field == "id") && (x_1.in[1] ∈ x_2.in)
 true
 
 julia> x_1 = Filter(conn, table="phenomes", field="traits", filter_like="_1");
 
 julia> x_2 = Filter(conn, table="phenomes", field="traits", filter_like="trait_");
 
-julia> (x_1.table == "phenomes") && (x_1.field == "trait_id") && (x_1.in[1] ∈ x_2.in)
+julia> (x_1.table == "phenomes") && (x_1.field == "id") && (x_1.in[1] ∈ x_2.in)
 true
 
 julia> close(conn);
@@ -257,6 +262,7 @@ struct Filter
         # execute(conn, "SELECT id,value FROM phenotype_data") |> DataFrame
         # table = "phenotype_data"; field = "value"; filter_in = Float64[10.515928568077884]; # table = "phenotype_data"; field = "value"; filter_between = (10, 12); # table = "phenotype_data"; field = "value"; filter_equal_to = 10.515928568077884; # table = "phenotype_data"; field = "value"; filter_less_than = 10; # table = "phenotype_data"; field = "value"; filter_greater_than = 100
         # table = "phenomes"; field = "treatment"; filter_in = ["control"]
+        # table = "genomes"; field = "entry"; filter_like = "_01"
         check(conn, table) # checks for illegal strings
         sum([
             !isnothing(filter_like),
@@ -314,19 +320,18 @@ struct Filter
             else
                 replace(field, "_id" => "s")
             end
+            check(conn, metatable, "id")
             # Determine if lookup requires an intermediate relationship table
-            reltable, metatable =
+            reltable =
                 if ((table == "genomes") || (table == "phenomes") || (table == "genotype_vcfs")) &&
                    (metatable != "reference_genomes")
                     reltable = string(table, "_", metatable)
                     check(conn, reltable, field)
-                    check(conn, metatable, "id")
-                    reltable, metatable
+                    check(conn, table, "id")
+                    reltable
                 else
-                    reltable = nothing
                     check(conn, table, field)
-                    check(conn, metatable, "id")
-                    reltable, metatable
+                    nothing
                 end
             # Process filter_in and filter_like by converting human-readable names to IDs
             dict_filters_in_and_like::Dict{String,Union{Nothing,String,Vector{String}}} =
@@ -339,9 +344,9 @@ struct Filter
                 else
                     v, false
                 end
-                tmp = if isnothing(reltable)
+                ids = if isnothing(reltable)
                     # Direct foreign-key lookup through metadata table
-                    # i.e. `table` is connected directly to `metatable`
+                    # i.e. `table` is connected directly to `metatable` and the name of the field in the main table remains
                     extract_ids(conn, names = v, table = metatable, is_like = is_like).id
                 else
                     # Indirect lookup through relationship table intermediate table
@@ -363,13 +368,12 @@ struct Filter
                         isempty(df_tmp) ? continue : nothing
                         push!(ids_rel, df_tmp[1, 1])
                     end
-                    ids_rel
+                    unique(ids_rel)
                 end
-                unique!(tmp)
-                if length(tmp) == 0
+                if length(ids) == 0
                     error("No matches for \"$(join(v, "\", \""))\" in \"$metatable\" table!")
                 end
-                dict_filters_in_and_like[k] = tmp
+                dict_filters_in_and_like[k] = ids
             end
             # Convert filter_like to filter_in after ID resolution
             if !isnothing(dict_filters_in_and_like["filter_like"])
@@ -379,11 +383,11 @@ struct Filter
             # # Set field name depending on whether we used a relational table, i.e.
             # #   - if we did not then the field with `*_id` is present in the table
             # #   - else `id` maps to the table
-            # if isnothing(reltable)
-            (field, dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
-            # else
-            #     ("id", dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
-            # end
+            if isnothing(reltable)
+                (field, dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
+            else
+                ("id", dict_filters_in_and_like["filter_in"], dict_filters_in_and_like["filter_like"])
+            end
         end
         # Process filter_like: add wildcard characters and escape underscores
         filter_like = if !isnothing(filter_like)
