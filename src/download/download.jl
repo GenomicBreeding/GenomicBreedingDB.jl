@@ -1,3 +1,73 @@
+"""
+    define_filters(
+        conn::LibPQ.Connection,
+        args::AbstractDict{String};
+        table::String,
+    )::Tuple{Vector{Filter},Vector{ErrorException}}
+
+Construct a collection of validated `Filter` objects from a dictionary of query
+arguments.
+
+The function translates user-supplied query arguments into `Filter` objects
+whilst collecting any validation errors that occur during filter
+construction. Unlike higher-level query helpers that immediately throw an
+exception when an invalid filter is encountered, this function attempts to
+construct all possible filters and records any resulting errors.
+
+Arguments prefixed with `like_` are interpreted as fuzzy-search filters and
+converted into `filter_like` constraints. The special field `value` is
+interpreted as a numeric interval and converted into a `filter_between`
+constraint. All other recognised fields are converted into `filter_in`
+constraints.
+
+This helper is useful when validating user input because valid and invalid
+filters can be inspected separately.
+
+# Arguments
+
+- `conn::LibPQ.Connection`: Active PostgreSQL database connection.
+- `args::AbstractDict{String}`: Collection of query arguments.
+- `table::String`: Name of the target database table.
+
+# Returns
+
+- `Tuple{Vector{Filter},Vector{ErrorException}}`:
+  - `filters`: Successfully constructed filter objects.
+  - `errors`: Errors encountered whilst constructing filters.
+
+# Throws
+
+- This function does not rethrow filter-construction errors.
+- Any unexpected exception occurring outside filter construction may still be
+  propagated.
+
+# Notes
+
+- Empty filter values are ignored.
+- Arguments prefixed with `like_` are converted into `filter_like`
+  constraints.
+- Fuzzy-search filters accept only a single search term.
+- The special field `value` is converted into a `filter_between`
+  constraint.
+- All other recognised fields are converted into `filter_in` constraints.
+- Filter construction and validation are delegated to the `Filter`
+  constructor.
+- Invalid filters do not prevent valid filters from being constructed.
+- Errors are collected and returned rather than immediately thrown.
+- Duplicate filters are removed before returning.
+- Duplicate errors are removed before returning.
+- Field names are normalised before filter construction:
+  - `entries` → `entry`
+  - `traits` → `trait`
+  - `species` → `species`
+  - `like_entries` → `entry`
+- This helper is intended for workflows that need to report multiple input
+  errors simultaneously rather than failing on the first invalid filter.
+- Returned filters can be passed directly to `query(conn, filters; ...)`.
+
+# Examples
+
+"""
 function define_filters(
     conn::LibPQ.Connection,
     args::AbstractDict{String};
@@ -33,6 +103,8 @@ function define_filters(
             push!(errors, e)
         end
     end
+    unique!(filters)
+    unique!(errors)
     filters, errors
 end
 
@@ -181,7 +253,10 @@ function download(
     keep_id_and_do_not_unstack::Bool=false,
     verbose::Bool=false,
 )::DataFrame
-    table = "phenotype_data"
+    # table = "phenotype_data"
+    # table = "phenomes"
+    # table = "environment_data"
+    # table = "entry_relationships"
     entries::Vector{String}=String[]
     species::Vector{String}=String[]
     entry_types::Vector{String}=String[]
@@ -193,17 +268,17 @@ function download(
     environment_variables::Vector{String}=String[]
     replications::Vector{Int64}=Int64[]
     blocks::Vector{Int64}=Int64[]
-    rows::Vector{Int64}=Int64[]
+    rows::Vector{Int64}=Int64[1,5]
     cols::Vector{Int64}=Int64[]
     like_names::Vector{String}=String[]
     like_notes::Vector{String}=String[]
     like_reference_genomes::Vector{String}=String[]
-    like_entries::Vector{String}=String["_10"]
+    like_entries::Vector{String}=String["_01"]
     like_species::Vector{String}=String[]
     like_entry_types::Vector{String}=String[]
     like_experiments::Vector{String}=String[]
     like_sites::Vector{String}=String[]
-    like_treatments::Vector{String}=String[]
+    like_treatments::Vector{String}=String["con"]
     like_measurements::Vector{String}=String[]
     like_environment_variables::Vector{String}=String[]
     like_traits::Vector{String} = String[]
@@ -246,28 +321,61 @@ function download(
         "values" => values,
     )
 
-    # TODO: Define recipes, including restrictions given specific tables being requested...
-
-
+    all_tables = list_all_tables(conn).table_name
+    assign_tables = Dict(
+        "phenotype_data" => ["phenotype_data", "layouts"],
+        "phenomes" => ["phenomes"],
+        "environment_data" => ["environment_data", "layouts"],
+        "entry_relationships" => ["entry_relationships", "entries", "species"],
+    )
+    tables = assign_tables[table]
+   
 
     dfs = Dict()
     all_filters = Dict()
     all_errors = Dict()
-    for table in  list_all_tables(conn).table_name
-        # table =  list_all_tables(conn).table_name[3]
-        filters, errors = define_filters(conn, args, table=table)
+    for t in  tables
+        # t = tables[1]
+        filters, errors = define_filters(conn, args, table=t)
         df = if isempty(filters)
-            extract_table_contents(conn, table)
+            ids = string.(extract_table_contents(conn, t).id)
+            filters = [Filter(conn, table=t, field="id", filter_in=ids)]
+            query(conn, filters, verbose=verbose)
         else
             query(conn, filters, verbose=verbose)
         end
-        all_filters[table] = filters
-        all_errors[table] = errors
-        dfs[table] = df
+        all_filters[t] = filters
+        all_errors[t] = errors
+        dfs[t] = df
     end
 
+    df_out = nothing
+    for t in  tables
+        # t = tables[1]
+        # t = tables[2]
+        df = deepcopy(dfs[t])
+        try select!(df, Not(:id)); catch; nothing; end
+        try select!(df, Not(:created_at)); catch; nothing; end
+        try select!(df, Not(:updated_at)); catch; nothing; end
+        try select!(df, Not(:note)); catch; nothing; end
+        try rename!(df, "child" => "entry"); catch; nothing; end
+        df_out = if isnothing(df_out)
+            df
+        else
+            aggregator = if t == "entries"
+                "entry"
+            elseif t == "species"
+                "species"
+            else
+                replace(t, Regex("s\$") => "")
+            end
+            try rename!(df_out, "$(aggregator)_id" => aggregator); catch; nothing; end
+            try rename!(df, "name" => aggregator); catch; nothing; end
+            df_out[ismissing.(df_out[:, aggregator]), aggregator] .= "missing"
+            df[ismissing.(df[:, aggregator]), aggregator] .= "missing"
+            innerjoin(df_out, df, on=aggregator)
+        end
+    end
+    df_out
 
-
-
-    DataFrame()
 end
