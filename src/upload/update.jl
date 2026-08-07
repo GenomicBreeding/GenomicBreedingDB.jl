@@ -101,7 +101,7 @@ function update_table!(
     verbose::Bool = false,
 )::Nothing
     # conn = dbconnect()
-    # fname_reference_genome="Milnesium_tardigradum.fa"; simulate_reference_genome(fname_reference_genome=fname_reference_genome); upload_reference_genome!(conn, fname=fname_reference_genome, name="Milnesium tardigradum", notes="Simulated reference genome")
+    # fname_reference_genome="Milnesium_tardigradum.fa"; simulate_reference_genome(fname_reference_genome=fname_reference_genome); upload_reference_genome!(conn, fname=fname_reference_genome, name="Milnesium tardigradum", note="Simulated reference genome")
     # filters = [Filter(conn, table="reference_genomes", field="name", filter_in=["Milnesium tardigradum"])]
     # destination_field = "name"
     # value::Union{String, AbstractFloat, Int} = "some_new_name"

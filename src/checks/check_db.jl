@@ -190,6 +190,7 @@ julia> close(conn);
 function check(conn::LibPQ.Connection, table::String, field::String)::Nothing
     # conn = dbconnect(); table = "phenotype_data"; field = "site_id"; # field = "site"
     check(conn)
+    check(conn, table)
     check_illegal_strings([table])
     check_illegal_strings([field])
     bool = execute(

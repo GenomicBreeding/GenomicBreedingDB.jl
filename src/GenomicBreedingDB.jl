@@ -58,12 +58,7 @@ include("download/query.jl")
 export query
 include("download/transform.jl")
 export unstack_data_table
-include("download/download_phenotypes.jl")
-export download_phenotype_data, download_phenomes_paths
-include("download/download_environments.jl")
-export download_environment_data
-include("download/download_pedigrees.jl")
-export download_pedigrees
-include("download/download_genotypes.jl")
-export download_reference_genomes_paths, download_vcfs_paths, download_genomes_paths
+include("download/download.jl")
+export combinations, define_filters, download
+
 end
