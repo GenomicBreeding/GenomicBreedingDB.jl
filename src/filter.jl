@@ -263,6 +263,7 @@ struct Filter
         # table = "phenotype_data"; field = "value"; filter_in = Float64[10.515928568077884]; # table = "phenotype_data"; field = "value"; filter_between = (10, 12); # table = "phenotype_data"; field = "value"; filter_equal_to = 10.515928568077884; # table = "phenotype_data"; field = "value"; filter_less_than = 10; # table = "phenotype_data"; field = "value"; filter_greater_than = 100
         # table = "phenomes"; field = "treatment"; filter_in = ["control"]
         # table = "genomes"; field = "entry"; filter_like = "_01"
+        # table = "entry_relationships"; field = "child_id"; filter_like = "_01"
         check(conn, table) # checks for illegal strings
         sum([
             !isnothing(filter_like),
@@ -300,9 +301,11 @@ struct Filter
         #    (e.g., "entry_100") to their corresponding database IDs using a metadata table and possibly a relationship table.
         #    After ID resolution, field is set to "id" because the resolved IDs refer to the primary key
         #    column "id" in the primary table.
-        field, filter_in, filter_like = if isnothing(match(Regex("_id\$"), field)) || (table == "entry_relationships")
+        field, filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
             # Direct column field - validate filter type matches field data type
-            !isnothing(filter_like) ? check(conn, table, field, String) : nothing
+            if !isnothing(filter_like) && (table != "entry_relationships")
+                check(conn, table, field, String)
+            end
             if !isnothing(filter_in)
                 try
                     check(conn, table, field, String)
@@ -311,6 +314,16 @@ struct Filter
                 end
             end
             field, filter_in, filter_like
+        elseif (table == "entry_relationships") && !isnothing(match(Regex("entry_id|child_id|parent_id"), field))
+            if !isnothing(filter_in) || !isnothing(filter_like)
+                metatable = "entries"
+                is_like = !isnothing(filter_like)
+                v = is_like ? filter_like : filter_in
+                entry_ids = extract_ids(conn, names = [v], table = metatable, is_like = is_like).id
+                field, entry_ids, nothing
+            else
+                field, nothing, nothing
+            end
         else
             # Foreign-key field - resolve human-readable names to database identifiers
             metatable = if field == "entry_id"

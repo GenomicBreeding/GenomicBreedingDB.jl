@@ -80,15 +80,19 @@ true
 
 julia> length(errors) == 0
 true
+
+julia> filters, errors = define_filters(conn, args, table="entry_relationships");
+
 ```
 """
 function define_filters(
     conn::LibPQ.Connection,
     args::AbstractDict{String};
     table::String,
-)::Tuple{Vector{Filter}, Vector{ErrorException}}
+)::Tuple{Vector{Filter},Vector{ErrorException}}
     # conn = dbconnect(); args = Dict("treatments"=>["control"], "entries" => String[], "sdgdgdfg"=> String["sdgsdg"]); table = "phenomes";
     # conn = dbconnect(); args = Dict("QIUWYGB"=>["control"], "AKJUGABIDKBIJ" => String[], "sdgdgdfg"=> String["sdgsdg"]); table = "phenomes";
+    # conn = dbconnect(); args = Dict("like_entries"=>["_01"]); table = "entry_relationships";
     filters = Filter[]
     errors = ErrorException[]
     for (k, v) in args
@@ -98,20 +102,29 @@ function define_filters(
             continue
         end
         is_like = !isnothing(match(Regex("^like_"), k))
-        field = replace(k, Regex("ies\$")=>"y") |> 
-            x -> replace(x, Regex("s\$")=>"") |> 
-            x -> replace(x, Regex("^like_")=>"")
+        field =
+            replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
         try
             if is_like
                 if length(v) > 1
                     error("We only accept 1 query for fuzzy search: $k = $v")
                 end
-                push!(filters, Filter(conn, table = table, field = field, filter_like = v[1]))
+                if (table == "entry_relationships") && (field == "entry")
+                    push!(filters, Filter(conn, table = table, field = "child_id", filter_like = v[1]))
+                    push!(filters, Filter(conn, table = table, field = "parent_id", filter_like = v[1]))
+                else
+                    push!(filters, Filter(conn, table = table, field = field, filter_like = v[1]))
+                end
             elseif field == "value"
                 push!(filters, Filter(conn, table = table, field = field, filter_between = v))
             else
+                if (table == "entry_relationships") && (field == "entry")
+                    push!(filters, Filter(conn, table = table, field = "child_id", filter_in = v))
+                    push!(filters, Filter(conn, table = table, field = "parent_id", filter_in = v))
+                else
+                    push!(filters, Filter(conn, table = table, field = field, filter_in = v))
+                end
                 # TODO: probably for date intervals...
-                push!(filters, Filter(conn, table = table, field = field, filter_in = v))
             end
         catch e
             push!(errors, e)
@@ -193,6 +206,11 @@ true
 
 julia> length(like_combinations_keys) == 2
 true
+
+julia> args = Dict("entries" => ["entry_001", "entry_002"], "traits" => ["trait_2", "trait_3"]);
+
+julia> like_combinations, like_combinations_keys = combinations(args);
+
 ```
 """
 function combinations(args::AbstractDict{String})::Tuple{Vector{Union{Nothing,Vector{String}}},Vector{String}}
@@ -265,25 +283,27 @@ end
         notes::Vector{String}=String[],
         reference_genomes::Vector{String}=String[],
         values::Tuple{Float64,Float64}=(-Inf, +Inf),
-        keep_id_and_do_not_unstack::Bool=false,
         verbose::Bool=false,
     )::DataFrame
 
-Download records from one or more database tables using a unified filtering
-interface.
+Download records from a database table using exact-match, fuzzy-search, and
+relationship-aware filtering.
 
-The function dynamically constructs validated filters from the supplied
-arguments, applies those filters to the requested table and any related tables,
-and returns the resulting records as a `DataFrame`.
+The function provides a generic database-query interface that automatically
+constructs filters from the supplied arguments, applies those filters to the
+requested table and any related tables, and returns the matching records as a
+`DataFrame`.
 
-This method automatically determines which filters are applicable to each table, 
-ignores invalid filters for unrelated tables, and joins results across related 
-tables where necessary. This allows a single collection of filtering arguments 
-to be reused across multiple database resources without requiring knowledge of 
-the underlying schema.
+For tables requiring metadata from multiple sources, the function automatically
+queries and joins the necessary related tables. When multiple fuzzy-search
+criteria (`like_*`) contain multiple values, all possible search-term
+combinations are evaluated independently and the final result is obtained by
+taking the union of all matching records.
 
-Depending on the selected table, additional metadata may be retrieved from
-related tables and merged into the final result.
+This function is intended as a flexible schema-aware alternative to
+table-specific download functions and can be used for exploratory querying
+across phenotype, environmental, pedigree, phenome, genome, and metadata
+tables.
 
 # Arguments
 
@@ -296,7 +316,7 @@ related tables and merged into the final result.
 - `treatments::Vector{String}=String[]`: Treatment names to match exactly.
 - `measurements::Vector{String}=String[]`: Measurement names to match exactly.
 - `traits::Vector{String}=String[]`: Trait names to match exactly.
-- `environment_variables::Vector{String}=String[]`: Environmental variable
+- `environment_variables::Vector{String}=String[]`: Environmental-variable
   names to match exactly.
 - `replications::Vector{Int64}=Int64[]`: Replication identifiers to match.
 - `blocks::Vector{Int64}=Int64[]`: Block identifiers to match.
@@ -315,8 +335,7 @@ related tables and merged into the final result.
   matching.
 - `like_experiments::Vector{String}=String[]`: Experiment-name patterns for
   fuzzy matching.
-- `like_sites::Vector{String}=String[]`: Site-name patterns for fuzzy
-  matching.
+- `like_sites::Vector{String}=String[]`: Site-name patterns for fuzzy matching.
 - `like_treatments::Vector{String}=String[]`: Treatment-name patterns for fuzzy
   matching.
 - `like_measurements::Vector{String}=String[]`: Measurement-name patterns for
@@ -331,9 +350,8 @@ related tables and merged into the final result.
   exactly.
 - `values::Tuple{Float64,Float64}=(-Inf, +Inf)`: Inclusive lower and upper
   bounds for numeric-value filtering.
-- `keep_id_and_do_not_unstack::Bool=false`: Reserved for API compatibility.
-- `verbose::Bool=false`: If `true`, display progress information during query
-  construction, execution, and table joins.
+- `verbose::Bool=false`: If `true`, display progress information during
+  filtering, querying, and joining.
 
 # Returns
 
@@ -347,89 +365,115 @@ related tables and merged into the final result.
 
 # Notes
 
-- Filter construction is performed using `define_filters`.
-- Query execution is performed using `query`.
-- If no valid filters are generated for a table, all records from that table
-  are retrieved.
-- Invalid filters are collected internally and ignored for tables where the
-  corresponding fields do not exist.
+- Filter construction is delegated to `define_filters`.
+- Query execution is delegated to `query`.
+- Human-readable names are automatically resolved to database identifiers
+  through the `Filter` infrastructure.
 - Exact-match filters are translated into SQL `IN` operations.
 - Fuzzy-search filters are translated into SQL `LIKE` operations.
-- Numeric-range filters are translated into SQL `BETWEEN` operations.
-- Human-readable names are automatically resolved to database identifiers
-  where required through the `Filter` infrastructure.
-- Depending on `table`, additional related tables may be queried:
-    + `phenotype_data` → `phenotype_data`, `layouts`
-    + `environment_data` → `environment_data`, `layouts`
-    + `entry_relationships` → `entry_relationships`, `entries`, `species`
-- Tables not listed above are queried without additional related tables.
-- Metadata fields such as:
-    + `id`
-    + `created_at`
-    + `updated_at`
+- Numeric intervals are translated into SQL `BETWEEN` operations.
+- Multiple values supplied to one or more `like_*` arguments are treated as
+  independent fuzzy-search criteria.
+- When multiple `like_*` filters contain multiple values, all possible
+  combinations are generated using `combinations(args)` and evaluated
+  independently.
+- Results from individual fuzzy-search combinations are merged using a union
+  operation (`vcat`).
+- Filters that are not applicable to a given table are collected as validation
+  errors and ignored for that table.
+- If no valid filters are generated for a table, all records from that table
+  are queried.
+- Depending on `table`, related tables are automatically queried and joined:
+  - `phenotype_data` → `phenotype_data`, `layouts`
+  - `environment_data` → `environment_data`, `layouts`
+  - `entry_relationships` → `entry_relationships`, `entries`, `species`
+- All other tables are queried directly without additional joins.
+- Identifier and bookkeeping fields such as:
+  - `id`
+  - `created_at`
+  - `updated_at`
   are removed from intermediate tables before joining where appropriate.
 - Relationship fields are normalised automatically to facilitate joins.
-  For example, `child` is renamed to `entry` when processing pedigree data.
-- Joins are performed using human-readable fields rather than database
-  identifiers whenever possible.
-- Missing join values are temporarily represented as `"missing"` during table
-  joins.
-- The resulting `DataFrame` may contain columns originating from multiple
-  related tables.
-- This function provides a generic schema-aware alternative to specialised
-  download functions such as `download_phenotype_data`,
-  `download_environment_data`, and `download_pedigrees`.
+- For pedigree queries, `child` is automatically renamed to `entry`.
+- Joins are performed using biologically meaningful fields such as:
+  - `entry`
+  - `species`
+  - `layout`
+- Missing join values are temporarily represented as `"missing"` during join
+  operations.
+- The resulting DataFrame may contain columns originating from multiple related
+  database tables.
+- This function is intended to provide a general-purpose schema-aware querying
+  interface for exploratory analysis and downstream data retrieval workflows.
 
 # Examples
 
-```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
-julia> args = Dict("like_entries" => ["_1", "_2"], "like_traits" => ["2", "3"]);
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates; import GenomicBreedingDB: download)
+julia> df_phenotype_data = download("phenotype_data", like_entries=["_01", "_02"], like_traits=["_2", "_3"]);
 
-julia> like_combinations, like_combinations_keys = combinations(args);
-
-julia> length(like_combinations) == 4
+julia> sum(.!isnothing.(match.(Regex("_01|_02"), df_phenotype_data.entry))) == nrow(df_phenotype_data)
 true
 
-julia> length(like_combinations[1]) == 2
+julia> sum(.!isnothing.(match.(Regex("_2|_3"), df_phenotype_data.trait))) == nrow(df_phenotype_data)
 true
 
-julia> length(like_combinations_keys) == 2
+julia> df_phenotype_data = download("phenotype_data", entries=["entry_010"], like_entries=["_01", "_02"], like_traits=["_2", "_3"]);
+
+julia> sum(.!isnothing.(match.(Regex("_01"), df_phenotype_data.entry))) == nrow(df_phenotype_data)
 true
+
+julia> sum(.!isnothing.(match.(Regex("_2|_3"), df_phenotype_data.trait))) == nrow(df_phenotype_data)
+true
+
+julia> df_phenotype_data = download("phenotype_data", entries=["entry_100"], like_entries=["_01", "_02"], like_traits=["_2", "_3"]);
+
+julia> nrow(df_phenotype_data) == 0
+true
+
+julia> df_environment_data = download("environment_data", like_sites=["_1", "_2"], like_treatments=["control"]);
+
+julia> sum(.!isnothing.(match.(Regex("_1|_2"), df_environment_data.site))) == nrow(df_environment_data)
+true
+
+julia> df_entry_relationships = download("entry_relationships", like_entries=["_06", "_07"]);
+
+julia> sum(.!isnothing.(match.(Regex("_06|_07"), df_entry_relationships.entry))) == nrow(df_entry_relationships)
+
+
 ```
 """
 function download(
     table::String;
-    entries::Vector{String}=String[],
-    species::Vector{String}=String[],
-    entry_types::Vector{String}=String[],
-    experiments::Vector{String}=String[],
-    sites::Vector{String}=String[],
-    treatments::Vector{String}=String[],
-    measurements::Vector{String}=String[],
+    entries::Vector{String} = String[],
+    species::Vector{String} = String[],
+    entry_types::Vector{String} = String[],
+    experiments::Vector{String} = String[],
+    sites::Vector{String} = String[],
+    treatments::Vector{String} = String[],
+    measurements::Vector{String} = String[],
     traits::Vector{String} = String[],
-    environment_variables::Vector{String}=String[],
-    replications::Vector{Int64}=Int64[],
-    blocks::Vector{Int64}=Int64[],
-    rows::Vector{Int64}=Int64[],
-    cols::Vector{Int64}=Int64[],
-    like_names::Vector{String}=String[],
-    like_notes::Vector{String}=String[],
-    like_reference_genomes::Vector{String}=String[],
-    like_entries::Vector{String}=String[],
-    like_species::Vector{String}=String[],
-    like_entry_types::Vector{String}=String[],
-    like_experiments::Vector{String}=String[],
-    like_sites::Vector{String}=String[],
-    like_treatments::Vector{String}=String[],
-    like_measurements::Vector{String}=String[],
-    like_environment_variables::Vector{String}=String[],
+    environment_variables::Vector{String} = String[],
+    replications::Vector{Int64} = Int64[],
+    blocks::Vector{Int64} = Int64[],
+    rows::Vector{Int64} = Int64[],
+    cols::Vector{Int64} = Int64[],
+    like_names::Vector{String} = String[],
+    like_notes::Vector{String} = String[],
+    like_reference_genomes::Vector{String} = String[],
+    like_entries::Vector{String} = String[],
+    like_species::Vector{String} = String[],
+    like_entry_types::Vector{String} = String[],
+    like_experiments::Vector{String} = String[],
+    like_sites::Vector{String} = String[],
+    like_treatments::Vector{String} = String[],
+    like_measurements::Vector{String} = String[],
+    like_environment_variables::Vector{String} = String[],
     like_traits::Vector{String} = String[],
-    names::Vector{String}=String[],
-    notes::Vector{String}=String[],
-    reference_genomes::Vector{String}=String[],
-    values::Tuple{Float64,Float64}=(-Inf, +Inf),
-    keep_id_and_do_not_unstack::Bool=false,
-    verbose::Bool=false,
+    names::Vector{String} = String[],
+    notes::Vector{String} = String[],
+    reference_genomes::Vector{String} = String[],
+    values::Tuple{Float64,Float64} = (-Inf, +Inf),
+    verbose::Bool = false,
 )::DataFrame
     # display(list_all_tables(conn).table_name)
     # table = "phenotype_data"
@@ -450,20 +494,20 @@ function download(
     # environment_variables::Vector{String}=String[]
     # replications::Vector{Int64}=Int64[]
     # blocks::Vector{Int64}=Int64[]
-    # rows::Vector{Int64}=Int64[1,5]
+    # rows::Vector{Int64}=Int64[]
     # cols::Vector{Int64}=Int64[]
     # like_names::Vector{String}=String[]
     # like_notes::Vector{String}=String[]
     # like_reference_genomes::Vector{String}=String[]
-    # like_entries::Vector{String}=String["_01"]
+    # like_entries::Vector{String}=String["_01", "_02"]
     # like_species::Vector{String}=String[]
     # like_entry_types::Vector{String}=String[]
     # like_experiments::Vector{String}=String[]
     # like_sites::Vector{String}=String[]
-    # like_treatments::Vector{String}=String["con"]
+    # like_treatments::Vector{String}=String[]
     # like_measurements::Vector{String}=String[]
     # like_environment_variables::Vector{String}=String[]
-    # like_traits::Vector{String} = String[]
+    # like_traits::Vector{String} = String["_2"]
     # names::Vector{String}=String[]
     # notes::Vector{String}=String[]
     # reference_genomes::Vector{String}=String[]
@@ -510,49 +554,91 @@ function download(
     else
         [table]
     end
-    dfs = Dict()
-    all_filters = Dict()
-    all_errors = Dict()
-    for t in  tables
-        # t = tables[1]
-        filters, errors = define_filters(conn, args, table=t)
-        df = if isempty(filters)
-            ids = string.(extract_table_contents(conn, t).id)
-            filters = [Filter(conn, table=t, field="id", filter_in=ids)]
-            query(conn, filters, verbose=verbose)
-        else
-            query(conn, filters, verbose=verbose)
-        end
-        all_filters[t] = filters
-        all_errors[t] = errors
-        dfs[t] = df
-    end
-    # Query and join
+    like_combinations, like_combinations_keys = combinations(args)
     df_out = nothing
-    for t in  tables
-        # t = tables[1]
-        # t = tables[2]
-        df = deepcopy(dfs[t])
-        try select!(df, Not(:id)); catch; nothing; end
-        try select!(df, Not(:created_at)); catch; nothing; end
-        try select!(df, Not(:updated_at)); catch; nothing; end
-        try select!(df, Not(:note)); catch; nothing; end
-        try rename!(df, "child" => "entry"); catch; nothing; end
-        df_out = if isnothing(df_out)
-            df
-        else
-            aggregator = if t == "entries"
-                "entry"
-            elseif t == "species"
-                "species"
+    for i in eachindex(like_combinations)
+        # i = 1
+        for (j, key) in enumerate(like_combinations_keys)
+            # j = 1; key = like_combinations_keys[j]
+            args[key] = [like_combinations[i][j]]
+        end
+        dfs = Dict()
+        all_filters = Dict()
+        all_errors = Dict()
+        for t in tables
+            # t = tables[1]
+            filters, errors = define_filters(conn, args, table = t)
+            df = if isempty(filters)
+                ids = string.(extract_table_contents(conn, t).id)
+                filters = [Filter(conn, table = t, field = "id", filter_in = ids)]
+                query(conn, filters, verbose = verbose)
             else
-                replace(t, Regex("s\$") => "")
+                query(conn, filters, verbose = verbose)
             end
-            try rename!(df_out, "$(aggregator)_id" => aggregator); catch; nothing; end
-            try rename!(df, "name" => aggregator); catch; nothing; end
-            df_out[ismissing.(df_out[:, aggregator]), aggregator] .= "missing"
-            df[ismissing.(df[:, aggregator]), aggregator] .= "missing"
-            innerjoin(df_out, df, on=aggregator)
+            all_filters[t] = filters
+            all_errors[t] = errors
+            dfs[t] = df
+        end
+        # Query and join
+        df_out_tmp = nothing
+        for t in tables
+            # t = tables[1]
+            # t = tables[2]
+            df = deepcopy(dfs[t])
+            try
+                select!(df, Not(:id))
+            catch
+                nothing
+            end
+            try
+                select!(df, Not(:created_at))
+            catch
+                nothing
+            end
+            try
+                select!(df, Not(:updated_at))
+            catch
+                nothing
+            end
+            try
+                select!(df, Not(:note))
+            catch
+                nothing
+            end
+            try
+                rename!(df, "child" => "entry")
+            catch
+                nothing
+            end
+            df_out_tmp = if isnothing(df_out_tmp)
+                df
+            else
+                aggregator = if t == "entries"
+                    "entry"
+                elseif t == "species"
+                    "species"
+                else
+                    replace(t, Regex("s\$") => "")
+                end
+                try
+                    rename!(df_out_tmp, "$(aggregator)_id" => aggregator)
+                catch
+                    nothing
+                end
+                try
+                    rename!(df, "name" => aggregator)
+                catch
+                    nothing
+                end
+                df_out_tmp[ismissing.(df_out_tmp[:, aggregator]), aggregator] .= "missing"
+                df[ismissing.(df[:, aggregator]), aggregator] .= "missing"
+                innerjoin(df_out_tmp, df, on = aggregator)
+            end
+        end
+        df_out = if isnothing(df_out)
+            df_out_tmp
+        else
+            vcat(df_out, df_out_tmp)
         end
     end
     df_out

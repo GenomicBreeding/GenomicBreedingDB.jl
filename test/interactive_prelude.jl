@@ -11,3 +11,4 @@ using DotEnv, LibPQ, DataFrames, Tables, StatsBase, CSV
 using Suppressor, ProgressMeter
 using Random, Dates
 using CodecZlib, TranscodingStreams
+import GenomicBreedingDB: download
