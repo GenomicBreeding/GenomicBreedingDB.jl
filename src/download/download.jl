@@ -9,10 +9,10 @@ Construct a collection of validated `Filter` objects from a dictionary of query
 arguments.
 
 The function translates user-supplied query arguments into `Filter` objects
-whilst collecting any validation errors that occur during filter
-construction. Unlike higher-level query helpers that immediately throw an
-exception when an invalid filter is encountered, this function attempts to
-construct all possible filters and records any resulting errors.
+whilst collecting any validation errors encountered during filter
+construction. Rather than stopping at the first invalid filter, the function
+attempts to construct all possible filters and returns both the successful
+filters and any errors that occurred.
 
 Arguments prefixed with `like_` are interpreted as fuzzy-search filters and
 converted into `filter_like` constraints. The special field `value` is
@@ -20,21 +20,22 @@ interpreted as a numeric interval and converted into a `filter_between`
 constraint. All other recognised fields are converted into `filter_in`
 constraints.
 
-This helper is useful when validating user input because valid and invalid
-filters can be inspected separately.
+For pedigree relationships stored in `entry_relationships`, user-friendly
+fields such as `entry`, `child`, and `parent` are automatically mapped to the
+appropriate database identifier fields (`child_id` and `parent_id`) before
+filter construction.
 
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `args::AbstractDict{String}`: Collection of query arguments 
-  (`like_*` items should only contain one value).
+- `args::AbstractDict{String}`: Collection of query arguments.
 - `table::String`: Name of the target database table.
 
 # Returns
 
 - `Tuple{Vector{Filter},Vector{ErrorException}}`:
-  - `filters`: Successfully constructed filter objects.
-  - `errors`: Errors encountered whilst constructing filters.
+    + `filters`: Successfully constructed filter objects.
+    + `errors`: Errors encountered whilst constructing filters.
 
 # Throws
 
@@ -58,10 +59,22 @@ filters can be inspected separately.
 - Duplicate filters are removed before returning.
 - Duplicate errors are removed before returning.
 - Field names are normalised before filter construction:
-  - `entries` → `entry`
-  - `traits` → `trait`
-  - `species` → `species`
-  - `like_entries` → `entry`
+    + `entries` → `entry`
+    + `traits` → `trait`
+    + `species` → `species`
+    + `like_entries` → `entry`
+- For the `entry_relationships` table, pedigree-specific aliases are resolved
+  automatically:
+    + `entry` → `child_id`
+    + `child` → `child_id`
+    + `parent` → `parent_id`
+    + `like_entry` → `child_id`
+    + `like_child` → `child_id`
+    + `like_parent` → `parent_id`
+- This allows pedigree relationships to be filtered using human-readable entry
+  names instead of internal database identifiers.
+- The resulting `Filter` objects automatically resolve entry names to the
+  appropriate database IDs when querying `entry_relationships`.
 - This helper is intended for workflows that need to report multiple input
   errors simultaneously rather than failing on the first invalid filter.
 - Returned filters can be passed directly to `query(conn, filters; ...)`.
@@ -83,6 +96,11 @@ true
 
 julia> filters, errors = define_filters(conn, args, table="entry_relationships");
 
+julia> length(filters) > 0
+true
+
+julia> length(errors) > 0
+true
 ```
 """
 function define_filters(
@@ -93,24 +111,32 @@ function define_filters(
     # conn = dbconnect(); args = Dict("treatments"=>["control"], "entries" => String[], "sdgdgdfg"=> String["sdgsdg"]); table = "phenomes";
     # conn = dbconnect(); args = Dict("QIUWYGB"=>["control"], "AKJUGABIDKBIJ" => String[], "sdgdgdfg"=> String["sdgsdg"]); table = "phenomes";
     # conn = dbconnect(); args = Dict("like_entries"=>["_01"]); table = "entry_relationships";
+    # conn = dbconnect(); args = Dict("like_entries"=>["_01"]); table = "entries";
+    # conn = dbconnect(); args = Dict("species"=>["a"]); table = "entries";
+    # conn = dbconnect(); args = Dict("like_species"=>["a"]); table = "phenomes";
     filters = Filter[]
     errors = ErrorException[]
     for (k, v) in args
         # k = string.(keys(args))[1]; v = args[k]
-        # k = string.(keys(args))[2]; v = args[k]
+        # k = string.(keys(args))[4]; v = args[k]
+        # k = string.(keys(args))[20]; v = args[k]
         if length(v) == 0
             continue
         end
         is_like = !isnothing(match(Regex("^like_"), k))
-        field =
+        field = if !isnothing(match(Regex("species"), k))
+            replace(k, Regex("^like_")=>"")
+        else
             replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
+        end
         try
             if is_like
                 if length(v) > 1
                     error("We only accept 1 query for fuzzy search: $k = $v")
                 end
-                if (table == "entry_relationships") && (field == "entry")
+                if (table == "entry_relationships") && ((field == "entry") || (field == "child"))
                     push!(filters, Filter(conn, table = table, field = "child_id", filter_like = v[1]))
+                elseif (table == "entry_relationships") && (field == "parent")
                     push!(filters, Filter(conn, table = table, field = "parent_id", filter_like = v[1]))
                 else
                     push!(filters, Filter(conn, table = table, field = field, filter_like = v[1]))
@@ -120,6 +146,7 @@ function define_filters(
             else
                 if (table == "entry_relationships") && (field == "entry")
                     push!(filters, Filter(conn, table = table, field = "child_id", filter_in = v))
+                elseif (table == "entry_relationships") && (field == "parent")
                     push!(filters, Filter(conn, table = table, field = "parent_id", filter_in = v))
                 else
                     push!(filters, Filter(conn, table = table, field = field, filter_in = v))
@@ -403,8 +430,34 @@ tables.
   operations.
 - The resulting DataFrame may contain columns originating from multiple related
   database tables.
-- This function is intended to provide a general-purpose schema-aware querying
-  interface for exploratory analysis and downstream data retrieval workflows.
+- For file-based dataset tables:
+    + `phenomes`
+    + `genomes`
+    + `genotype_vcfs`
+    + `reference_genomes`
+  only filters that correspond to fields represented in those tables and their
+  relationships are used during query construction.
+- Filters intended for observational tables (for example
+  `replications`, `blocks`, `rows`, `cols`, `values`,
+  `environment_variables`, and related fuzzy-search variants) are ignored when
+  querying file-based dataset tables because those attributes are not stored at
+  the dataset-file level.
+- For `genomes`, `genotype_vcfs`, and `phenomes`, entry-based filtering is
+  generally sufficient because entry names are unique across species, entry
+  types, source populations, and parental combinations.
+- Consequently, `species`, `entry_types`, `like_species`, and
+  `like_entry_types` may not further restrict the query when entry-based
+  filters are already provided.
+- For `reference_genomes`, only dataset metadata filters such as:
+    + `names`
+    + `notes`
+    + `like_names`
+    + `like_notes`
+  are applicable; phenotype-, environment-, layout-, and pedigree-related
+  filters are ignored.
+- Filters that do not correspond to fields present in the requested table or
+  its supported relationships are automatically discarded during filter
+  construction and do not generate query constraints.
 
 # Examples
 
@@ -438,8 +491,29 @@ true
 julia> df_entry_relationships = download("entry_relationships", like_entries=["_06", "_07"]);
 
 julia> sum(.!isnothing.(match.(Regex("_06|_07"), df_entry_relationships.entry))) == nrow(df_entry_relationships)
+true
 
+julia> df_entries = download("entries", like_entries=["_09", "_10"], species=["a"]);
 
+julia> nrow(df_entries) == 0
+true
+
+julia> df_entries = download("entries", like_entries=["_09", "_10"], like_species=["a"]);
+
+julia> nrow(df_entries) > 0
+true
+
+julia> df_entries = download("entries", like_entries=["_09", "_10"], like_species=["a"], entry_types=["family"]);
+
+julia> nrow(df_entries) > 0
+true
+
+julia> df_phenomes_1 = download("phenomes", like_entries=["_09", "_10"]);
+
+julia> df_phenomes_2 = download("phenomes", like_entries=["_09", "_10"], species=["a"]);
+
+julia> df_phenomes_1 == df_phenomes_2
+true
 ```
 """
 function download(
@@ -499,7 +573,7 @@ function download(
     # like_names::Vector{String}=String[]
     # like_notes::Vector{String}=String[]
     # like_reference_genomes::Vector{String}=String[]
-    # like_entries::Vector{String}=String["_01", "_02"]
+    # like_entries::Vector{String}=String[]
     # like_species::Vector{String}=String[]
     # like_entry_types::Vector{String}=String[]
     # like_experiments::Vector{String}=String[]
@@ -507,12 +581,20 @@ function download(
     # like_treatments::Vector{String}=String[]
     # like_measurements::Vector{String}=String[]
     # like_environment_variables::Vector{String}=String[]
-    # like_traits::Vector{String} = String["_2"]
+    # like_traits::Vector{String} = String[]
     # names::Vector{String}=String[]
     # notes::Vector{String}=String[]
     # reference_genomes::Vector{String}=String[]
     # values::Tuple{Float64,Float64}=(-Inf, +Inf)
     # verbose = true
+    if verbose && !isnothing(match(Regex("phenomes|genomes|genotype_vcfs|reference_genomes")))
+        warn(
+            string(
+                "Since entry names are unique across species and entry types (and source populations or parents), ",
+                "then using `entries` and `like_entries` will suffice, hence `*species` and `*entry_types` parameters are ignored!",
+            ),
+        )
+    end
     conn = dbconnect()
     args = Dict(
         "entries" => entries,
@@ -562,12 +644,16 @@ function download(
             # j = 1; key = like_combinations_keys[j]
             args[key] = [like_combinations[i][j]]
         end
+        # Query
         dfs = Dict()
         all_filters = Dict()
         all_errors = Dict()
         for t in tables
             # t = tables[1]
             filters, errors = define_filters(conn, args, table = t)
+            if sum([!isnothing(match(Regex("No matches"), e.msg)) for e in errors]) > 0
+                continue
+            end
             df = if isempty(filters)
                 ids = string.(extract_table_contents(conn, t).id)
                 filters = [Filter(conn, table = t, field = "id", filter_in = ids)]
@@ -579,12 +665,16 @@ function download(
             all_errors[t] = errors
             dfs[t] = df
         end
-        # Query and join
+        # Join
         df_out_tmp = nothing
         for t in tables
             # t = tables[1]
             # t = tables[2]
-            df = deepcopy(dfs[t])
+            df = try
+                deepcopy(dfs[t])
+            catch
+                continue
+            end
             try
                 select!(df, Not(:id))
             catch
@@ -640,6 +730,9 @@ function download(
         else
             vcat(df_out, df_out_tmp)
         end
+    end
+    if isnothing(df_out)
+        return DataFrame()
     end
     df_out
 end

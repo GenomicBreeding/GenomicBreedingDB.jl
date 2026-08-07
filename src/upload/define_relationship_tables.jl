@@ -325,6 +325,18 @@ function define_relationships!(
             ),
         )
     end
+    # # TODO: Updload the other relationship tables stemming from entry and trait names...
+    # # e.g. yet to be defined tables: phenomes_species, genomes_species, etc...
+    # # On second thought, since we are already filtering by entry names and entry names are unique across species, then this may just not be needed.
+    # link_values
+    # id_1
+    # if id_2 == "entry_id"
+    #     df_entries = query(conn, [Filter(conn, table = "entries", field = "name", filter_in = link_values)])
+    #     species_names = string.(unique(df_entries.species))
+    #     entry_type_names = string.(unique(df_entries.entry_type))
+    #     species_ids = query(conn, [Filter(conn, table = "species", field = "name", filter_in = species_names)]).id
+    #     entry_type_ids = query(conn, [Filter(conn, table = "entry_types", field = "name", filter_in = entry_type_names)]).id
+    # ...
     # execute(conn, "SELECT * FROM $table") |> DataFrame
     nothing
 end

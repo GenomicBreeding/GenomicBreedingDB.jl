@@ -24,18 +24,19 @@ Construct a validated database filter for querying, updating, and deleting
 records.
 
 A `Filter` encapsulates a single filtering criterion applied to a database
-table. The constructor validates the requested table, field, and filter values,
-resolves foreign-key relationships where necessary, performs type checking, and
-returns a filter object suitable for use in parameterised SQL queries.
+table. The constructor validates table and field names, enforces type
+compatibility, resolves foreign-key relationships, and converts user-friendly
+entity names into database identifiers where necessary.
 
 The constructor supports exact-match, partial-match, range-based, equality,
 less-than, and greater-than filtering operations. Exactly one filtering method
 must be supplied for each `Filter` instance.
 
-When filtering on foreign-key fields, user-supplied names are automatically
-resolved to database identifiers. For genotype- and phenotype-related datasets,
-this may involve traversing intermediate relationship tables before generating
-the final filter.
+For foreign-key fields, human-readable values such as entry names, species
+names, trait names, treatment names, and reference genome names are
+automatically resolved to the identifiers used internally by the database.
+Where necessary, the constructor traverses intermediate relationship tables to
+identify matching datasets.
 
 # Arguments
 
@@ -68,7 +69,7 @@ the final filter.
 
 # Returns
 
-- `Filter`: Fully validated and sanitised filter object ready for query
+- `Filter`: Fully validated and resolved filter object suitable for query
   generation.
 
 # Throws
@@ -93,12 +94,11 @@ the final filter.
 - When a supplied field cannot be found directly in the target table, the
   constructor attempts to infer the corresponding foreign-key field
   automatically.
-- This behaviour relies on the database convention that ordinary field names
-  are singular (with the exception of `species`), whilst references to records
-  stored in other tables are represented using foreign-key fields ending in
-  `_id`.
-- Plural field names are therefore interpreted as references to related
-  entities and converted automatically. For example:
+- This behaviour relies on the database naming convention that ordinary fields
+  are singular (except `species`) whilst references to external entities are
+  stored using fields ending in `_id`.
+- Plural field names are therefore interpreted as references and automatically
+  converted. For example:
     + `entries` → `entry_id`
     + `traits` → `trait_id`
     + `sites` → `site_id`
@@ -106,12 +106,11 @@ the final filter.
     + `species` → `species_id`
 - Fields ending in `_id` are treated as foreign-key relationships and are
   resolved through the appropriate metadata tables.
-- For standard tables, human-readable values are resolved directly through the
-  associated metadata table and the resulting filter is applied to the original
-  foreign-key field (e.g. `entry_id`, `trait_id`, `reference_genome_id`).
-- For `genomes`, `genotype_vcfs`, and `phenomes`, some relationships are not
-  stored directly in the primary table and must be resolved through
-  intermediate relationship tables.
+- For standard tables, entity names are resolved directly through metadata
+  tables and filtering remains on the original foreign-key field.
+- For `genomes`, `genotype_vcfs`, and `phenomes`, relationships to entries,
+  traits, sites, treatments, experiments, measurements, and similar entities
+  may be stored in intermediate relationship tables.
 - Examples include:
     + `genomes_entries`
     + `genotype_vcfs_entries`
@@ -121,24 +120,24 @@ the final filter.
     + `phenomes_experiments`
     + `phenomes_measurements`
     + `phenomes_treatments`
-- When an intermediate relationship table is used, matching entity identifiers
-  are first resolved from the metadata table and then converted into matching
-  dataset identifiers via the relationship table.
-- In these cases the filter is rewritten to operate on the primary-table `id`
-  field rather than on the original foreign-key field.
-- The `reference_genome_id` field is a special case. Because `genomes` and
+- When a relationship table is used, matching metadata identifiers are first
+  resolved and then converted into matching dataset identifiers through the
+  relationship table.
+- In these cases the filter is rewritten to operate on the primary key field
+  `id` of the target dataset table.
+- The `reference_genome_id` field is a special case because `genomes` and
   `genotype_vcfs` store direct foreign-key relationships to
-  `reference_genomes`, identifier resolution is performed directly through the
-  `reference_genomes` table and does not use an intermediate relationship
-  table.
-- The `entry_relationships` table is treated as a special case because its
-  relationship values are stored directly and therefore do not require
-  metadata-table lookups or identifier resolution.
+  `reference_genomes`; no intermediate relationship table is required.
+- The `entry_relationships` table is handled as a special case.
+- When filtering `entry_relationships` using `entry_id`, `parent_id`, or
+  `child_id`, human-readable entry names are automatically resolved through the
+  `entries` table and converted into the corresponding entry identifiers.
+- This allows pedigree relationships to be filtered using entry names rather
+  than internal database identifiers.
 - Human-readable names supplied through `filter_in` or `filter_like` are
   automatically converted to database identifiers where necessary.
 - `filter_like` searches applied to foreign-key relationships are resolved
-  immediately and subsequently converted into equivalent `filter_in`
-  constraints.
+  immediately and converted into equivalent `filter_in` constraints.
 - Wildcard characters (`%`) are automatically added to `filter_like`
   expressions when not already present.
 - Underscore characters are escaped to avoid unintended SQL wildcard matching.
@@ -280,7 +279,7 @@ struct Filter
         catch
             # Here, we assume that plural field names refer to references, i.e. ids to another table.
             # We can do this safely because we have set all field names across all table to be singular (except species).
-            if field == "entries"
+            field = if !isnothing(match(Regex("entry|entries"), field))
                 "entry_id"
             elseif field == "species"
                 "species_id"
@@ -291,6 +290,11 @@ struct Filter
                 else
                     "$(field)_id"
                 end
+            end
+            if ((table == "entries") && (field == "entry_id") || (table == "species") && (field == "species_id"))
+                "name"
+            else
+                field
             end
         end
         # Process field resolution: check if field is a direct column or requires foreign-key lookup
