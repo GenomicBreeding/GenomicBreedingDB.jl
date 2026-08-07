@@ -26,7 +26,8 @@ filters can be inspected separately.
 # Arguments
 
 - `conn::LibPQ.Connection`: Active PostgreSQL database connection.
-- `args::AbstractDict{String}`: Collection of query arguments.
+- `args::AbstractDict{String}`: Collection of query arguments 
+  (`like_*` items should only contain one value).
 - `table::String`: Name of the target database table.
 
 # Returns
@@ -67,6 +68,19 @@ filters can be inspected separately.
 
 # Examples
 
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> conn = dbconnect();
+
+julia> args = Dict("like_entries" => ["_1"], "like_traits" => ["2"]);
+
+julia> filters, errors = define_filters(conn, args, table="phenotype_data");
+
+julia> length(filters) > 0
+true
+
+julia> length(errors) == 0
+true
+```
 """
 function define_filters(
     conn::LibPQ.Connection,
@@ -219,6 +233,170 @@ function combinations(args::AbstractDict{String})::Tuple{Vector{Union{Nothing,Ve
     like_combinations, like_combinations_keys
 end
 
+"""
+    download(
+        table::String;
+        entries::Vector{String}=String[],
+        species::Vector{String}=String[],
+        entry_types::Vector{String}=String[],
+        experiments::Vector{String}=String[],
+        sites::Vector{String}=String[],
+        treatments::Vector{String}=String[],
+        measurements::Vector{String}=String[],
+        traits::Vector{String}=String[],
+        environment_variables::Vector{String}=String[],
+        replications::Vector{Int64}=Int64[],
+        blocks::Vector{Int64}=Int64[],
+        rows::Vector{Int64}=Int64[],
+        cols::Vector{Int64}=Int64[],
+        like_names::Vector{String}=String[],
+        like_notes::Vector{String}=String[],
+        like_reference_genomes::Vector{String}=String[],
+        like_entries::Vector{String}=String[],
+        like_species::Vector{String}=String[],
+        like_entry_types::Vector{String}=String[],
+        like_experiments::Vector{String}=String[],
+        like_sites::Vector{String}=String[],
+        like_treatments::Vector{String}=String[],
+        like_measurements::Vector{String}=String[],
+        like_environment_variables::Vector{String}=String[],
+        like_traits::Vector{String}=String[],
+        names::Vector{String}=String[],
+        notes::Vector{String}=String[],
+        reference_genomes::Vector{String}=String[],
+        values::Tuple{Float64,Float64}=(-Inf, +Inf),
+        keep_id_and_do_not_unstack::Bool=false,
+        verbose::Bool=false,
+    )::DataFrame
+
+Download records from one or more database tables using a unified filtering
+interface.
+
+The function dynamically constructs validated filters from the supplied
+arguments, applies those filters to the requested table and any related tables,
+and returns the resulting records as a `DataFrame`.
+
+This method automatically determines which filters are applicable to each table, 
+ignores invalid filters for unrelated tables, and joins results across related 
+tables where necessary. This allows a single collection of filtering arguments 
+to be reused across multiple database resources without requiring knowledge of 
+the underlying schema.
+
+Depending on the selected table, additional metadata may be retrieved from
+related tables and merged into the final result.
+
+# Arguments
+
+- `table::String`: Table to query.
+- `entries::Vector{String}=String[]`: Entry names to match exactly.
+- `species::Vector{String}=String[]`: Species names to match exactly.
+- `entry_types::Vector{String}=String[]`: Entry types to match exactly.
+- `experiments::Vector{String}=String[]`: Experiment names to match exactly.
+- `sites::Vector{String}=String[]`: Site names to match exactly.
+- `treatments::Vector{String}=String[]`: Treatment names to match exactly.
+- `measurements::Vector{String}=String[]`: Measurement names to match exactly.
+- `traits::Vector{String}=String[]`: Trait names to match exactly.
+- `environment_variables::Vector{String}=String[]`: Environmental variable
+  names to match exactly.
+- `replications::Vector{Int64}=Int64[]`: Replication identifiers to match.
+- `blocks::Vector{Int64}=Int64[]`: Block identifiers to match.
+- `rows::Vector{Int64}=Int64[]`: Plot-row identifiers to match.
+- `cols::Vector{Int64}=Int64[]`: Plot-column identifiers to match.
+- `like_names::Vector{String}=String[]`: Dataset-name patterns for fuzzy
+  matching.
+- `like_notes::Vector{String}=String[]`: Note patterns for fuzzy matching.
+- `like_reference_genomes::Vector{String}=String[]`: Reference-genome patterns
+  for fuzzy matching.
+- `like_entries::Vector{String}=String[]`: Entry-name patterns for fuzzy
+  matching.
+- `like_species::Vector{String}=String[]`: Species-name patterns for fuzzy
+  matching.
+- `like_entry_types::Vector{String}=String[]`: Entry-type patterns for fuzzy
+  matching.
+- `like_experiments::Vector{String}=String[]`: Experiment-name patterns for
+  fuzzy matching.
+- `like_sites::Vector{String}=String[]`: Site-name patterns for fuzzy
+  matching.
+- `like_treatments::Vector{String}=String[]`: Treatment-name patterns for fuzzy
+  matching.
+- `like_measurements::Vector{String}=String[]`: Measurement-name patterns for
+  fuzzy matching.
+- `like_environment_variables::Vector{String}=String[]`: Environmental-variable
+  patterns for fuzzy matching.
+- `like_traits::Vector{String}=String[]`: Trait-name patterns for fuzzy
+  matching.
+- `names::Vector{String}=String[]`: Resource names to match exactly.
+- `notes::Vector{String}=String[]`: Resource notes to match exactly.
+- `reference_genomes::Vector{String}=String[]`: Reference-genome names to match
+  exactly.
+- `values::Tuple{Float64,Float64}=(-Inf, +Inf)`: Inclusive lower and upper
+  bounds for numeric-value filtering.
+- `keep_id_and_do_not_unstack::Bool=false`: Reserved for API compatibility.
+- `verbose::Bool=false`: If `true`, display progress information during query
+  construction, execution, and table joins.
+
+# Returns
+
+- `DataFrame`: Records matching the supplied filtering criteria.
+
+# Throws
+
+- Any exception raised whilst constructing filters.
+- Any exception raised whilst querying the database.
+- Any exception raised whilst joining related tables.
+
+# Notes
+
+- Filter construction is performed using `define_filters`.
+- Query execution is performed using `query`.
+- If no valid filters are generated for a table, all records from that table
+  are retrieved.
+- Invalid filters are collected internally and ignored for tables where the
+  corresponding fields do not exist.
+- Exact-match filters are translated into SQL `IN` operations.
+- Fuzzy-search filters are translated into SQL `LIKE` operations.
+- Numeric-range filters are translated into SQL `BETWEEN` operations.
+- Human-readable names are automatically resolved to database identifiers
+  where required through the `Filter` infrastructure.
+- Depending on `table`, additional related tables may be queried:
+    + `phenotype_data` → `phenotype_data`, `layouts`
+    + `environment_data` → `environment_data`, `layouts`
+    + `entry_relationships` → `entry_relationships`, `entries`, `species`
+- Tables not listed above are queried without additional related tables.
+- Metadata fields such as:
+    + `id`
+    + `created_at`
+    + `updated_at`
+  are removed from intermediate tables before joining where appropriate.
+- Relationship fields are normalised automatically to facilitate joins.
+  For example, `child` is renamed to `entry` when processing pedigree data.
+- Joins are performed using human-readable fields rather than database
+  identifiers whenever possible.
+- Missing join values are temporarily represented as `"missing"` during table
+  joins.
+- The resulting `DataFrame` may contain columns originating from multiple
+  related tables.
+- This function provides a generic schema-aware alternative to specialised
+  download functions such as `download_phenotype_data`,
+  `download_environment_data`, and `download_pedigrees`.
+
+# Examples
+
+```jldoctest; setup=:(using GenomicBreedingCore, GenomicBreedingIO, GenomicBreedingDB, DataFrames, CSV, StatsBase, LibPQ, Dates)
+julia> args = Dict("like_entries" => ["_1", "_2"], "like_traits" => ["2", "3"]);
+
+julia> like_combinations, like_combinations_keys = combinations(args);
+
+julia> length(like_combinations) == 4
+true
+
+julia> length(like_combinations[1]) == 2
+true
+
+julia> length(like_combinations_keys) == 2
+true
+```
+"""
 function download(
     table::String;
     entries::Vector{String}=String[],
@@ -253,41 +431,44 @@ function download(
     keep_id_and_do_not_unstack::Bool=false,
     verbose::Bool=false,
 )::DataFrame
+    # display(list_all_tables(conn).table_name)
     # table = "phenotype_data"
-    # table = "phenomes"
     # table = "environment_data"
     # table = "entry_relationships"
-    entries::Vector{String}=String[]
-    species::Vector{String}=String[]
-    entry_types::Vector{String}=String[]
-    experiments::Vector{String}=String[]
-    sites::Vector{String}=String[]
-    treatments::Vector{String}=String[]
-    measurements::Vector{String}=String[]
-    traits::Vector{String} = String[]
-    environment_variables::Vector{String}=String[]
-    replications::Vector{Int64}=Int64[]
-    blocks::Vector{Int64}=Int64[]
-    rows::Vector{Int64}=Int64[1,5]
-    cols::Vector{Int64}=Int64[]
-    like_names::Vector{String}=String[]
-    like_notes::Vector{String}=String[]
-    like_reference_genomes::Vector{String}=String[]
-    like_entries::Vector{String}=String["_01"]
-    like_species::Vector{String}=String[]
-    like_entry_types::Vector{String}=String[]
-    like_experiments::Vector{String}=String[]
-    like_sites::Vector{String}=String[]
-    like_treatments::Vector{String}=String["con"]
-    like_measurements::Vector{String}=String[]
-    like_environment_variables::Vector{String}=String[]
-    like_traits::Vector{String} = String[]
-    names::Vector{String}=String[]
-    notes::Vector{String}=String[]
-    reference_genomes::Vector{String}=String[]
-    values::Tuple{Float64,Float64}=(-Inf, +Inf)
-    verbose = true
-
+    # table = "entries"
+    # table = "phenomes"
+    # table = "genomes"
+    # table = "reference_genomes"
+    # entries::Vector{String}=String[]
+    # species::Vector{String}=String[]
+    # entry_types::Vector{String}=String[]
+    # experiments::Vector{String}=String[]
+    # sites::Vector{String}=String[]
+    # treatments::Vector{String}=String[]
+    # measurements::Vector{String}=String[]
+    # traits::Vector{String} = String[]
+    # environment_variables::Vector{String}=String[]
+    # replications::Vector{Int64}=Int64[]
+    # blocks::Vector{Int64}=Int64[]
+    # rows::Vector{Int64}=Int64[1,5]
+    # cols::Vector{Int64}=Int64[]
+    # like_names::Vector{String}=String[]
+    # like_notes::Vector{String}=String[]
+    # like_reference_genomes::Vector{String}=String[]
+    # like_entries::Vector{String}=String["_01"]
+    # like_species::Vector{String}=String[]
+    # like_entry_types::Vector{String}=String[]
+    # like_experiments::Vector{String}=String[]
+    # like_sites::Vector{String}=String[]
+    # like_treatments::Vector{String}=String["con"]
+    # like_measurements::Vector{String}=String[]
+    # like_environment_variables::Vector{String}=String[]
+    # like_traits::Vector{String} = String[]
+    # names::Vector{String}=String[]
+    # notes::Vector{String}=String[]
+    # reference_genomes::Vector{String}=String[]
+    # values::Tuple{Float64,Float64}=(-Inf, +Inf)
+    # verbose = true
     conn = dbconnect()
     args = Dict(
         "entries" => entries,
@@ -320,17 +501,15 @@ function download(
         "reference_genomes" => reference_genomes,
         "values" => values,
     )
-
-    all_tables = list_all_tables(conn).table_name
-    assign_tables = Dict(
-        "phenotype_data" => ["phenotype_data", "layouts"],
-        "phenomes" => ["phenomes"],
-        "environment_data" => ["environment_data", "layouts"],
-        "entry_relationships" => ["entry_relationships", "entries", "species"],
-    )
-    tables = assign_tables[table]
-   
-
+    tables = if table == "phenotype_data"
+        ["phenotype_data", "layouts"]
+    elseif table == "environment_data"
+        ["environment_data", "layouts"]
+    elseif table == "entry_relationships"
+        ["entry_relationships", "entries", "species"]
+    else
+        [table]
+    end
     dfs = Dict()
     all_filters = Dict()
     all_errors = Dict()
@@ -348,7 +527,7 @@ function download(
         all_errors[t] = errors
         dfs[t] = df
     end
-
+    # Query and join
     df_out = nothing
     for t in  tables
         # t = tables[1]
@@ -377,5 +556,4 @@ function download(
         end
     end
     df_out
-
 end
