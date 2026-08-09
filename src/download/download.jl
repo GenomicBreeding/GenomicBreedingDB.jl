@@ -119,7 +119,7 @@ function define_filters(
     for (k, v) in args
         # k = string.(keys(args))[1]; v = args[k]
         # k = string.(keys(args))[4]; v = args[k]
-        # k = string.(keys(args))[20]; v = args[k]
+        # k = string.(keys(args))[end]; v = args[k]
         if length(v) == 0
             continue
         end
@@ -128,6 +128,12 @@ function define_filters(
             replace(k, Regex("^like_")=>"")
         else
             replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
+        end
+
+        field = if (table == field) || (table == "$(field)s") || (table == replace(field, "y\$" => Regex("ies")))
+            "name"
+        else
+            field
         end
         try
             if is_like
@@ -508,12 +514,24 @@ julia> df_entries = download("entries", like_entries=["_09", "_10"], like_specie
 julia> nrow(df_entries) > 0
 true
 
+julia> df_traits = download("traits", like_traits=["_1", "_2"]);
+
+
 julia> df_phenomes_1 = download("phenomes", like_entries=["_09", "_10"]);
 
 julia> df_phenomes_2 = download("phenomes", like_entries=["_09", "_10"], species=["a"]);
 
 julia> df_phenomes_1 == df_phenomes_2
 true
+
+julia> df_genomes_1 = download("genomes", like_entries=["_09", "_10"]);
+
+julia> df_genomes_2 = download("genomes", like_entries=["_09", "_10"], species=["a"]);
+
+julia> df_genomes_1 == df_genomes_2
+true
+
+
 ```
 """
 function download(
@@ -557,6 +575,7 @@ function download(
     # table = "phenomes"
     # table = "genomes"
     # table = "reference_genomes"
+    # table = "traits"
     # entries::Vector{String}=String[]
     # species::Vector{String}=String[]
     # entry_types::Vector{String}=String[]
@@ -676,25 +695,12 @@ function download(
             catch
                 continue
             end
-            try
-                select!(df, Not(:id))
-            catch
-                nothing
-            end
-            try
-                select!(df, Not(:created_at))
-            catch
-                nothing
-            end
-            try
-                select!(df, Not(:updated_at))
-            catch
-                nothing
-            end
-            try
-                select!(df, Not(:note))
-            catch
-                nothing
+            for field in [:id, :created_at, :updated_at, :note]
+                try
+                    select!(df, Not(field))
+                catch
+                    nothing
+                end
             end
             try
                 rename!(df, "child" => "entry")
