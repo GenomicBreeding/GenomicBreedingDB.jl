@@ -148,7 +148,7 @@ function query(
     verbose::Bool = false,
 )::DataFrame
     # conn = dbconnect()
-    # filters = [
+    # filters = Filter[
     #     Filter(conn, table="phenotype_data", field="entry", filter_like="_01"),
     #     Filter(conn, table="phenotype_data", field="value", filter_between=(10, 20)),
     #     Filter(conn, table="phenotype_data", field="value", filter_between=(10, 20)),

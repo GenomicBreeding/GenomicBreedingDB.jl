@@ -655,8 +655,9 @@ function download(
                 continue
             end
             df = if isempty(filters)
-                ids = string.(extract_table_contents(conn, t).id)
-                filters = [Filter(conn, table = t, field = "id", filter_in = ids)]
+                # ids = string.(extract_table_contents(conn, t).id)
+                # filters = [Filter(conn, table = t, field = "id", filter_in = ids)]
+                filters = [Filter(conn, table = t, field = "id", filter_like = "%")]
                 query(conn, filters, verbose = verbose)
             else
                 query(conn, filters, verbose = verbose)

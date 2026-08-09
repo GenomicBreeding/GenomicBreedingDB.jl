@@ -699,7 +699,10 @@ function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{V
         # f = filters[1]
         n = length(par)
         if !isnothing(f.like)
-            if (f.field == "entry_type") || (f.field == "relationship_type")
+            if (f.field == "id") ||
+               !isnothing(match(Regex("_id\$"), f.field)) ||
+               (f.field == "entry_type") ||
+               (f.field == "relationship_type")
                 push!(sql, "AND $(f.field)::text ILIKE \$$(n+1)")
             else
                 push!(sql, "AND $(f.field) ILIKE \$$(n+1)")
@@ -707,7 +710,10 @@ function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{V
             append!(par, [String(f.like)])
         elseif !isnothing(f.in)
             s = "($(join(string.("\$", (n+1):(n+length(f.in))), ',')))"
-            if (f.field == "entry_type") || (f.field == "relationship_type")
+            if (f.field == "id") ||
+               !isnothing(match(Regex("_id\$"), f.field)) ||
+               (f.field == "entry_type") ||
+               (f.field == "relationship_type")
                 push!(sql, "AND $(f.field)::text IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
             else
                 push!(sql, "AND $(f.field) IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
