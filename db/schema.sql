@@ -377,11 +377,75 @@ CREATE TABLE IF NOT EXISTS phenomes_treatments (
 );
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------
--- Phenomes --> Measruements relationships
+-- Phenomes --> Measurements relationships
 CREATE TABLE IF NOT EXISTS phenomes_measurements (
     phenome_id UUID NOT NULL REFERENCES phenomes(id) ON DELETE CASCADE,
     measurement_id UUID NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
     PRIMARY KEY (phenome_id, measurement_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Entries relationships
+CREATE TABLE IF NOT EXISTS fits_entries (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    entry_id UUID NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, entry_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Traits relationships
+CREATE TABLE IF NOT EXISTS fits_traits (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    trait_id UUID NOT NULL REFERENCES traits(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, trait_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Experiments relationships
+CREATE TABLE IF NOT EXISTS fits_experiments (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, experiment_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Sites relationships
+CREATE TABLE IF NOT EXISTS fits_sites (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, site_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Treatments relationships
+CREATE TABLE IF NOT EXISTS fits_treatments (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    treatment_id UUID NOT NULL REFERENCES treatments(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, treatment_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Measurements relationships
+CREATE TABLE IF NOT EXISTS fits_measurements (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    measurement_id UUID NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, measurement_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Genomes relationships
+CREATE TABLE IF NOT EXISTS fits_genomes (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    genome_id UUID NOT NULL REFERENCES genomes(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, genome_id)
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fits --> Reference genomes relationships
+CREATE TABLE IF NOT EXISTS fits_reference_genomes (
+    fit_id UUID NOT NULL REFERENCES fits(id) ON DELETE CASCADE,
+    reference_genome_id UUID NOT NULL REFERENCES reference_genomes(id) ON DELETE CASCADE,
+    PRIMARY KEY (fit_id, reference_genome_id)
 );
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -463,6 +527,15 @@ CREATE INDEX IF NOT EXISTS idx_phenomes_experiments_experiment ON phenomes_exper
 CREATE INDEX IF NOT EXISTS idx_phenomes_sites_site ON phenomes_sites(site_id);
 CREATE INDEX IF NOT EXISTS idx_phenomes_treatments_treatment ON phenomes_treatments(treatment_id);
 CREATE INDEX IF NOT EXISTS idx_phenomes_measurements_measurement ON phenomes_measurements(measurement_id);
+-- Fits relationships with entries, traits, experiments, sites, treatments, measurements, genomes, and reference genomes
+CREATE INDEX IF NOT EXISTS idx_fits_entries_entry ON fits_entries(entry_id);
+CREATE INDEX IF NOT EXISTS idx_fits_traits_trait ON fits_traits(trait_id);
+CREATE INDEX IF NOT EXISTS idx_fits_experiments_experiment ON fits_experiments(experiment_id);
+CREATE INDEX IF NOT EXISTS idx_fits_sites_site ON fits_sites(site_id);
+CREATE INDEX IF NOT EXISTS idx_fits_treatments_treatment ON fits_treatments(treatment_id);
+CREATE INDEX IF NOT EXISTS idx_fits_measurements_measurement ON fits_measurements(measurement_id);
+CREATE INDEX IF NOT EXISTS idx_fits_genomes_genome ON fits_genomes(genome_id);
+CREATE INDEX IF NOT EXISTS idx_fits_reference_genomes_reference_genome ON fits_reference_genomes(reference_genome_id);
 -- Additional indexes for phenotype_data and environment_data tables to improve query performance
 CREATE INDEX idx_pheno_trait_site ON phenotype_data(trait_id, site_id);
 CREATE INDEX idx_pheno_trait_experiment ON phenotype_data(trait_id, experiment_id);

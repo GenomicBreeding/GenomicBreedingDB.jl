@@ -12,7 +12,7 @@ The function translates user-supplied query arguments into `Filter` objects
 whilst collecting any validation errors encountered during filter
 construction. Rather than stopping at the first invalid filter, the function
 attempts to construct all possible filters and returns both the successful
-filters and any errors that occurred.
+filters and any errors that occur.
 
 Arguments prefixed with `like_` are interpreted as fuzzy-search filters and
 converted into `filter_like` constraints. The special field `value` is
@@ -20,10 +20,10 @@ interpreted as a numeric interval and converted into a `filter_between`
 constraint. All other recognised fields are converted into `filter_in`
 constraints.
 
-For pedigree relationships stored in `entry_relationships`, user-friendly
-fields such as `entry`, `child`, and `parent` are automatically mapped to the
-appropriate database identifier fields (`child_id` and `parent_id`) before
-filter construction.
+The function also performs field-name normalisation and context-specific field
+mapping. This includes automatic handling of plural forms, species-specific
+naming, pedigree aliases, and metadata-table queries where the queried entity
+name itself is the filter target.
 
 # Arguments
 
@@ -34,8 +34,8 @@ filter construction.
 # Returns
 
 - `Tuple{Vector{Filter},Vector{ErrorException}}`:
-    + `filters`: Successfully constructed filter objects.
-    + `errors`: Errors encountered whilst constructing filters.
+  - `filters`: Successfully constructed filter objects.
+  - `errors`: Errors encountered whilst constructing filters.
 
 # Throws
 
@@ -58,23 +58,37 @@ filter construction.
 - Errors are collected and returned rather than immediately thrown.
 - Duplicate filters are removed before returning.
 - Duplicate errors are removed before returning.
-- Field names are normalised before filter construction:
-    + `entries` → `entry`
-    + `traits` → `trait`
-    + `species` → `species`
-    + `like_entries` → `entry`
+- Field names are normalised prior to filter construction:
+  - `entries` → `entry`
+  - `traits` → `trait`
+  - `sites` → `site`
+  - `measurements` → `measurement`
+  - `species` → `species`
+  - `like_entries` → `entry`
+  - `like_traits` → `trait`
+- Species-related fields are treated as a special case because `species`
+  remains plural in the database schema.
+- When the requested table represents the same entity as the filter field, the
+  filter is automatically mapped to the table's `name` field. Examples
+  include:
+  - `table="entries"` and `entries=["Entry_001"]`
+  - `table="species"` and `species=["Eucalyptus globulus"]`
+  - `table="traits"` and `traits=["Height"]`
+  - `table="sites"` and `sites=["Bundoora"]`
+- In these situations, filtering is applied to the `name` column rather than
+  attempting to resolve a self-referential foreign-key relationship.
 - For the `entry_relationships` table, pedigree-specific aliases are resolved
   automatically:
-    + `entry` → `child_id`
-    + `child` → `child_id`
-    + `parent` → `parent_id`
-    + `like_entry` → `child_id`
-    + `like_child` → `child_id`
-    + `like_parent` → `parent_id`
+  - `entry` → `child_id`
+  - `child` → `child_id`
+  - `parent` → `parent_id`
+  - `like_entry` → `child_id`
+  - `like_child` → `child_id`
+  - `like_parent` → `parent_id`
 - This allows pedigree relationships to be filtered using human-readable entry
-  names instead of internal database identifiers.
+  names rather than database identifiers.
 - The resulting `Filter` objects automatically resolve entry names to the
-  appropriate database IDs when querying `entry_relationships`.
+  corresponding entry identifiers when querying `entry_relationships`.
 - This helper is intended for workflows that need to report multiple input
   errors simultaneously rather than failing on the first invalid filter.
 - Returned filters can be passed directly to `query(conn, filters; ...)`.
@@ -124,12 +138,13 @@ function define_filters(
             continue
         end
         is_like = !isnothing(match(Regex("^like_"), k))
+        # Extract field name from the args key
         field = if !isnothing(match(Regex("species"), k))
             replace(k, Regex("^like_")=>"")
         else
             replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
         end
-
+        # If we want to query a base table and the key is a derivation of the table name, then we use the valid "name" field.
         field = if (table == field) || (table == "$(field)s") || (table == replace(field, "y\$" => Regex("ies")))
             "name"
         else
@@ -516,6 +531,21 @@ true
 
 julia> df_traits = download("traits", like_traits=["_1", "_2"]);
 
+julia> nrow(df_traits) == 2
+true
+
+julia> df_environment_variables = download("environment_variables", like_environment_variables=["rain", "humid"]);
+
+julia> nrow(df_environment_variables) > 0
+true
+
+julia> df_layouts = download("layouts", blocks=[1, 2], replications=[1, 2], rows=[1, 2, 3, 4, 5], cols=[10, 11, 12]);
+
+julia> sum((df_layouts.block .<= 2) .&& (df_layouts.replication .<= 2)) == nrow(df_layouts)
+true
+
+julia> sum((df_layouts.row .<= 5) .&& (df_layouts.col .>= 10) .&& (df_layouts.col .<= 12)) == nrow(df_layouts)
+true
 
 julia> df_phenomes_1 = download("phenomes", like_entries=["_09", "_10"]);
 
@@ -531,7 +561,27 @@ julia> df_genomes_2 = download("genomes", like_entries=["_09", "_10"], species=[
 julia> df_genomes_1 == df_genomes_2
 true
 
+julia> df_genotype_vcfs_all = download("genotype_vcfs");
 
+julia> df_genotype_vcfs_no_missing_entries = download("genotype_vcfs", like_entries=["%"]);
+
+julia> nrow(df_genotype_vcfs_all) >= nrow(df_genotype_vcfs_no_missing_entries)
+true
+
+julia> df_reference_genomes = download("reference_genomes");
+
+julia> nrow(df_reference_genomes) > 0
+true
+
+julia> df_fits = download("fits", like_entries=["_04", "_02"]);
+
+julia> nrow(df_fits) > 0
+true
+
+julia> df_fits = download("fits", like_entries=["_8", "_9"]);
+
+julia> nrow(df_fits) > 0
+true
 ```
 """
 function download(
@@ -576,6 +626,7 @@ function download(
     # table = "genomes"
     # table = "reference_genomes"
     # table = "traits"
+    # table = "fits"
     # entries::Vector{String}=String[]
     # species::Vector{String}=String[]
     # entry_types::Vector{String}=String[]
@@ -741,5 +792,5 @@ function download(
     if isnothing(df_out)
         return DataFrame()
     end
-    df_out
+    unique(df_out)
 end
