@@ -203,6 +203,8 @@ dbinit
 
 ```@docs
 Filter
+Base.:(==)
+Base.hash
 concat_filters
 ```
 
