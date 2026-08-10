@@ -10,7 +10,8 @@
         relationship_type::Union{Nothing,String}=nothing,
         measurement_dates::Union{Nothing,Dict{String,String}}=nothing,
         name::Union{Nothing,String}=nothing,
-        notes::Union{Nothing,String}=nothing,
+        note::Union{Nothing,String}=nothing,
+        fname_genomes::Union{Nothing,String}=nothing,
         fname_reference_genome::Union{Nothing,String}=nothing,
         link_value_parser_traits::Union{Nothing,Function}=nothing,
         link_value_parser_sites::Union{Nothing,Function}=nothing,
@@ -20,106 +21,209 @@
         verbose::Bool=false,
     )::Nothing
 
-Automatically detect the type of a supported input file and upload its contents
-to the database.
+Automatically detect the type of an input file and upload its contents into
+the database.
 
-The function provides a unified interface for importing supported data types.
-The supplied file is inspected using a series of validation and parsing
-routines to determine its type before dispatching to the appropriate
+The function serves as the primary high-level upload interface for all
+supported database resources. It inspects the supplied file, determines its
+data type, validates the content, and dispatches the file to the appropriate
 specialised upload function.
 
 Supported uploads include trial data, environmental data, reference genomes,
-VCF files, `Genomes` objects, `Phenomes` objects, and `Fit` objects. Once the
-file type has been identified, a database connection is established and the
-corresponding upload workflow is executed automatically.
-
-Depending on the detected file type, additional keyword arguments may be
-required and are forwarded to the underlying upload function.
+genotype VCFs, Genomes objects, Phenomes objects, and Fit objects.
 
 # Arguments
 
 - `fname::String`: Path to the file to upload.
-- `missing_strings::Vector{String}=["missing", "NA", "na", "N/A", "n/a", ""]`:
-  Strings to interpret as missing values when importing tabular data.
-- `species::Union{Nothing,String}=nothing`: Species name used when importing
-  trial data.
-- `experiment::Union{Nothing,String}=nothing`: Experiment name used when
-  importing trial or environmental data.
-- `treatment::Union{Nothing,String}=nothing`: Treatment name used when
-  importing trial or environmental data.
-- `entry_type::Union{Nothing,String}=nothing`: Entry type used when importing
-  trial data.
-- `population_type::Union{Nothing,String}=nothing`: Population type used when
-  importing trial data.
-- `relationship_type::Union{Nothing,String}=nothing`: Relationship type used
-  when importing trial data.
-- `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Mapping of
-  measurement names to dates used during tabular-data imports.
-- `name::Union{Nothing,String}=nothing`: Name assigned to uploaded datasets
-  such as reference genomes, VCFs, `Genomes`, `Phenomes`, and `Fit` objects.
-- `notes::Union{Nothing,String}=nothing`: Descriptive notes associated with
-  uploaded datasets.
-- `fname_reference_genome::Union{Nothing,String}=nothing`: Path to a previously
-  registered reference genome required when uploading VCF or `Genomes` files.
-- `link_value_parser_traits::Union{Nothing,Function}=nothing`: Function used to
-  extract trait names from the `trait` field of the `Phenomes` struct when
-  populating the `phenomes_traits` relationship table.
-- `link_value_parser_sites::Union{Nothing,Function}=nothing`: Function used to
-  extract site names from the `trait` field of the `Phenomes` struct when
-  populating the `phenomes_sites` relationship table.
-- `link_value_parser_experiments::Union{Nothing,Function}=nothing`: Function
-  used to extract experiment names from the `trait` field of the `Phenomes`
-  struct when populating the `phenomes_experiments` relationship table.
-- `link_value_parser_measurements::Union{Nothing,Function}=nothing`: Function
-  used to extract measurement names from the `trait` field of the `Phenomes`
-  struct when populating the `phenomes_measurements` relationship table.
-- `link_value_parser_treatments::Union{Nothing,Function}=nothing`: Function
-  used to extract treatment names from the `trait` field of the `Phenomes`
-  struct when populating the `phenomes_treatments` relationship table.
-- `verbose::Bool=false`: If `true`, display progress and status messages during
-  file-type detection and upload.
+- `missing_strings::Vector{String}`: Strings interpreted as missing values
+  during tabular-data imports.
+- `species::Union{Nothing,String}=nothing`: Species name associated with trial
+  data uploads.
+- `experiment::Union{Nothing,String}=nothing`: Experiment name associated with
+  trial or environmental data uploads.
+- `treatment::Union{Nothing,String}=nothing`: Treatment name associated with
+  trial or environmental data uploads.
+- `entry_type::Union{Nothing,String}=nothing`: Entry type associated with trial
+  data uploads.
+- `population_type::Union{Nothing,String}=nothing`: Population type associated
+  with trial data uploads.
+- `relationship_type::Union{Nothing,String}=nothing`: Relationship type
+  associated with trial data uploads.
+- `measurement_dates::Union{Nothing,Dict{String,String}}=nothing`: Optional
+  measurement-date mapping for trial and environmental data uploads.
+- `name::Union{Nothing,String}=nothing`: Name assigned to uploaded file-based
+  datasets.
+- `note::Union{Nothing,String}=nothing`: User-supplied description of the
+  uploaded dataset.
+- `fname_genomes::Union{Nothing,String}=nothing`: Associated Genomes file
+  required when uploading Fit objects.
+- `fname_reference_genome::Union{Nothing,String}=nothing`: Reference genome
+  required when uploading Genomes or genotype VCF datasets.
+- `link_value_parser_traits::Union{Nothing,Function}=nothing`: Trait parser
+  used when uploading Phenomes or Fit datasets.
+- `link_value_parser_sites::Union{Nothing,Function}=nothing`: Site parser used
+  when uploading Phenomes or Fit datasets.
+- `link_value_parser_experiments::Union{Nothing,Function}=nothing`:
+  Experiment parser used when uploading Phenomes or Fit datasets.
+- `link_value_parser_measurements::Union{Nothing,Function}=nothing`:
+  Measurement parser used when uploading Phenomes or Fit datasets.
+- `link_value_parser_treatments::Union{Nothing,Function}=nothing`: Treatment
+  parser used when uploading Phenomes or Fit datasets.
+- `verbose::Bool=false`: If `true`, display progress and status messages.
 
 # Returns
 
-- `Nothing`: The detected dataset is uploaded to the database.
+- `Nothing`: Records are inserted directly into the database.
 
 # Throws
 
-- `ErrorException`: If the specified file does not exist.
-- `ErrorException`: If the file type cannot be determined.
-- `ErrorException`: If the file matches more than one supported format.
-- Any exception raised by the underlying upload function.
-- Any exception raised whilst connecting to the database.
+- `ErrorException`: If the supplied file does not exist.
+- `ErrorException`: If the file format cannot be determined.
+- `ErrorException`: If multiple file-format checks succeed.
+- `ErrorException`: If uploading a Fit object without `fname_genomes`.
+- Any exception raised by the delegated upload functions.
 
 # Notes
 
-- File-type detection is performed before opening a database connection.
-- Supported file types include:
-  - Trial data (`Trials`)
-  - Environmental data
-  - Reference genome FASTA files
-  - VCF files
-  - `Genomes` JLD2 files
-  - `Phenomes` JLD2 files
-  - `Fit` JLD2 files
-- Type detection is based on the same validation and parsing routines used by
-  the corresponding upload functions.
-- Exactly one file type must be identified. Ambiguous matches are treated as
-  errors.
-- All upload operations are delegated to specialised upload functions.
-- A database connection is opened automatically and closed once the upload has
-  completed.
-- Optional arguments are forwarded only to upload functions that require them.
-- When uploading `Phenomes` objects, the `link_value_parser_*` functions may be
-  used to create relationships between phenotype traits and existing database
-  records such as traits, sites, experiments, measurements, and treatments.
-- Parser functions receive values from the `trait` field of the `Phenomes`
-  struct and must return the corresponding database entity name to be linked.
-- All generated database queries use validated and sanitised inputs through the
-  package's filtering and upload infrastructure.
-- This function provides a convenient high-level entry point for importing
-  supported datasets without requiring the caller to determine the file type
-  manually.
+- The input file must exist before upload can proceed.
+- File type detection is performed automatically.
+- Exactly one supported file type must match.
+- The database connection is opened automatically and closed upon completion.
+- Upload logic is delegated to specialised upload functions.
+- The function prints progress messages when `verbose=true`.
+
+## Supported File Types
+
+The following file types are supported:
+
+- Trial data (`upload_trial_data!`)
+- Environmental data (`upload_environment_data!`)
+- Reference genomes (`upload_reference_genome!`)
+- Genotype VCFs (`upload_genotype_vcf!`)
+- Genomes JLD2 files (`upload_genomes!`)
+- Phenomes JLD2 files (`upload_phenomes!`)
+- Fit JLD2 files (`upload_fit!`)
+
+## Trial Data Uploads
+
+When the detected file contains trial data, the following arguments may be
+used:
+
+- `species`
+- `experiment`
+- `treatment`
+- `entry_type`
+- `population_type`
+- `relationship_type`
+- `measurement_dates`
+- `missing_strings`
+
+These arguments are ignored for all other file types.
+
+## Environmental Data Uploads
+
+When the detected file contains environmental data, the following arguments
+may be used:
+
+- `experiment`
+- `treatment`
+- `measurement_dates`
+- `missing_strings`
+
+All other upload-specific arguments are ignored.
+
+## Reference Genome Uploads
+
+When uploading a reference genome:
+
+- `name` should identify the reference assembly.
+- `note` may be used to describe the assembly source or version.
+
+All trial- and phenotype-related arguments are ignored.
+
+## Genotype VCF Uploads
+
+When uploading a genotype VCF:
+
+- `name` identifies the VCF dataset.
+- `note` describes the dataset.
+- `fname_reference_genome` should point to an already registered reference
+  genome.
+
+All trial-data arguments are ignored.
+
+## Genomes Uploads
+
+When uploading a Genomes object:
+
+- `name` identifies the dataset.
+- `note` describes the dataset.
+- `fname_reference_genome` should identify the associated reference genome.
+
+All trial-data arguments are ignored.
+
+## Phenomes Uploads
+
+When uploading a Phenomes object:
+
+- `name` identifies the dataset.
+- `note` describes the dataset.
+- `link_value_parser_traits`
+- `link_value_parser_sites`
+- `link_value_parser_experiments`
+- `link_value_parser_measurements`
+- `link_value_parser_treatments`
+
+may be used to define metadata relationships from trait labels.
+
+All trial-specific arguments are ignored.
+
+## Fit Uploads
+
+When uploading a Fit object:
+
+- `fname_genomes` is required.
+- `name` identifies the fit.
+- `note` describes the fit.
+- `link_value_parser_traits`
+- `link_value_parser_sites`
+- `link_value_parser_experiments`
+- `link_value_parser_measurements`
+- `link_value_parser_treatments`
+
+may be used to define metadata relationships.
+
+All trial-specific arguments are ignored.
+
+## File-Based Dataset Uploads
+
+The following file-based dataset types support metadata relationships:
+
+- `Phenomes`
+- `Genomes`
+- `GenotypeVCFs`
+- `Fits`
+
+For these dataset types:
+
+- trial-layout information is not uploaded;
+- plot-level observations are not uploaded;
+- `species`, `entry_type`, `population_type`, and
+  `relationship_type` are ignored;
+- relationships are inferred from metadata already stored within the file
+  itself and from records already registered in the database.
+
+## Upload Dispatch
+
+Detected file types are mapped to upload functions as follows:
+
+- `trial_data` → `upload_trial_data!`
+- `environmental_data` → `upload_environment_data!`
+- `reference_genome` → `upload_reference_genome!`
+- `vcf` → `upload_genotype_vcf!`
+- `Genomes` → `upload_genomes!`
+- `Phenomes` → `upload_phenomes!`
+- `Fit` → `upload_fit!`
 
 # Examples
 
@@ -149,7 +253,7 @@ julia> simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_
 
 julia> df_phenomes_before = execute(conn, "SELECT * FROM phenomes") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data");
+julia> upload(fname, name=basename(fname), note="simulated data");
 
 julia> df_phenomes_after = execute(conn, "SELECT * FROM phenomes") |> DataFrame;
 
@@ -179,7 +283,7 @@ julia> simulate_genomes(fname_reference_genome = fname);
 
 julia> df_reference_genome_before = execute(conn, "SELECT * FROM reference_genomes") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data");
+julia> upload(fname, name=basename(fname), note="simulated data");
 
 julia> df_reference_genome_after = execute(conn, "SELECT * FROM reference_genomes") |> DataFrame;
 
@@ -194,11 +298,11 @@ julia> fname_reference_genome = abspath(string("simulated_reference_genome-", Da
 
 julia> simulate_genomes(fname_genomes_vcf = fname, fname_reference_genome = fname_reference_genome);
 
-julia> upload(fname_reference_genome, name=basename(fname_reference_genome), notes="simulated data");
+julia> upload(fname_reference_genome, name=basename(fname_reference_genome), note="simulated data");
 
 julia> df_vcf_before = execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data", fname_reference_genome=fname_reference_genome);
+julia> upload(fname, name=basename(fname), note="simulated data", fname_reference_genome=fname_reference_genome);
 
 julia> df_vcf_after = execute(conn, "SELECT * FROM genotype_vcfs") |> DataFrame;
 
@@ -213,11 +317,11 @@ julia> fname_reference_genome = abspath(string("simulated_reference_genome-", Da
 
 julia> simulate_genomes(fname_genomes_jld2 = fname, fname_reference_genome = fname_reference_genome);
 
-julia> upload(fname_reference_genome, name=basename(fname_reference_genome), notes="simulated data");
+julia> upload(fname_reference_genome, name=basename(fname_reference_genome), note="simulated data");
 
 julia> df_genomes_before = execute(conn, "SELECT * FROM genomes") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data", fname_reference_genome=fname_reference_genome);
+julia> upload(fname, name=basename(fname), note="simulated data", fname_reference_genome=fname_reference_genome);
 
 julia> df_genomes_after = execute(conn, "SELECT * FROM genomes") |> DataFrame;
 
@@ -228,15 +332,27 @@ julia> # Upload Fit;
 
 julia> fname = abspath(string("simulated_fit-", Dates.now(), ".jld2"));
 
-julia> genomes = simulate_genomes();
+julia> fname_reference_genome = abspath(string("simulated_reference_genome-", Dates.now(), ".fa"));
 
-julia> phenomes = simulate_trials(genomes) |> simulate_phenomes;
+julia> fname_genomes = abspath(string("simulated_genomes-", Dates.now(), ".jld2"));
+
+julia> fname_phenomes = abspath(string("simulated_phenomes-", Dates.now(), ".jld2"));
+
+julia> genomes = simulate_genomes(fname_genomes_jld2 = fname_genomes, fname_reference_genome = fname_reference_genome);
+
+julia> phenomes = simulate_trials(genomes) |> x -> simulate_phenomes(x, fname_phenomes_jld2 = fname_phenomes);
 
 julia> simulate_fit(genomes, phenomes, fname_fit_jld2 = fname);
 
+julia> upload(fname_reference_genome, name=basename(fname_reference_genome), note="simulated data");
+
+julia> upload(fname_genomes, name=basename(fname_genomes), note="simulated data", fname_reference_genome=fname_reference_genome);
+
+julia> upload(fname_phenomes, name=basename(fname_phenomes), note="simulated data");
+
 julia> df_fit_before = execute(conn, "SELECT * FROM fits") |> DataFrame;
 
-julia> upload(fname, name=basename(fname), notes="simulated data");
+julia> upload(fname, name=basename(fname), note="simulated data", fname_genomes=fname_genomes);
 
 julia> df_fit_after = execute(conn, "SELECT * FROM fits") |> DataFrame;
 
@@ -257,7 +373,8 @@ function upload(
     relationship_type::Union{Nothing,String} = nothing,
     measurement_dates::Union{Nothing,Dict{String,String}} = nothing,
     name::Union{Nothing,String} = nothing,
-    notes::Union{Nothing,String} = nothing,
+    note::Union{Nothing,String} = nothing,
+    fname_genomes::Union{Nothing,String} = nothing,
     fname_reference_genome::Union{Nothing,String} = nothing,
     link_value_parser_traits::Union{Nothing,Function} = nothing,
     link_value_parser_sites::Union{Nothing,Function} = nothing,
@@ -275,7 +392,8 @@ function upload(
     # relationship_type::Union{Nothing,String} = nothing
     # measurement_dates::Union{Nothing,Dict{String,String}} = nothing
     # name::Union{Nothing,String} = nothing
-    # notes::Union{Nothing,String} = nothing
+    # note::Union{Nothing,String} = nothing
+    # fname_genomes::Union{Nothing,String} = nothing
     # fname_reference_genome::Union{Nothing,String} = nothing
     # verbose::Bool = true
     # # Trial data upload
@@ -291,7 +409,7 @@ function upload(
     # fname = abspath(string("simulated_phenomes-", Dates.now(), ".jld2"))
     # simulate_genomes() |> simulate_trials |> x -> simulate_phenomes(x, fname_phenomes_jld2 = fname)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Environmental data upload
     # fname = abspath(string("simulated_environments-", Dates.now(), ".tsv"))
     # simulate_genomes() |> simulate_trials |> x -> simulate_environments(x, fname_environments_tsv = fname)
@@ -301,28 +419,28 @@ function upload(
     # fname = abspath(string("simulated_reference_genome-", Dates.now(), ".fa"))
     # simulate_genomes(fname_reference_genome = fname)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Upload VCF
     # fname = abspath(string("simulated_genomes-", Dates.now(), ".vcf"))
     # fname_reference_genome = abspath(string("simulated_reference_genome-", Dates.now(), ".fa"))
     # simulate_genomes(fname_genomes_vcf = fname, fname_reference_genome = fname_reference_genome)
-    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, notes = isnothing(notes) ? "simulated data" : notes)
+    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, note = isnothing(note) ? "simulated data" : note)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Upload Genomes
     # fname = abspath(string("simulated_genomes-", Dates.now(), ".jld2"))
     # fname_reference_genome = abspath(string("simulated_reference_genome-", Dates.now(), ".fa"))
     # simulate_genomes(fname_genomes_jld2 = fname, fname_reference_genome = fname_reference_genome)
-    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, notes = isnothing(notes) ? "simulated data" : notes)
+    # upload_reference_genome!(conn, fname = fname_reference_genome, name = isnothing(name) ? basename(fname_reference_genome) : name, note = isnothing(note) ? "simulated data" : note)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     # # Upload Fit
     # fname = abspath(string("simulated_fit-", Dates.now(), ".jld2"))
     # genomes = simulate_genomes()
     # phenomes = simulate_trials(genomes) |> simulate_phenomes
     # simulate_fit(genomes, phenomes, fname_fit_jld2 = fname)
     # name = isnothing(name) ? basename(fname) : name
-    # notes = isnothing(notes) ? "simulated data" : notes
+    # note = isnothing(note) ? "simulated data" : note
     if !isfile(fname)
         error("The input file: \"$fname\" does not exist!")
     end
@@ -409,7 +527,7 @@ function upload(
             conn,
             fname = fname,
             name = name,
-            notes = notes,
+            note = note,
             link_value_parser_traits = link_value_parser_traits,
             link_value_parser_sites = link_value_parser_sites,
             link_value_parser_experiments = link_value_parser_experiments,
@@ -427,25 +545,23 @@ function upload(
             verbose = verbose,
         )
     elseif data_type == "reference_genome"
-        upload_reference_genome!(conn, fname = fname, name = name, notes = notes)
+        upload_reference_genome!(conn, fname = fname, name = name, note = note)
     elseif data_type == "vcf"
         upload_genotype_vcf!(
             conn,
             fname = fname,
             name = name,
-            notes = notes,
+            note = note,
             fname_reference_genome = fname_reference_genome,
+            verbose = verbose,
         )
     elseif data_type == "Genomes"
-        upload_genomes!(
-            conn;
-            fname = fname,
-            name = name,
-            notes = notes,
-            fname_reference_genome = fname_reference_genome,
-        )
+        upload_genomes!(conn; fname = fname, name = name, note = note, fname_reference_genome = fname_reference_genome)
     elseif data_type == "Fit"
-        upload_fit!(conn, fname = fname, name = name, notes = notes)
+        if isnothing(fname_genomes)
+            error("Uploading Fit data requires \"fname_genomes\"!")
+        end
+        upload_fit!(conn, fname = fname, fname_genomes = fname_genomes, name = name, note = note, verbose = verbose)
     else
         error("Totally unexpected error as we expect the previous data type checks to catch all possible errors!")
     end

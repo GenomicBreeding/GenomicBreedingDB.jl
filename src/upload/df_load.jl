@@ -360,10 +360,12 @@ function extract_environment_variables(df::DataFrame; verbose::Bool = false)::Ve
     end
     if length(env_names) < 1
         env_names = setdiff(names(df), id_cols)
-        error("Found $(length(env_names)) candidate envs but were all non-numeric: [\"$(join(env_names, "\", \""))\"].")
+        error(
+            "Found $(length(env_names)) candidate environmental variables but were all non-numeric: [\"$(join(env_names, "\", \""))\"].",
+        )
     end
     if verbose
-        println("Found $(length(env_names)) envs: [\"$(join(env_names, "\", \""))\"].")
+        println("Found $(length(env_names)) environmental variables: [\"$(join(env_names, "\", \""))\"].")
     end
     String.(env_names)
 end
