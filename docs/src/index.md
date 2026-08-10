@@ -6,9 +6,6 @@ CurrentModule = GenomicBreedingDB
 
 Documentation for [GenomicBreedingDB](https://github.com/GenomicBreeding/GenomicBreedingDB.jl).
 
-```@index
-```
-
 A PostgreSQL-backed database layer for the GenomicBreeding ecosystem.
 
 `GenomicBreedingDB.jl` provides tools for managing genomic, phenomic, environmental, experimental, and model data in a relational database.
