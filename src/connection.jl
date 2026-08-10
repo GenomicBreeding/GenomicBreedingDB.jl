@@ -139,13 +139,13 @@ function dbinit(schema_path::String = joinpath(@__DIR__, "..", "db", "schema.sql
         # stmt = split(sql, ';')[1]
         # stmt = split(sql, ';')[4]
         stmt = strip(stmt)
-        stmt = if .!isnothing(match(Regex("[\$]"), stmt)) && (length(psql_function) > 0)
+        stmt = if occursin(Regex("[\$]"), stmt) && (length(psql_function) > 0)
             # Function end
             psql_function = push!(psql_function, stmt)
             stmt = join(psql_function, "; ")
             psql_function = String[]
             stmt
-        elseif .!isnothing(match(Regex("[\$]"), stmt)) || (length(psql_function) > 0)
+        elseif occursin(Regex("[\$]"), stmt) || (length(psql_function) > 0)
             # Function start or body
             psql_function = push!(psql_function, stmt)
             continue
@@ -166,8 +166,7 @@ function dbinit(schema_path::String = joinpath(@__DIR__, "..", "db", "schema.sql
         end
     end
     errors = [x.msg for x in errors]
-    if (length(errors) > 0) &&
-       (sum(.!isnothing.(match.(Regex("entry_type|relationship_type"), errors))) < length(errors))
+    if (length(errors) > 0) && (sum(occursin.(Regex("entry_type|relationship_type"), errors)) < length(errors))
         println("At least one error occurred! Resetting the database!")
         close(conn)
         throw(join(errors, ""))

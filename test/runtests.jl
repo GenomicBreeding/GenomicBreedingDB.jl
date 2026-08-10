@@ -69,7 +69,7 @@ upload(
     verbose = true,
 )
 Documenter.doctest(GenomicBreedingDB)
-simulated_files = readdir() |> x -> filter(y -> !isnothing(match(Regex("simulated_"), y)), x)
+simulated_files = filter(x -> occursin(Regex("simulated_"), x), readdir())
 rm.(simulated_files)
 
 @testset "GenomicBreedingDB.jl" begin

@@ -330,7 +330,7 @@ function define_relationships!(
     valid_table_names =
         list_all_tables(conn) |>
         df ->
-            filter!(x -> !isnothing(match(Regex("^genomes_|^phenomes_|^genotype_vcfs_|^fits_"), x.table_name)), df) |>
+            filter!(x -> occursin(Regex("^genomes_|^phenomes_|^genotype_vcfs_|^fits_"), x.table_name), df) |>
             df -> df.table_name
     if table∉valid_table_names
         error("Invalid table: \"$table\"!")

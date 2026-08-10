@@ -118,7 +118,7 @@ function check_illegal_strings(
         if !isnothing(additional_illegal_strings)
             for s in additional_illegal_strings
                 # s = additional_illegal_strings[1]
-                if !isnothing(match(Regex(s), xi))
+                if occursin(Regex(s), xi)
                     push!(errors, "Illegal string [$s] in $xi.")
                 end
             end

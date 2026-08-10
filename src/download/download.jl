@@ -162,9 +162,9 @@ function define_filters(
         if length(v) == 0
             continue
         end
-        is_like = !isnothing(match(Regex("^like_"), k))
+        is_like = occursin(Regex("^like_"), k)
         # Extract field name from the args key
-        field = if !isnothing(match(Regex("species"), k))
+        field = if occursin(Regex("species"), k)
             replace(k, Regex("^like_")=>"")
         else
             replace(k, Regex("ies\$")=>"y") |> x -> replace(x, Regex("s\$")=>"") |> x -> replace(x, Regex("^like_")=>"")
@@ -296,7 +296,7 @@ function combinations(args::AbstractDict{String})::Tuple{Vector{Union{Nothing,Ve
     like_combinations_keys::Vector{String} = []
     for (k, v) in args
         # k = string.(keys(args))[1]; v = args[k]
-        isnothing(match(Regex("^like_"), k)) ? continue : nothing
+        !occursin(Regex("^like_"), k) ? continue : nothing
         isempty(v) ? continue : nothing
         like_combinations = if isempty(like_combinations)
             [[vi] for vi in v]
@@ -694,7 +694,7 @@ function download(
     # reference_genomes::Vector{String}=String[]
     # values::Tuple{Float64,Float64}=(-Inf, +Inf)
     # verbose = true
-    if verbose && !isnothing(match(Regex("phenomes|genomes|genotype_vcfs|reference_genomes")))
+    if verbose && occursin(Regex("phenomes|genomes|genotype_vcfs|reference_genomes"), table)
         warn(
             string(
                 "Since entry names are unique across species and entry types (and source populations or parents), ",
@@ -758,7 +758,7 @@ function download(
         for t in tables
             # t = tables[1]
             filters, errors = define_filters(conn, args, table = t)
-            if sum([!isnothing(match(Regex("No matches"), e.msg)) for e in errors]) > 0
+            if sum([occursin(Regex("No matches"), e.msg) for e in errors]) > 0
                 continue
             end
             df = if isempty(filters)
