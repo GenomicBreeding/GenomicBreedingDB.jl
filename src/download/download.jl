@@ -115,6 +115,31 @@ true
 
 julia> length(errors) > 0
 true
+
+julia> args_entries = Dict("like_entries" => ["_1"]);
+
+julia> filters_entries, errors_entries = define_filters(conn, args_entries, table="fits");
+
+julia> args_traits = Dict("like_traits" => ["1"]);
+
+julia> filters_traits, errors_traits = define_filters(conn, args_traits, table="fits");
+
+julia> args_genomes = Dict("like_genomes" => ["a"]);
+
+julia> filters_genomes, errors_genomes = define_filters(conn, args_genomes, table="fits");
+
+julia> args_reference_genomes = Dict("like_reference_genomes" => ["a"]);
+
+julia> filters_reference_genomes, errors_reference_genomes = define_filters(conn, args_reference_genomes, table="fits");
+
+julia> args_all = Dict("like_entries" => ["_1"], "like_traits" => ["1"], "like_genomes" => ["a"], "like_reference_genomes" => ["a"]);
+
+julia> filters_all, errors_all = define_filters(conn, args_all, table="fits");
+
+julia> unique(vcat(filters_entries[1].in, filters_traits[1].in, filters_genomes[1].in, filters_reference_genomes[1].in)) == unique(vcat(filters_all[1].in, filters_all[2].in))
+true
+
+julia> close(conn);
 ```
 """
 function define_filters(
@@ -133,7 +158,7 @@ function define_filters(
     for (k, v) in args
         # k = string.(keys(args))[1]; v = args[k]
         # k = string.(keys(args))[4]; v = args[k]
-        # k = string.(keys(args))[end]; v = args[k]
+        # k = string.(keys(args))[15]; v = args[k]
         if length(v) == 0
             continue
         end
@@ -432,21 +457,21 @@ tables.
 - If no valid filters are generated for a table, all records from that table
   are queried.
 - Depending on `table`, related tables are automatically queried and joined:
-  - `phenotype_data` → `phenotype_data`, `layouts`
-  - `environment_data` → `environment_data`, `layouts`
-  - `entry_relationships` → `entry_relationships`, `entries`, `species`
+    + `phenotype_data` → `phenotype_data`, `layouts`
+    + `environment_data` → `environment_data`, `layouts`
+    + `entry_relationships` → `entry_relationships`, `entries`, `species`
 - All other tables are queried directly without additional joins.
 - Identifier and bookkeeping fields such as:
-  - `id`
-  - `created_at`
-  - `updated_at`
+    + `id`
+    + `created_at`
+    + `updated_at`
   are removed from intermediate tables before joining where appropriate.
 - Relationship fields are normalised automatically to facilitate joins.
 - For pedigree queries, `child` is automatically renamed to `entry`.
 - Joins are performed using biologically meaningful fields such as:
-  - `entry`
-  - `species`
-  - `layout`
+    + `entry`
+    + `species`
+    + `layout`
 - Missing join values are temporarily represented as `"missing"` during join
   operations.
 - The resulting DataFrame may contain columns originating from multiple related
@@ -573,14 +598,26 @@ julia> df_reference_genomes = download("reference_genomes");
 julia> nrow(df_reference_genomes) > 0
 true
 
-julia> df_fits = download("fits", like_entries=["_04", "_02"]);
+julia> df_fits_all = download("fits");
 
-julia> nrow(df_fits) > 0
+julia> df_fits_trait_1 = download("fits", traits=["trait_1"]);
+
+julia> df_fits_entry_042 = download("fits", entries=["entry_042"]);
+
+julia> df_fits_reference_genomes = download("fits", like_reference_genomes=["5"]);
+
+julia> df_fits_like_10 = download("fits", entries=["entry_042"]);
+
+julia> length(intersect(df_fits_trait_1.file_path, df_fits_all.file_path)) > 0
 true
 
-julia> df_fits = download("fits", like_entries=["_8", "_9"]);
+julia> length(intersect(df_fits_entry_042.file_path, df_fits_all.file_path)) > 0
+true
 
-julia> nrow(df_fits) > 0
+julia> length(intersect(df_fits_reference_genomes.file_path, df_fits_all.file_path)) > 0
+true
+
+julia> length(intersect(df_fits_like_10.file_path, df_fits_all.file_path)) > 0
 true
 ```
 """

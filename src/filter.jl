@@ -108,10 +108,10 @@ identify matching datasets.
   resolved through the appropriate metadata tables.
 - For standard tables, entity names are resolved directly through metadata
   tables and filtering remains on the original foreign-key field.
-- For `genomes`, `genotype_vcfs`, and `phenomes`, relationships to entries,
+- For `genomes`, `genotype_vcfs`, `phenomes`, and `fits`, relationships to entries,
   traits, sites, treatments, experiments, measurements, and similar entities
   may be stored in intermediate relationship tables.
-- Examples include:
+- These relationship tables include:
     + `genomes_entries`
     + `genotype_vcfs_entries`
     + `phenomes_entries`
@@ -120,14 +120,19 @@ identify matching datasets.
     + `phenomes_experiments`
     + `phenomes_measurements`
     + `phenomes_treatments`
+    + `fits_entries`
+    + `fits_traits`
+    + `fits_genomes`
+    + `fits_reference_genomes`
 - When a relationship table is used, matching metadata identifiers are first
   resolved and then converted into matching dataset identifiers through the
   relationship table.
 - In these cases the filter is rewritten to operate on the primary key field
   `id` of the target dataset table.
-- The `reference_genome_id` field is a special case because `genomes` and
-  `genotype_vcfs` store direct foreign-key relationships to
-  `reference_genomes`; no intermediate relationship table is required.
+- The `reference_genome_id` field in the `genomes` and `genotype_vcfs` tables 
+  (but not in `fits_reference_genomes` relationship table) is a special case 
+  because `genomes` and `genotype_vcfs` store direct foreign-key relationships
+  to `reference_genomes`; no intermediate relationship table is required.
 - The `entry_relationships` table is handled as a special case.
 - When filtering `entry_relationships` using `entry_id`, `parent_id`, or
   `child_id`, human-readable entry names are automatically resolved through the
@@ -230,6 +235,20 @@ julia> x_1 = Filter(conn, table="phenomes", field="traits", filter_like="_1");
 julia> x_2 = Filter(conn, table="phenomes", field="traits", filter_like="trait_");
 
 julia> (x_1.table == "phenomes") && (x_1.field == "id") && (x_1.in[1] ∈ x_2.in)
+true
+
+julia> x_1 = Filter(conn, table="fits", field="entries", filter_like="_04");
+
+julia> x_2 = Filter(conn, table="fits", field="entries", filter_in=["entry_042"]);
+
+julia> (x_1.table == "fits") && (x_1.field == "id") && (x_1.in[1] ∈ x_2.in)
+true
+
+julia> x_1 = Filter(conn, table="fits", field="genomes", filter_like="a");
+
+julia> x_2 = Filter(conn, table="fits", field="reference_genomes", filter_like="a");
+
+julia> (x_1.table == "fits") && (x_1.field == "id") && (x_1.in[1] ∈ x_2.in)
 true
 
 julia> close(conn);
@@ -340,8 +359,10 @@ struct Filter
             check(conn, metatable, "id")
             # Determine if lookup requires an intermediate relationship table
             reltable =
-                if ((table == "genomes") || (table == "phenomes") || (table == "genotype_vcfs")) &&
-                   (metatable != "reference_genomes")
+                if (
+                    ((table == "genomes") || (table == "phenomes") || (table == "genotype_vcfs")) &&
+                    (metatable != "reference_genomes")
+                ) || (table == "fits")
                     reltable = string(table, "_", metatable)
                     check(conn, reltable, field)
                     check(conn, table, "id")
@@ -374,6 +395,8 @@ struct Filter
                         "phenome_id"
                     elseif table == "genotype_vcfs"
                         "genotype_vcf_id"
+                    elseif table == "fits"
+                        "fit_id"
                     else
                         error("Unexpected table=\"$table\" connected to metable=\"$metatable\" via reltable=\"$reltable\"!")
                     end
@@ -381,6 +404,7 @@ struct Filter
                     ids_meta = extract_ids(conn, names = v, table = metatable, is_like = is_like).id
                     ids_rel = String[]
                     for id in ids_meta
+                        # id = ids_meta[1]
                         df_tmp = execute(conn, "SELECT $relfield FROM $reltable WHERE $field = \$1", [id]) |> DataFrame
                         isempty(df_tmp) ? continue : nothing
                         push!(ids_rel, df_tmp[1, 1])

@@ -56,6 +56,18 @@ upload(
     link_value_parser_treatments = x -> String("control"),
     verbose = true,
 )
+upload(
+    abspath("simulated_fit.jld2"),
+    name = "simulated fit",
+    note = "simulated",
+    fname_genomes = abspath("simulated_genomes.jld2"),
+    link_value_parser_traits = x -> String(split(x, '|')[1]),
+    link_value_parser_sites = x -> String(split(split(x, '|')[2], "-")[end-1]),
+    link_value_parser_experiments = x -> String("simulated experiment"),
+    link_value_parser_measurements = x -> String(join(split(split(x, '|')[2], "-")[2:4], "-")),
+    link_value_parser_treatments = x -> String("control"),
+    verbose = true,
+)
 Documenter.doctest(GenomicBreedingDB)
 simulated_files = readdir() |> x -> filter(y -> !isnothing(match(Regex("simulated_"), y)), x)
 rm.(simulated_files)
