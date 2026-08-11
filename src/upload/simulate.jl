@@ -54,7 +54,7 @@ julia> simulate_reference_genome(n_chromosomes=10);
 
 julia> io = open("simulated_reference_genome.fa", "r");
 
-julia> [!isnothing(match(Regex("^>"), line)) for line in eachline(io)] |> sum
+julia> [occursin(Regex("^>"), line) for line in eachline(io)] |> sum
 10
 
 julia> close(io);

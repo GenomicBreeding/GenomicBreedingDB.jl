@@ -54,9 +54,8 @@ true
 ```
 """
 function check_trials(df::DataFrame)::Nothing
-    required_columns = sort(
-        filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))),
-    )
+    required_columns =
+        sort(filter(x -> !occursin(Regex("phenotypes|traits"), x), String.(string.(collect(fieldnames(Trials))))))
     missing_columns = filter(x -> x∉names(df), required_columns)
     if length(missing_columns) > 0
         error("Missing columns: [\"$(join(missing_columns, "\", \""))\"].")

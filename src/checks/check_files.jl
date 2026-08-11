@@ -82,9 +82,7 @@ function check(type::Type{T}; fname::String)::Nothing where {T<:AbstractGB}
     tmp = open(fname, "r") do io
         read(io, 1_000) |> String
     end
-    if isnothing(match(Regex("Julia"), tmp)) ||
-       isnothing(match(Regex("HDF5"), tmp)) ||
-       isnothing(match(Regex(string(type)), tmp))
+    if !occursin(Regex("Julia"), tmp) || !occursin(Regex("HDF5"), tmp) || !occursin(Regex(string(type)), tmp)
         error("The file \"$fname\" may not be a JLD2 file containing a $type struct!")
     end
     nothing

@@ -183,7 +183,7 @@ function query(
     for f in names(df)
         # f = names(df)[2]
         # println(f)
-        isnothing(match(Regex("_id\$"), f)) ? continue : nothing
+        !occursin(Regex("_id\$"), f) ? continue : nothing
         f, g = if table == "entry_relationships"
             "entry_id", replace(f, Regex("_id\$") => "")
         else

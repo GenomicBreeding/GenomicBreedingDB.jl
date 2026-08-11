@@ -138,14 +138,13 @@ julia> df = load_trial_df("simulated_trials.tsv");
 
 julia> traits = extract_traits(df);
 
-julia> traits == filter(x -> !isnothing(match(Regex("^trait_"), x)), names(df))
+julia> traits == filter(x -> occursin(Regex("^trait_"), x), names(df))
 true
 ```
 """
 function extract_traits(df::DataFrame; verbose::Bool = false)::Vector{String}
-    trial_columns = sort(
-        filter(x -> isnothing(match(Regex("phenotypes|traits"), x)), String.(string.(collect(fieldnames(Trials))))),
-    )
+    trial_columns =
+        sort(filter(x -> !occursin(Regex("phenotypes|traits"), x), String.(string.(collect(fieldnames(Trials))))))
     additional_columns = [
         "dates",
         "species",
@@ -168,7 +167,7 @@ function extract_traits(df::DataFrame; verbose::Bool = false)::Vector{String}
     for trait in trait_names
         # trait = trait_names[1]
         # trait = "dates"
-        if (trait == "id") || !isnothing(match(Regex("_id\$"), trait))
+        if (trait == "id") || occursin(Regex("_id\$"), trait)
             filter!(x -> x != trait, trait_names)
             continue
         end

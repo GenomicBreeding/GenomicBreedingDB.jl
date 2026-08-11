@@ -196,10 +196,10 @@ true
 
 julia> x = Filter(conn, table="entries", field="name", filter_like="entry_100");
 
-julia> !isnothing(match(Regex("^%"), x.like))
+julia> occursin(Regex("^%"), x.like)
 true
 
-julia> !isnothing(match(Regex("_"), x.like))
+julia> occursin(Regex("_"), x.like)
 true
 
 julia> x_1 = Filter(conn, table="genomes", field="entries", filter_in=["entry_001"]);
@@ -298,7 +298,7 @@ struct Filter
         catch
             # Here, we assume that plural field names refer to references, i.e. ids to another table.
             # We can do this safely because we have set all field names across all table to be singular (except species).
-            field = if !isnothing(match(Regex("entry|entries"), field))
+            field = if occursin(Regex("entry|entries"), field)
                 "entry_id"
             elseif field == "species"
                 "species_id"
@@ -324,7 +324,7 @@ struct Filter
         #    (e.g., "entry_100") to their corresponding database IDs using a metadata table and possibly a relationship table.
         #    After ID resolution, field is set to "id" because the resolved IDs refer to the primary key
         #    column "id" in the primary table.
-        field, filter_in, filter_like = if isnothing(match(Regex("_id\$"), field))
+        field, filter_in, filter_like = if !occursin(Regex("_id\$"), field)
             # Direct column field - validate filter type matches field data type
             if !isnothing(filter_like) && (table != "entry_relationships")
                 check(conn, table, field, String)
@@ -337,7 +337,7 @@ struct Filter
                 end
             end
             field, filter_in, filter_like
-        elseif (table == "entry_relationships") && !isnothing(match(Regex("entry_id|child_id|parent_id"), field))
+        elseif (table == "entry_relationships") && occursin(Regex("entry_id|child_id|parent_id"), field)
             if !isnothing(filter_in) || !isnothing(filter_like)
                 metatable = "entries"
                 is_like = !isnothing(filter_like)
@@ -432,7 +432,7 @@ struct Filter
         end
         # Process filter_like: add wildcard characters and escape underscores
         filter_like = if !isnothing(filter_like)
-            filter_like = if isnothing(match(Regex("%"), filter_like))
+            filter_like = if !occursin(Regex("%"), filter_like)
                 "%$(filter_like)%"
             else
                 filter_like
@@ -724,7 +724,7 @@ function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{V
         n = length(par)
         if !isnothing(f.like)
             if (f.field == "id") ||
-               !isnothing(match(Regex("_id\$"), f.field)) ||
+               occursin(Regex("_id\$"), f.field) ||
                (f.field == "entry_type") ||
                (f.field == "relationship_type")
                 push!(sql, "AND $(f.field)::text ILIKE \$$(n+1)")
@@ -735,7 +735,7 @@ function concat_filters(filters::Vector{Filter}; verbose::Bool = false)::Tuple{V
         elseif !isnothing(f.in)
             s = "($(join(string.("\$", (n+1):(n+length(f.in))), ',')))"
             if (f.field == "id") ||
-               !isnothing(match(Regex("_id\$"), f.field)) ||
+               occursin(Regex("_id\$"), f.field) ||
                (f.field == "entry_type") ||
                (f.field == "relationship_type")
                 push!(sql, "AND $(f.field)::text IN $s") # why not just use ANY? Because we have potentially more than one filter and LibPQ does not seem to allow me to use parameters with individual elements and vectors, hence multiple parameters and LibPQ does not seem
