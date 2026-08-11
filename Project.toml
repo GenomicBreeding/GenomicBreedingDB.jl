@@ -1,6 +1,6 @@
 name = "GenomicBreedingDB"
 uuid = "dd1ffd05-44c9-4da0-a67e-cb767bb549d1"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["jeffersonparil@gmail.com"]
 
 [deps]
